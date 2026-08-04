@@ -1,0 +1,185 @@
+{
+ "charts": [
+  {
+   "chart_name": "Qabul voronkasi",
+   "label": "Qabul voronkasi"
+  }
+ ],
+ "content": "[{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Qabul CRM</b></span>\",\"col\":12}},{\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Yangi arizalar\",\"col\":3}},{\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Jami murojaatlar\",\"col\":3}},{\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Qabul qilinganlar\",\"col\":3}},{\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Oilalar\",\"col\":3}},{\"type\":\"spacer\",\"data\":{\"col\":12}},{\"type\":\"chart\",\"data\":{\"chart_name\":\"Qabul voronkasi\",\"col\":12}},{\"type\":\"spacer\",\"data\":{\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Yangi arizalar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Murojaatlar (Lead)\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Oilalar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Voronka hisoboti\",\"col\":3}},{\"type\":\"spacer\",\"data\":{\"col\":12}},{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Sozlamalar va ro'yxatlar</b></span>\",\"col\":12}},{\"type\":\"card\",\"data\":{\"card_name\":\"Qabul jarayoni\",\"col\":4}},{\"type\":\"card\",\"data\":{\"card_name\":\"Sozlamalar\",\"col\":4}}]",
+ "creation": "2026-08-04 12:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "education",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Qabul",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Qabul jarayoni",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Arizalar (Inquiry)",
+   "link_count": 0,
+   "link_to": "Admission Inquiry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Murojaatlar (Lead)",
+   "link_count": 0,
+   "link_to": "Admission Lead",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Oilalar",
+   "link_count": 0,
+   "link_to": "Family",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sozlamalar",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Bosqichlar",
+   "link_count": 0,
+   "link_to": "Admission Stage",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Statuslar",
+   "link_count": 0,
+   "link_to": "Admission Status",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Manbalar (Lead Source)",
+   "link_count": 0,
+   "link_to": "Lead Source",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Instagram yozishmalar",
+   "link_count": 0,
+   "link_to": "Instagram Message",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Instagram sozlamalari",
+   "link_count": 0,
+   "link_to": "Instagram Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-08-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Qabul",
+ "number_cards": [
+  {
+   "label": "Yangi arizalar",
+   "number_card_name": "Yangi arizalar"
+  },
+  {
+   "label": "Jami murojaatlar",
+   "number_card_name": "Jami murojaatlar"
+  },
+  {
+   "label": "Qabul qilinganlar",
+   "number_card_name": "Qabul qilinganlar"
+  },
+  {
+   "label": "Oilalar",
+   "number_card_name": "Oilalar"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
+ "roles": [],
+ "sequence_id": 99.0,
+ "shortcuts": [
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Yangi arizalar",
+   "link_to": "Admission Inquiry",
+   "stats_filter": "{\"inquiry_status\":\"Yangi\"}",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Murojaatlar (Lead)",
+   "link_to": "Admission Lead",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Oilalar",
+   "link_to": "Family",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Topshiriqlar",
+   "link_to": "ToDo",
+   "type": "DocType"
+  },
+  {
+   "color": "Purple",
+   "label": "Voronka hisoboti",
+   "link_to": "Qabul Voronkasi",
+   "type": "Report",
+   "report_ref_doctype": "Admission Lead"
+  }
+ ],
+ "title": "Qabul"
+}

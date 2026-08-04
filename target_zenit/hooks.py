@@ -26,7 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/target_zenit/css/target_zenit.css"
-# app_include_js = "/assets/target_zenit/js/target_zenit.js"
+app_include_js = "/assets/target_zenit/js/instagram.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/target_zenit/css/target_zenit.css"

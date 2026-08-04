@@ -1,0 +1,119 @@
+{
+ "actions": [],
+ "creation": "2026-08-04 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "section_meta",
+  "verify_token",
+  "ig_business_id",
+  "column_break_1",
+  "access_token",
+  "api_version",
+  "section_autoreply",
+  "auto_reply_enabled",
+  "auto_reply_text",
+  "phone_thanks_text",
+  "section_help",
+  "help_html"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Yoqilgan"
+  },
+  {
+   "fieldname": "section_meta",
+   "fieldtype": "Section Break",
+   "label": "Meta App sozlamalari"
+  },
+  {
+   "description": "O'zingiz o'ylab topgan maxfiy so'z — Meta App'dagi webhook sozlamasida aynan shuni kiritasiz",
+   "fieldname": "verify_token",
+   "fieldtype": "Data",
+   "label": "Verify token"
+  },
+  {
+   "description": "Instagram Business akkaunt ID (Meta App'dan olinadi)",
+   "fieldname": "ig_business_id",
+   "fieldtype": "Data",
+   "label": "Instagram Business ID"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Page Access Token (uzoq muddatli, ~60 kun)",
+   "fieldname": "access_token",
+   "fieldtype": "Password",
+   "label": "Access token"
+  },
+  {
+   "default": "v23.0",
+   "fieldname": "api_version",
+   "fieldtype": "Data",
+   "label": "Graph API versiyasi"
+  },
+  {
+   "fieldname": "section_autoreply",
+   "fieldtype": "Section Break",
+   "label": "Avtomatik javoblar"
+  },
+  {
+   "default": "1",
+   "description": "Notanish odam birinchi yozganda avtomatik telefon so'raladi",
+   "fieldname": "auto_reply_enabled",
+   "fieldtype": "Check",
+   "label": "Avto-javob yoqilgan"
+  },
+  {
+   "default": "Assalomu alaykum! Target Zenit maktabiga murojaatingiz uchun rahmat 😊 Sizga tezroq javob berishimiz uchun telefon raqamingizni yozib qoldiring.",
+   "fieldname": "auto_reply_text",
+   "fieldtype": "Small Text",
+   "label": "Birinchi xabar (telefon so'rash)"
+  },
+  {
+   "default": "Rahmat! Raqamingizni qabul qildik — mutaxassisimiz tez orada siz bilan bog'lanadi.",
+   "fieldname": "phone_thanks_text",
+   "fieldtype": "Small Text",
+   "label": "Raqam qabul qilinganda javob"
+  },
+  {
+   "fieldname": "section_help",
+   "fieldtype": "Section Break",
+   "label": ""
+  },
+  {
+   "fieldname": "help_html",
+   "fieldtype": "HTML",
+   "label": "",
+   "options": "<p>Webhook URL (Meta App'da ko'rsatiladi): <code>https://SIZNING-DOMEN/api/method/target_zenit.integrations.instagram.webhook</code></p>"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-08-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Instagram Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

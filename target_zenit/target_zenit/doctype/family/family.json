@@ -1,0 +1,154 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:FAM-{#####}",
+ "creation": "2026-08-04 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "family_name",
+  "phone",
+  "phone2",
+  "column_break_1",
+  "father_name",
+  "mother_name",
+  "email",
+  "section_contact",
+  "telegram_username",
+  "instagram_username",
+  "column_break_2",
+  "city",
+  "address",
+  "section_children",
+  "children",
+  "section_notes",
+  "notes"
+ ],
+ "fields": [
+  {
+   "description": "Masalan: Abdullayevlar oilasi",
+   "fieldname": "family_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Oila nomi",
+   "reqd": 1
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Telefon",
+   "options": "Phone",
+   "reqd": 1
+  },
+  {
+   "fieldname": "phone2",
+   "fieldtype": "Data",
+   "label": "Qo'shimcha telefon",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "father_name",
+   "fieldtype": "Data",
+   "label": "Ota F.I.Sh."
+  },
+  {
+   "fieldname": "mother_name",
+   "fieldtype": "Data",
+   "label": "Ona F.I.Sh."
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "section_contact",
+   "fieldtype": "Section Break",
+   "label": "Aloqa kanallari"
+  },
+  {
+   "fieldname": "telegram_username",
+   "fieldtype": "Data",
+   "label": "Telegram username"
+  },
+  {
+   "fieldname": "instagram_username",
+   "fieldtype": "Data",
+   "label": "Instagram username"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "Shahar/Tuman"
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "Manzil"
+  },
+  {
+   "fieldname": "section_children",
+   "fieldtype": "Section Break",
+   "label": "Farzandlar"
+  },
+  {
+   "fieldname": "children",
+   "fieldtype": "Table",
+   "label": "Farzandlar",
+   "options": "Family Child"
+  },
+  {
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break",
+   "label": ""
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Izohlar"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [
+  {
+   "group": "Qabul",
+   "link_doctype": "Admission Lead",
+   "link_fieldname": "family"
+  }
+ ],
+ "modified": "2026-08-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Family",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "family_name,phone,father_name,mother_name",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "family_name",
+ "track_changes": 1
+}

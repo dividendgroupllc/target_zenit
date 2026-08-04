@@ -1,0 +1,172 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:ADM-{YYYY}-{#####}",
+ "creation": "2026-08-04 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "child_name",
+  "family",
+  "phone",
+  "column_break_1",
+  "birth_year",
+  "target_grade",
+  "academic_year",
+  "section_pipeline",
+  "stage",
+  "status",
+  "column_break_2",
+  "lead_owner",
+  "source",
+  "first_contact_on",
+  "section_channels",
+  "instagram_user_id",
+  "section_notes",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "child_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Farzand F.I.Sh.",
+   "reqd": 1
+  },
+  {
+   "fieldname": "family",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Oila",
+   "options": "Family",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "family.phone",
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Telefon",
+   "options": "Phone",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "birth_year",
+   "fieldtype": "Int",
+   "label": "Tug'ilgan yil"
+  },
+  {
+   "fieldname": "target_grade",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Mo'ljal sinf"
+  },
+  {
+   "description": "Masalan: 2026-2027",
+   "fieldname": "academic_year",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "O'quv yili"
+  },
+  {
+   "fieldname": "section_pipeline",
+   "fieldtype": "Section Break",
+   "label": "Qabul jarayoni"
+  },
+  {
+   "fieldname": "stage",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Bosqich",
+   "options": "Murojaat\nTashrif belgilandi\nTashrif bo'ldi\nAriza boshlandi\nAriza to'liq\nImtihon-Suhbat\nTaklif yuborildi\nDepozit to'landi\nQabul qilindi\nQayta ro'yxat",
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Admission Status"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lead_owner",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Mas'ul xodim",
+   "options": "User"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Manba",
+   "options": "Lead Source"
+  },
+  {
+   "description": "Birinchi marta biz tomondan aloqa qilingan vaqt (24 soat SLA hisobi)",
+   "fieldname": "first_contact_on",
+   "fieldtype": "Datetime",
+   "label": "Birinchi aloqa vaqti"
+  },
+  {
+   "fieldname": "section_channels",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Kanal identifikatorlari"
+  },
+  {
+   "description": "Instagram DM webhook uchun (avtomatik to'ladi)",
+   "fieldname": "instagram_user_id",
+   "fieldtype": "Data",
+   "label": "Instagram user ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break",
+   "label": ""
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text Editor",
+   "label": "Izohlar"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Admission Lead",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "child_name,phone,target_grade",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "child_name",
+ "track_changes": 1
+}

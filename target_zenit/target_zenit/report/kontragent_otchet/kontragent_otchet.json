@@ -10,7 +10,7 @@
  "idx": 0,
  "is_standard": "Yes",
  "letterhead": null,
- "modified": "2026-07-29 17:36:29.394065",
+ "modified": "2026-08-04 16:35:45.118033",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Kontragent Otchet",
@@ -28,6 +28,9 @@
   },
   {
    "role": "Auditor"
+  },
+  {
+   "role": "Operator"
   }
  ],
  "timeout": 0

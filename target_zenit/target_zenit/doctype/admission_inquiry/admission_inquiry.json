@@ -1,0 +1,133 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:INQ-{YYYY}-{#####}",
+ "creation": "2026-08-04 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "parent_name",
+  "phone",
+  "column_break_1",
+  "child_name",
+  "birth_year",
+  "target_grade",
+  "section_details",
+  "message",
+  "column_break_2",
+  "source",
+  "inquiry_status",
+  "converted_lead",
+  "instagram_user_id"
+ ],
+ "fields": [
+  {
+   "fieldname": "parent_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Ota-ona F.I.Sh.",
+   "reqd": 1
+  },
+  {
+   "description": "Instagram'dan kelgan arizada bo'sh bo'lishi mumkin — Lead ochishdan oldin so'rab kiriting",
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Telefon",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "child_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Farzand F.I.Sh."
+  },
+  {
+   "fieldname": "birth_year",
+   "fieldtype": "Int",
+   "label": "Farzand tug'ilgan yili"
+  },
+  {
+   "fieldname": "target_grade",
+   "fieldtype": "Data",
+   "label": "Mo'ljal sinf"
+  },
+  {
+   "fieldname": "section_details",
+   "fieldtype": "Section Break",
+   "label": ""
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Xabar/Savol"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Veb-sayt",
+   "fieldname": "source",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Manba",
+   "options": "Lead Source"
+  },
+  {
+   "default": "Yangi",
+   "fieldname": "inquiry_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Holat",
+   "options": "Yangi\nBog'lanildi\nLead ochildi\nRad etildi",
+   "reqd": 1
+  },
+  {
+   "fieldname": "converted_lead",
+   "fieldtype": "Link",
+   "label": "Ochilgan Lead",
+   "options": "Admission Lead",
+   "read_only": 1
+  },
+  {
+   "fieldname": "instagram_user_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Instagram user ID",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Admission Inquiry",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "parent_name,phone,child_name",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "parent_name",
+ "track_changes": 1
+}
