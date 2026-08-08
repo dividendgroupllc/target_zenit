@@ -148,6 +148,12 @@ app_include_js = "/assets/target_zenit/js/instagram.js"
 # Scheduled Tasks
 # ---------------
 
+scheduler_events = {
+	"hourly": [
+		"target_zenit.attendance.sync_today"
+	],
+}
+
 # scheduler_events = {
 # 	"all": [
 # 		"target_zenit.tasks.all"
@@ -246,7 +252,7 @@ fixtures = [
     {
         "dt": "Custom Field",
         "filters": [
-            ["name", "=", "Contact-is_billing_contact"]
+            ["name", "in", ["Contact-is_billing_contact", "Student-custom_hikvision_id"]]
         ]
     }
 ]

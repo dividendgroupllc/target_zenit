@@ -1,0 +1,151 @@
+{
+ "actions": [],
+ "autoname": "format:CHK-{YYYY}-{######}",
+ "creation": "2026-08-07 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "person_id",
+  "person_name",
+  "person_type",
+  "event_time",
+  "column_break_1",
+  "student",
+  "employee",
+  "terminal",
+  "terminal_ip",
+  "verify_mode",
+  "event_code",
+  "section_media",
+  "picture",
+  "section_raw",
+  "raw_data"
+ ],
+ "fields": [
+  {
+   "description": "Terminaldagi shaxs ID raqami (employee No)",
+   "fieldname": "person_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Terminal ID",
+   "reqd": 1
+  },
+  {
+   "fieldname": "person_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Ism (terminalda)"
+  },
+  {
+   "default": "Noma'lum",
+   "fieldname": "person_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kim",
+   "options": "Noma'lum\nO'quvchi\nO'qituvchi\nXodim"
+  },
+  {
+   "fieldname": "event_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "O'tish vaqti",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.person_type=='O\\'quvchi'",
+   "fieldname": "student",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "O'quvchi",
+   "options": "Student"
+  },
+  {
+   "depends_on": "eval:['O\\'qituvchi','Xodim'].includes(doc.person_type)",
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Xodim",
+   "options": "Employee"
+  },
+  {
+   "fieldname": "terminal",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Terminal nomi"
+  },
+  {
+   "fieldname": "terminal_ip",
+   "fieldtype": "Data",
+   "label": "Terminal IP"
+  },
+  {
+   "description": "Qanday o'tgani: yuz, karta va h.k.",
+   "fieldname": "verify_mode",
+   "fieldtype": "Data",
+   "label": "O'tish usuli"
+  },
+  {
+   "description": "Hikvision hodisa kodi (major/sub)",
+   "fieldname": "event_code",
+   "fieldtype": "Data",
+   "label": "Hodisa kodi"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_media",
+   "fieldtype": "Section Break",
+   "label": "Rasm"
+  },
+  {
+   "fieldname": "picture",
+   "fieldtype": "Attach Image",
+   "label": "O'tish rasmi"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_raw",
+   "fieldtype": "Section Break",
+   "label": "Texnik ma'lumot"
+  },
+  {
+   "fieldname": "raw_data",
+   "fieldtype": "Code",
+   "label": "Xom ma'lumot",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-07 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Terminal Checkin",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "event_time",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "person_name",
+ "track_changes": 0
+}
