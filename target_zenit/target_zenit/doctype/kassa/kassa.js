@@ -548,7 +548,7 @@ frappe.ui.form.on("Kassa", {
                 });
             }
 
-            if (in_list(["Customer", "Supplier"], frm.doc.party_type)) {
+            if (in_list(["Customer", "Supplier", "Shareholder"], frm.doc.party_type)) {
                 frappe.call({
                     method: "target_zenit.target_zenit.doctype.kassa.kassa.get_party_currency",
                     args: {
@@ -714,7 +714,7 @@ function getDefaultConversionTargetCurrency(frm) {
 function isPartyMulticurrencyPayment(frm) {
     return Boolean(
         in_list(["Приход", "Расход"], frm.doc.transaction_type) &&
-        in_list(["Customer", "Supplier", "Employee"], frm.doc.party_type) &&
+        in_list(["Customer", "Supplier", "Shareholder", "Employee"], frm.doc.party_type) &&
         frm.doc.mode_of_payment &&
         frm.doc.party &&
         frm.doc.cash_account_currency &&

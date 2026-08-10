@@ -9,6 +9,7 @@ from frappe.utils import flt
 CATEGORY_MAP = {
     "Покупатели": "customer",
     "Поставщики": "supplier",
+    "Учредители": "shareholder",
     "Расходы": "expense",
     "Дивиденды": "dividend",
     "Сотрудники": "employee",
@@ -18,6 +19,7 @@ CATEGORY_MAP = {
 CATEGORY_LABELS = {
     "customer": "Покупатели",
     "supplier": "Поставщики",
+    "shareholder": "Учредители",
     "expense": "Расходы",
     "dividend": "Дивиденды",
     "employee": "Сотрудники",
@@ -396,11 +398,11 @@ def resolve_transaction_info(row, pe_info, je_info, cash_accounts):
 
 
 def get_category_from_party_type(party_type):
-    return {"Customer": "customer", "Supplier": "supplier", "Employee": "employee"}.get(party_type, "other")
+    return {"Customer": "customer", "Supplier": "supplier", "Shareholder": "shareholder", "Employee": "employee"}.get(party_type, "other")
 
 
 def get_party_name(party_type, party):
-    field = {"Customer": "customer_name", "Supplier": "supplier_name", "Employee": "employee_name"}.get(party_type)
+    field = {"Customer": "customer_name", "Supplier": "supplier_name", "Shareholder": "title", "Employee": "employee_name"}.get(party_type)
     if field:
         return frappe.db.get_value(party_type, party, field)
     return party
@@ -423,6 +425,8 @@ def get_summary_html(data, expense_summaries=None, dividend_summaries=None):
     customer_chiqim = 0
     supplier_kirim = 0
     supplier_chiqim = 0
+    shareholder_kirim = 0
+    shareholder_chiqim = 0
     expense_kirim = 0
     expense_chiqim = 0
     dividend_kirim = 0
@@ -448,6 +452,9 @@ def get_summary_html(data, expense_summaries=None, dividend_summaries=None):
         elif category == "supplier":
             supplier_kirim += kirim
             supplier_chiqim += chiqim
+        elif category == "shareholder":
+            shareholder_kirim += kirim
+            shareholder_chiqim += chiqim
         elif category == "expense":
             expense_kirim += kirim
             expense_chiqim += chiqim
@@ -464,7 +471,7 @@ def get_summary_html(data, expense_summaries=None, dividend_summaries=None):
             other_kirim += kirim
             other_chiqim += chiqim
 
-    closing = opening + (customer_kirim + supplier_kirim + expense_kirim + dividend_kirim + transfer_kirim + employee_kirim + other_kirim) - (customer_chiqim + supplier_chiqim + expense_chiqim + dividend_chiqim + transfer_chiqim + employee_chiqim + other_chiqim)
+    closing = opening + (customer_kirim + supplier_kirim + shareholder_kirim + expense_kirim + dividend_kirim + transfer_kirim + employee_kirim + other_kirim) - (customer_chiqim + supplier_chiqim + shareholder_chiqim + expense_chiqim + dividend_chiqim + transfer_chiqim + employee_chiqim + other_chiqim)
     if closing_balance:
         closing = closing_balance
 
@@ -547,6 +554,11 @@ def get_summary_html(data, expense_summaries=None, dividend_summaries=None):
                     <td style="padding: 10px; border: 1px solid #ddd;">Поставщики</td>
                     <td style="padding: 10px; border: 1px solid #ddd; text-align: right; color: #388e3c;">{fmt(supplier_kirim) if supplier_kirim else '—'}</td>
                     <td style="padding: 10px; border: 1px solid #ddd; text-align: right; color: #d32f2f;">{fmt(supplier_chiqim) if supplier_chiqim else '—'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Учредители</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; text-align: right; color: #388e3c;">{fmt(shareholder_kirim) if shareholder_kirim else '—'}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd; text-align: right; color: #d32f2f;">{fmt(shareholder_chiqim) if shareholder_chiqim else '—'}</td>
                 </tr>
                 <tr style="{dividend_cursor}" {dividend_onclick}>
                     <td style="padding: 10px; border: 1px solid #ddd;">{dividend_arrow}Дивиденды</td>

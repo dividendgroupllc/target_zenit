@@ -24,7 +24,7 @@ frappe.query_reports["DDS"] = {
             "fieldname": "party_type",
             "label": __("Контрагент тури"),
             "fieldtype": "Select",
-            "options": "\nCustomer\nSupplier\nEmployee",
+            "options": "\nCustomer\nSupplier\nShareholder\nEmployee",
             "on_change": function() {
                 frappe.query_report.set_filter_value('party', '');
             }
@@ -42,7 +42,7 @@ frappe.query_reports["DDS"] = {
             "fieldname": "category",
             "label": __("Категория"),
             "fieldtype": "Select",
-            "options": "\nПокупатели\nПоставщики\nРасходы\nДивиденд 1\nДивиденд 2\nДивиденд 3\nСотрудники\nПеремещения"
+            "options": "\nПокупатели\nПоставщики\nУчредители\nРасходы\nДивиденд 1\nДивиденд 2\nДивиденд 3\nСотрудники\nПеремещения"
         }
     ],
 

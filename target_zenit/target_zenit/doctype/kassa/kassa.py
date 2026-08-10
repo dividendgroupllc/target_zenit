@@ -53,7 +53,7 @@ class Kassa(Document):
     def on_submit(self):
         """Submit bo'lganda Payment Entry yoki Journal Entry yaratish"""
         if self.transaction_type in ["Приход", "Расход"]:
-            if self.party_type in ["Customer", "Supplier", "Employee"]:
+            if self.party_type in ["Customer", "Supplier", "Shareholder", "Employee"]:
                 self.create_payment_entry()
             elif is_dividend_party_type(self.party_type):
                 self.create_dividend_journal_entry()
@@ -139,7 +139,7 @@ class Kassa(Document):
 
     def get_party_account(self):
         """ERPNext party ledger logikasi bo'yicha account olish."""
-        if self.party_type in ["Customer", "Supplier"]:
+        if self.party_type in ["Customer", "Supplier", "Shareholder"]:
             return erpnext_get_party_account(self.party_type, self.party, self.company)
 
         if self.party_type == "Employee":
@@ -160,7 +160,7 @@ class Kassa(Document):
     def is_party_multicurrency_payment(self):
         return (
             self.transaction_type in ["Приход", "Расход"]
-            and self.party_type in ["Customer", "Supplier", "Employee"]
+            and self.party_type in ["Customer", "Supplier", "Shareholder", "Employee"]
             and self.cash_account
             and self.party
             and self.party_currency
@@ -491,7 +491,7 @@ class Kassa(Document):
 
     def set_party_currency(self):
         """Party default valyutasini olish"""
-        if self.party and self.party_type in ["Customer", "Supplier", "Employee"] and self.company:
+        if self.party and self.party_type in ["Customer", "Supplier", "Shareholder", "Employee"] and self.company:
             self.party_currency = get_party_currency(self.party_type, self.party, self.company)
 
     def set_display_currencies(self):
@@ -787,6 +787,12 @@ def get_party_currency(party_type, party, company):
         if not currency:
             default_field = "default_currency"
             currency = frappe.get_cached_value(party_type, party, default_field)
+        if not currency:
+            currency = frappe.get_cached_value("Company", company, "default_currency")
+    elif party_type == "Shareholder":
+        account = erpnext_get_party_account(party_type, party, company)
+        if account:
+            currency = frappe.get_cached_value("Account", account, "account_currency")
         if not currency:
             currency = frappe.get_cached_value("Company", company, "default_currency")
     elif party_type == "Employee":
