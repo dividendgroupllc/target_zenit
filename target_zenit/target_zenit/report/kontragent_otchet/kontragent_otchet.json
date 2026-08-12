@@ -10,7 +10,7 @@
  "idx": 0,
  "is_standard": "Yes",
  "letterhead": null,
- "modified": "2026-08-04 16:35:45.118033",
+ "modified": "2026-08-12 20:59:24.530097",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Kontragent Otchet",
@@ -31,6 +31,9 @@
   },
   {
    "role": "Operator"
+  },
+  {
+   "role": "Xojakbar_Operator"
   }
  ],
  "timeout": 0
