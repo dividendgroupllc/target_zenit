@@ -152,6 +152,9 @@ scheduler_events = {
 	"hourly": [
 		"target_zenit.attendance.sync_today"
 	],
+	"daily": [
+		"target_zenit.integrations.eduvisit.daily_sync"
+	],
 }
 
 # scheduler_events = {
@@ -252,7 +255,7 @@ fixtures = [
     {
         "dt": "Custom Field",
         "filters": [
-            ["name", "in", ["Contact-is_billing_contact", "Student-custom_hikvision_id"]]
+            ["name", "in", ["Contact-is_billing_contact", "Student-custom_hikvision_id", "Student-custom_eduvisit_id", "Guardian-custom_eduvisit_id"]]
         ]
     }
 ]

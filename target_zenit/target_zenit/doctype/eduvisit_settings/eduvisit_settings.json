@@ -1,0 +1,134 @@
+{
+ "actions": [],
+ "creation": "2026-08-13 09:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "section_connection",
+  "base_url",
+  "auth_scheme",
+  "api_token",
+  "column_break_conn",
+  "default_academic_year",
+  "create_guardians",
+  "sync_photos",
+  "section_status",
+  "last_sync",
+  "last_result",
+  "section_help",
+  "help_html"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "description": "Belgilanmagan bo'lsa, kunlik avtomatik sinxronizatsiya ishlamaydi (qo'lda tugma baribir ishlaydi).",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Yoqilgan (kunlik avtomatik)"
+  },
+  {
+   "fieldname": "section_connection",
+   "fieldtype": "Section Break",
+   "label": "Ulanish (eduvisit API)"
+  },
+  {
+   "default": "https://yunusobod.eduvisit.uz/api/v7",
+   "description": "eduvisit API v7 manzili. Oxirida / shart emas.",
+   "fieldname": "base_url",
+   "fieldtype": "Data",
+   "label": "API base URL"
+  },
+  {
+   "default": "X-API-Key",
+   "description": "Token qaysi ko'rinishda yuboriladi. v7 uchun: X-API-Key.",
+   "fieldname": "auth_scheme",
+   "fieldtype": "Select",
+   "label": "Token turi",
+   "options": "X-API-Key\nToken\nBearer"
+  },
+  {
+   "description": "eduvisit dasturchilaridan olingan API kaliti (KEY, masalan imp_v7_...). Bo'sh bo'lsa sinxronizatsiya ishlamaydi.",
+   "fieldname": "api_token",
+   "fieldtype": "Password",
+   "label": "API token"
+  },
+  {
+   "fieldname": "column_break_conn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Sinflar (Student Group) shu akademik yilga bog'lanadi.",
+   "fieldname": "default_academic_year",
+   "fieldtype": "Link",
+   "label": "Akademik yil (guruhlar uchun)",
+   "options": "Academic Year"
+  },
+  {
+   "default": "1",
+   "description": "Har o'quvchining ota-onasini ham Guardian sifatida import qilish (sekinroq).",
+   "fieldname": "create_guardians",
+   "fieldtype": "Check",
+   "label": "Ota-onalarni ham import qilish"
+  },
+  {
+   "default": "1",
+   "description": "O'quvchi rasmini (foto) ham olib kelish.",
+   "fieldname": "sync_photos",
+   "fieldtype": "Check",
+   "label": "Rasmlarni olish"
+  },
+  {
+   "fieldname": "section_status",
+   "fieldtype": "Section Break",
+   "label": "Holat"
+  },
+  {
+   "description": "Oxirgi muvaffaqiyatli sinxronizatsiya vaqti.",
+   "fieldname": "last_sync",
+   "fieldtype": "Datetime",
+   "label": "Oxirgi sinxronizatsiya",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_result",
+   "fieldtype": "Small Text",
+   "label": "Oxirgi natija",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_help",
+   "fieldtype": "Section Break",
+   "label": "Qo'llanma"
+  },
+  {
+   "fieldname": "help_html",
+   "fieldtype": "HTML",
+   "label": "",
+   "options": "<ol><li>eduvisit dasturchilaridan <b>read-only token</b> va uning turini (Token / Bearer) oling.</li><li>Yuqoriga <b>API base URL</b> va <b>API token</b>ni kiriting, saqlang.</li><li>Yuqori o'ngdagi <b>“Sync Now”</b> tugmasini bosing — o'quvchilar Education → Student ga tortiladi.</li><li>“Yoqilgan” belgilansa, har kuni ertalab avtomatik takrorlanadi.</li></ol><p>O'quvchi kaliti: <code>custom_eduvisit_id</code> (eduvisit external_id). Sinf → Student Group, ota-ona → Guardian.</p>"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-08-13 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Eduvisit Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
