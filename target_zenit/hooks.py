@@ -150,7 +150,7 @@ app_include_js = "/assets/target_zenit/js/instagram.js"
 
 scheduler_events = {
 	"hourly": [
-		"target_zenit.attendance.sync_today"
+		"target_zenit.integrations.eduvisit.hourly_attendance"
 	],
 	"daily": [
 		"target_zenit.integrations.eduvisit.daily_sync"

@@ -29,6 +29,27 @@ frappe.ui.form.on("Eduvisit Settings", {
 			);
 		}).addClass("btn-primary");
 
+		// Turniket (kirdi/chiqdi) — bugungi hodisalarni tortish
+		frm.add_custom_button(__("Turniketni tortish (bugun)"), () => {
+			frappe.dom.freeze(__("Turniket hodisalari tortilyapti..."));
+			frappe.call({
+				method: "target_zenit.integrations.eduvisit.sync_attendance_now",
+				callback: (r) => {
+					frappe.dom.unfreeze();
+					const m = r.message || {};
+					frappe.msgprint({
+						title: __("Turniket tortildi"),
+						indicator: "green",
+						message: __(
+							"Yangi o'tishlar: {0}, davomat (Present) yozildi: {1}",
+							[m.checkins_new || 0, m.attendance_created || 0]
+						),
+					});
+				},
+				error: () => frappe.dom.unfreeze(),
+			});
+		});
+
 		// Ulanishni tekshirish tugmasi
 		frm.add_custom_button(__("Test ulanish"), () => {
 			frappe.call({

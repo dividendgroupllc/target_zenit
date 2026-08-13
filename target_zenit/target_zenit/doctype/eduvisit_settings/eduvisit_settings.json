@@ -106,7 +106,7 @@
    "fieldname": "help_html",
    "fieldtype": "HTML",
    "label": "",
-   "options": "<ol><li>eduvisit dasturchilaridan <b>read-only token</b> va uning turini (Token / Bearer) oling.</li><li>Yuqoriga <b>API base URL</b> va <b>API token</b>ni kiriting, saqlang.</li><li>Yuqori o'ngdagi <b>“Sync Now”</b> tugmasini bosing — o'quvchilar Education → Student ga tortiladi.</li><li>“Yoqilgan” belgilansa, har kuni ertalab avtomatik takrorlanadi.</li></ol><p>O'quvchi kaliti: <code>custom_eduvisit_id</code> (eduvisit external_id). Sinf → Student Group, ota-ona → Guardian.</p>"
+   "options": "<ol><li>eduvisit dasturchilaridan <b>API kaliti</b> (KEY, imp_v7_...) oling.</li><li>Yuqoriga <b>API base URL</b> va <b>API token</b>ni kiriting, saqlang.</li><li><b>“Test ulanish”</b> — o'quvchilar soni chiqsa ulanish OK.</li><li><b>“Sync Now”</b> — o'quvchilar Education → Student ga tortiladi (sinf → Student Group, ota-ona → Guardian).</li><li><b>“Turniketni tortish (bugun)”</b> — kirdi/chiqdi Terminal Checkin ga, undan Student Attendance (Present) avtomat yoziladi.</li><li>“Yoqilgan” belgilansa: har kuni o'quvchilar + har soat turniket avtomat tortiladi.</li></ol><p>Kalitlar: Student/Guardian <code>custom_eduvisit_id</code>, Terminal Checkin <code>external_event_id</code> (ev-...).</p>"
   }
  ],
  "index_web_pages_for_search": 0,

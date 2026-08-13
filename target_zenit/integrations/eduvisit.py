@@ -12,12 +12,13 @@
 #   - Qo'lda: Eduvisit Settings -> "Sync Now" tugmasi -> sync_now()
 #   - Avtomatik: har kuni ertalab scheduler -> daily_sync()
 
+import json
 import re
 
 import requests
 
 import frappe
-from frappe.utils import now_datetime, today
+from frappe.utils import add_days, get_datetime, now_datetime, today
 
 SETTINGS = "Eduvisit Settings"
 STUDENT_ID_FIELD = "custom_eduvisit_id"
@@ -28,6 +29,8 @@ PAGE_SIZE = 200  # v7 maksimum
 # eduvisit relation_code -> Frappe Student Guardian.relation (Select)
 RELATION_MAP = {"father": "Father", "mother": "Mother"}
 GENDER_MAP = {"male": "Male", "female": "Female"}
+# eduvisit direction -> Terminal Checkin.direction
+DIRECTION_MAP = {"in": "Kirdi", "out": "Chiqdi"}
 
 
 # ---------------------------------------------------------------- HTTP qatlami
@@ -285,7 +288,108 @@ def run_sync():
 	return result
 
 
+# ---------------------------------------------------- Turniket (kirdi/chiqdi)
+
+def _student_name_by_ext(ext):
+	"""eduvisit student external_id -> Frappe Student.name (yoki None)."""
+	if not ext:
+		return None
+	return frappe.db.get_value("Student", {STUDENT_ID_FIELD: ext})
+
+
+def _upsert_checkin(ev):
+	"""eduvisit xom turniket hodisasini Terminal Checkin'ga yozadi. event id bo'yicha dedup."""
+	eid = ev.get("id")
+	if eid is None:
+		return False
+	ext_event = f"ev-{eid}"
+	ext_student = ev.get("student_external_id")
+	student = _student_name_by_ext(ext_student)
+
+	existing = frappe.db.get_value(
+		"Terminal Checkin", {"external_event_id": ext_event}, ["name", "student"], as_dict=True
+	)
+	if existing:
+		# O'z-o'zini tuzatish: check-in o'quvchidan oldin kelgan bo'lsa, endi bog'laymiz.
+		if student and not existing.student:
+			frappe.db.set_value(
+				"Terminal Checkin", existing.name,
+				{"student": student, "person_type": "O'quvchi"}, update_modified=False,
+			)
+		return False
+
+	device = ev.get("device") or {}
+	event_time = f"{ev.get('date')} {ev.get('time')}".strip()
+
+	doc = frappe.get_doc(
+		{
+			"doctype": "Terminal Checkin",
+			"external_event_id": ext_event,
+			"person_id": ext_student or str(ev.get("student_id") or ""),
+			"person_name": ev.get("student_full_name"),
+			"person_type": "O'quvchi" if student else "Noma'lum",
+			"student": student,
+			"event_time": get_datetime(event_time),
+			"direction": DIRECTION_MAP.get((ev.get("direction") or "").lower(), ""),
+			"terminal": device.get("name"),
+			"event_code": "eduvisit",
+			"raw_data": json.dumps(ev, ensure_ascii=False),
+		}
+	)
+	doc.flags.ignore_mandatory = True
+	doc.insert(ignore_permissions=True)
+	return True
+
+
+def sync_attendance(date=None, date_from=None, date_to=None):
+	"""eduvisit turniket hodisalarini Terminal Checkin'ga tortadi, keyin
+	har bir kun uchun Student Attendance'ni (Present) qayta hisoblaydi."""
+	from target_zenit.attendance import sync_student_attendance
+
+	params = {}
+	if date_from and date_to:
+		params["date_from"], params["date_to"] = date_from, date_to
+	else:
+		params["date"] = date or today()
+
+	created = 0
+	dates = set()
+	for ev in _paged("/attendance/", params):
+		try:
+			if _upsert_checkin(ev):
+				created += 1
+			if ev.get("date"):
+				dates.add(ev.get("date"))
+			frappe.db.commit()
+		except Exception as exc:  # noqa: BLE001
+			frappe.db.rollback()
+			frappe.log_error(frappe.get_traceback(), "Eduvisit sync (turniket)")
+
+	att = {"created": 0, "already": 0}
+	for d in sorted(dates):
+		r = sync_student_attendance(d)
+		att["created"] += r.get("created", 0)
+		att["already"] += r.get("already", 0)
+
+	return {"checkins_new": created, "days": sorted(dates), "attendance_created": att["created"]}
+
+
 # --------------------------------------------------------------- Kirish nuqtalari
+
+@frappe.whitelist()
+def sync_attendance_now(date=None):
+	"""'Turniketni tortish' tugmasi — bugungi (yoki berilgan kun) kirdi/chiqdi."""
+	frappe.only_for("System Manager")
+	return sync_attendance(date=date)
+
+
+def hourly_attendance():
+	"""Scheduler (har soat): bugungi turniket hodisalarini tortadi (faqat 'Yoqilgan')."""
+	s = _settings()
+	if not s.enabled:
+		return
+	sync_attendance(date=today())
+
 
 @frappe.whitelist()
 def sync_now():
@@ -303,8 +407,10 @@ def test_connection():
 
 
 def daily_sync():
-	"""Har kuni ertalab scheduler chaqiradi (faqat 'Yoqilgan' bo'lsa)."""
+	"""Har kuni ertalab scheduler chaqiradi (faqat 'Yoqilgan' bo'lsa).
+	O'quvchilar + kecha/bugungi turniket (kechagi kech kelgan hodisalarni ham to'ldiradi)."""
 	s = _settings()
 	if not s.enabled:
 		return
 	run_sync()
+	sync_attendance(date_from=add_days(today(), -1), date_to=today())
