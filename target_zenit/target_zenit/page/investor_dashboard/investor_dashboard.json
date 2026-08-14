@@ -1,0 +1,22 @@
+{
+ "content": null,
+ "creation": "2026-08-14 00:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-08-14 00:00:00",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "investor-dashboard",
+ "owner": "Administrator",
+ "page_name": "investor-dashboard",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Accounts Manager"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Investor paneli"
+}
