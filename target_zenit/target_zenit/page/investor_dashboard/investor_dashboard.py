@@ -548,9 +548,12 @@ def _tuition_section(company):
 # ===========================================================================
 # Asosiy API
 # ===========================================================================
+ALLOWED_ROLES = ["System Manager", "Accounts Manager", "Accounts User", "investor"]
+
+
 @frappe.whitelist()
 def get_dashboard_data(year=None, month=None):
-    frappe.only_for(["System Manager", "Accounts Manager", "Accounts User"])
+    frappe.only_for(ALLOWED_ROLES)
 
     tdy = getdate(today())
     year = int(year) if year else tdy.year
