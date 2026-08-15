@@ -10,17 +10,17 @@ from erpnext.accounts.party import get_party_account as erpnext_get_party_accoun
 # Konvertatsiya faqat shu valyutalar juftligida (UZS ↔ USD) amalga oshiriladi.
 # Mode of Payment turi nomidan EMAS, ulangan cash account valyutasidan aniqlanadi.
 CONVERSION_CURRENCIES = ("UZS", "USD")
-DIVIDEND_ACCOUNT_NUMBERS = {
-    "Дивиденд": "3200",
-    "Дивиденд 1": "3200",
-    "Дивиденд 2": "3201",
-    "Дивиденд 3": "3202",
-}
-EXPENSE_PARENT_ACCOUNT_NUMBER = "5200"
 
+# Standart ERPNext kontragent turlari (ledger'i party bo'yicha yuritiladi).
+BASE_PARTY_TYPES = ("Customer", "Supplier", "Shareholder", "Employee")
 
-def is_dividend_party_type(party_type):
-    return party_type in DIVIDEND_ACCOUNT_NUMBERS
+# Xarajat papkalari shu guruh ichidan olinadi (Chart of Accounts -> Indirect Expenses).
+EXPENSE_PARENT_ACCOUNT_NAME = "Indirect Expenses"
+
+# Eski hujjatlarda uchraydigan qiymatlar. Yangi hujjatda tanlab bo'lmaydi (kassa.js
+# ro'yxatdan yashiradi), lekin Select validatsiyasi arxivdagi hujjatni bloklamasligi
+# uchun meta options ichida qoladi — aks holda eski yozuvni cancel/amend qilib bo'lmaydi.
+LEGACY_PARTY_TYPES = ("Расходы", "Дивиденд", "Дивиденд 1", "Дивиденд 2", "Дивиденд 3")
 
 
 def get_account_currency_amount(company_amount, account_currency, company_currency, date):
@@ -53,12 +53,18 @@ class Kassa(Document):
     def on_submit(self):
         """Submit bo'lganda Payment Entry yoki Journal Entry yaratish"""
         if self.transaction_type in ["Приход", "Расход"]:
-            if self.party_type in ["Customer", "Supplier", "Shareholder", "Employee"]:
+            if self.party_type in BASE_PARTY_TYPES:
                 self.create_payment_entry()
-            elif is_dividend_party_type(self.party_type):
-                self.create_dividend_journal_entry()
-            elif self.party_type == "Расходы":
+            elif self.is_expense_entry():
                 self.create_expense_journal_entry()
+            else:
+                # Jimgina o'tkazib yubormaymiz — aks holda hujjat submit bo'ladi-yu,
+                # buxgalteriyada hech qanday provodka qolmaydi.
+                frappe.throw(
+                    _("Неизвестный тип контрагента: {0}. Выберите контрагента или папку расходов.").format(
+                        self.party_type
+                    )
+                )
         elif self.transaction_type == "Перемещения":
             self.create_transfer_payment_entry()
         elif self.transaction_type == "Конвертация":
@@ -160,7 +166,7 @@ class Kassa(Document):
     def is_party_multicurrency_payment(self):
         return (
             self.transaction_type in ["Приход", "Расход"]
-            and self.party_type in ["Customer", "Supplier", "Shareholder", "Employee"]
+            and self.party_type in BASE_PARTY_TYPES
             and self.cash_account
             and self.party
             and self.party_currency
@@ -214,95 +220,22 @@ class Kassa(Document):
             self.credit_amount = flt(flt(self.amount) * flt(self.exchange_rate), 2)
             self.manual_credit_amount = 0
 
-    def create_dividend_journal_entry(self):
-        """Dividend uchun Journal Entry yaratish."""
-        account_number = DIVIDEND_ACCOUNT_NUMBERS.get(self.party_type, "3200")
-        dividend_account = frappe.db.get_value(
-            "Account",
-            {"company": self.company, "account_number": account_number, "is_group": 0},
-            "name",
-        )
+    def is_expense_entry(self):
+        """Xarajat operatsiyasimi — ya'ni party_type xarajat papkasi (guruh account) mi.
 
-        if not dividend_account:
-            frappe.throw(
-                _("Счет дивидендов ({0}) не найден для компании {1}").format(account_number, self.company)
-            )
-
-        cash_account_currency = frappe.get_cached_value("Account", self.cash_account, "account_currency")
-        company_currency = frappe.get_cached_value("Company", self.company, "default_currency")
-
-        je = frappe.new_doc("Journal Entry")
-        je.voucher_type = "Journal Entry"
-        je.posting_date = self.date
-        je.company = self.company
-        je.cheque_no = self.name
-        je.cheque_date = self.date
-        je.user_remark = self.remarks or f"Dividend payment from {self.name}"
-
-        is_multicurrency = cash_account_currency != company_currency
-
-        if is_multicurrency:
-            je.multi_currency = 1
-            exchange_rate = get_exchange_rate(cash_account_currency, company_currency, self.date)
-            if not exchange_rate or exchange_rate == 0:
-                exchange_rate = 1
-            company_amount = flt(self.amount) * exchange_rate
-            dividend_account_currency = (
-                frappe.get_cached_value("Account", dividend_account, "account_currency") or company_currency
-            )
-            dividend_amount, dividend_exchange_rate = get_account_currency_amount(
-                company_amount, dividend_account_currency, company_currency, self.date
-            )
-
-            je.append("accounts", {
-                "account": self.cash_account,
-                "credit_in_account_currency": flt(self.amount),
-                "account_currency": cash_account_currency,
-                "exchange_rate": exchange_rate,
-                "credit": company_amount
-            })
-
-            je.append("accounts", {
-                "account": dividend_account,
-                "debit_in_account_currency": dividend_amount,
-                "account_currency": dividend_account_currency,
-                "exchange_rate": dividend_exchange_rate,
-                "debit": company_amount
-            })
-        else:
-            je.append("accounts", {
-                "account": self.cash_account,
-                "credit_in_account_currency": flt(self.amount),
-                "credit": flt(self.amount)
-            })
-
-            je.append("accounts", {
-                "account": dividend_account,
-                "debit_in_account_currency": flt(self.amount),
-                "debit": flt(self.amount)
-            })
-
-        je.flags.ignore_permissions = True
-        je.insert()
-        je.submit()
-
-        self.set_linked_document("Journal Entry", je.name)
-
-        frappe.msgprint(_("Journal Entry {0} для дивидендов создан").format(
-            frappe.utils.get_link_to_form("Journal Entry", je.name)
-        ))
+        Eski hujjatlarda papka o'rniga "Расходы" turgan — ular ham xarajat sifatida
+        qayta ishlanadi (amend qilinganda provodka to'g'ri yaratilsin).
+        """
+        if self.party_type == "Расходы" and self.expense_account:
+            return True
+        return is_expense_party_type(self.party_type, self.company)
 
     def create_expense_journal_entry(self):
-        """Расходы uchun Journal Entry yaratish"""
+        """Xarajat uchun Journal Entry yaratish"""
         if not self.expense_account:
             frappe.throw(_("Пожалуйста, выберите счет расходов"))
 
-        # Expense Cost Center dan cost_center olish
-        cost_center = frappe.db.get_value(
-            "Expense Cost Center",
-            {"expense_account": self.expense_account},
-            "cost_center"
-        )
+        cost_center = get_expense_cost_center(self.expense_account)
         cash_account_currency = frappe.get_cached_value("Account", self.cash_account, "account_currency")
         company_currency = frappe.get_cached_value("Company", self.company, "default_currency")
         expense_account_currency = frappe.get_cached_value("Account", self.expense_account, "account_currency") or company_currency
@@ -491,7 +424,7 @@ class Kassa(Document):
 
     def set_party_currency(self):
         """Party default valyutasini olish"""
-        if self.party and self.party_type in ["Customer", "Supplier", "Shareholder", "Employee"] and self.company:
+        if self.party and self.party_type in BASE_PARTY_TYPES and self.company:
             self.party_currency = get_party_currency(self.party_type, self.party, self.company)
 
     def set_display_currencies(self):
@@ -513,23 +446,35 @@ class Kassa(Document):
             self.balance_to = get_account_balance(self.cash_account_to, self.company)
 
     def validate_party(self):
-        """Party validatsiyasi"""
-        if self.transaction_type in ["Приход", "Расход"]:
-            if not self.party_type:
-                frappe.throw(_("Пожалуйста, выберите тип контрагента"))
+        """Party validatsiyasi.
 
-            if self.party_type == "Расходы":
-                if not self.expense_account:
-                    frappe.throw(_("Пожалуйста, выберите счет расходов"))
-                validate_expense_account(self.expense_account, self.company)
-                self.party = None
-            elif is_dividend_party_type(self.party_type):
-                self.party = None
-                self.expense_account = None
-            else:
-                if not self.party:
-                    frappe.throw(_("Пожалуйста, выберите контрагента"))
-                self.expense_account = None
+        Kontragent turi yo standart party (Customer/Supplier/...), yo xarajat papkasi
+        (Indirect Expenses ichidagi guruh account) bo'ladi.
+        """
+        if self.transaction_type not in ["Приход", "Расход"]:
+            return
+
+        if not self.party_type:
+            frappe.throw(_("Пожалуйста, выберите тип контрагента"))
+
+        if self.party_type in BASE_PARTY_TYPES:
+            if not self.party:
+                frappe.throw(_("Пожалуйста, выберите контрагента"))
+            self.expense_account = None
+            return
+
+        # "Расходы" — eski hujjatlardagi qiymat, u ham xarajat sifatida qabul qilinadi
+        if self.party_type != "Расходы" and not is_expense_party_type(self.party_type, self.company):
+            frappe.throw(
+                _("Неизвестный тип контрагента: {0}. Выберите контрагента или папку расходов.").format(
+                    self.party_type
+                )
+            )
+
+        if not self.expense_account:
+            frappe.throw(_("Пожалуйста, выберите счет расходов"))
+        validate_expense_account(self.expense_account, self.company, self.party_type)
+        self.party = None
 
     def validate_transfer(self):
         """Transfer validatsiyasi"""
@@ -831,13 +776,110 @@ def get_account_balance(account, company):
     return 0
 
 
-@frappe.whitelist()
-def get_expense_accounts(doctype, txt, searchfield, start, page_len, filters):
-    """5200 accounti ichidagi expense accountlarni olish."""
-    company = (filters or {}).get("company")
-    parent_account = get_expense_parent_account(company)
+def get_expense_parent_account(company):
+    """Xarajat papkalari joylashgan guruh — "Indirect Expenses".
 
+    CoA boshqa tilda bo'lsa yoki bu guruh bo'lmasa, Expense ildizi ishlatiladi.
+    """
+    if not company:
+        return None
+
+    account = frappe.db.get_value(
+        "Account",
+        {
+            "company": company,
+            "account_name": EXPENSE_PARENT_ACCOUNT_NAME,
+            "is_group": 1,
+            "root_type": "Expense",
+        },
+        ["name", "lft", "rgt"],
+        as_dict=True,
+    )
+    if account:
+        return account
+
+    roots = frappe.get_all(
+        "Account",
+        filters={"company": company, "root_type": "Expense", "is_group": 1, "parent_account": ("is", "not set")},
+        fields=["name", "lft", "rgt"],
+        limit=1,
+    )
+    return roots[0] if roots else None
+
+
+def get_expense_groups(company):
+    """"Indirect Expenses" ichidagi papkalar (guruh account'lar).
+
+    Shular Kassa'da "Тип контрагента" ro'yxatiga xarajat papkasi sifatida tushadi.
+    """
+    parent_account = get_expense_parent_account(company)
     if not parent_account:
+        return []
+
+    return frappe.get_all(
+        "Account",
+        filters={
+            "company": company,
+            "root_type": "Expense",
+            "is_group": 1,
+            "parent_account": parent_account.name,
+        },
+        fields=["name", "account_name"],
+        order_by="lft asc",
+    )
+
+
+def is_expense_party_type(party_type, company=None):
+    """party_type xarajat papkasi (Indirect Expenses ichidagi guruh) mi."""
+    if not party_type or party_type in BASE_PARTY_TYPES:
+        return False
+
+    account = frappe.db.get_value(
+        "Account", party_type, ["company", "root_type", "is_group", "parent_account"], as_dict=True
+    )
+    if not account or not cint(account.is_group) or account.root_type != "Expense":
+        return False
+    if company and account.company != company:
+        return False
+
+    parent_account = get_expense_parent_account(account.company)
+    return bool(parent_account and account.parent_account == parent_account.name)
+
+
+@frappe.whitelist()
+def get_party_type_options(company=None):
+    """Kassa'dagi "Тип контрагента" ro'yxati: standart party'lar + xarajat papkalari."""
+    options = list(BASE_PARTY_TYPES)
+    if company:
+        options += [group.name for group in get_expense_groups(company)]
+    return options
+
+
+def get_expense_cost_center(expense_account):
+    """Expense Cost Center jadvalidan cost center (doctype bo'lmasa — bo'sh)."""
+    if not frappe.db.exists("DocType", "Expense Cost Center"):
+        return None
+    return frappe.db.get_value(
+        "Expense Cost Center", {"expense_account": expense_account}, "cost_center"
+    )
+
+
+def _expense_scope(company, expense_group=None):
+    """Xarajat hisoblari qidiriladigan soha: tanlangan papka yoki umumiy parent."""
+    if expense_group and is_expense_party_type(expense_group, company):
+        return frappe.db.get_value("Account", expense_group, ["name", "lft", "rgt"], as_dict=True)
+    return get_expense_parent_account(company)
+
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_expense_accounts(doctype, txt, searchfield, start, page_len, filters):
+    """Tanlangan xarajat papkasi ichidagi leaf account'lar."""
+    filters = filters or {}
+    company = filters.get("company")
+    scope = _expense_scope(company, filters.get("expense_group"))
+
+    if not scope:
         return []
 
     return frappe.db.sql("""
@@ -853,52 +895,21 @@ def get_expense_accounts(doctype, txt, searchfield, start, page_len, filters):
         LIMIT %(start)s, %(page_len)s
     """, {
         "company": company,
-        "parent_lft": parent_account.lft,
-        "parent_rgt": parent_account.rgt,
+        "parent_lft": scope.lft,
+        "parent_rgt": scope.rgt,
         "txt": f"%{txt}%",
         "start": start,
         "page_len": page_len
     })
 
 
-def get_expense_parent_account(company):
-    """5200 parent accountni company bo'yicha topish."""
-    if not company:
-        return None
+def validate_expense_account(expense_account, company, expense_group=None):
+    """Xarajat hisobi tanlangan papka ichidagi leaf account ekanini tekshirish."""
+    scope = _expense_scope(company, expense_group)
 
-    accounts = frappe.db.sql(
-        """
-        SELECT name, lft, rgt
-        FROM `tabAccount`
-        WHERE company = %(company)s
-        AND (
-            account_number = %(account_number)s
-            OR name LIKE %(name_pattern)s
-        )
-        ORDER BY
-            CASE WHEN account_number = %(account_number)s THEN 0 ELSE 1 END,
-            is_group DESC,
-            name
-        LIMIT 1
-        """,
-        {
-            "company": company,
-            "account_number": EXPENSE_PARENT_ACCOUNT_NUMBER,
-            "name_pattern": f"{EXPENSE_PARENT_ACCOUNT_NUMBER}%",
-        },
-        as_dict=True,
-    )
-
-    return accounts[0] if accounts else None
-
-
-def validate_expense_account(expense_account, company):
-    """Expense account 5200 ichidagi leaf account ekanini tekshirish."""
-    parent_account = get_expense_parent_account(company)
-
-    if not parent_account:
-        frappe.throw(_("Не найден счет расходов {0} для компании {1}").format(
-            EXPENSE_PARENT_ACCOUNT_NUMBER,
+    if not scope:
+        frappe.throw(_("Не найдена группа расходов ({0}) для компании {1}").format(
+            EXPENSE_PARENT_ACCOUNT_NAME,
             company,
         ))
 
@@ -914,11 +925,11 @@ def validate_expense_account(expense_account, company):
         or account.company != company
         or account.root_type != "Expense"
         or cint(account.is_group)
-        or account.lft <= parent_account.lft
-        or account.rgt >= parent_account.rgt
+        or account.lft <= scope.lft
+        or account.rgt >= scope.rgt
     ):
         frappe.throw(_("Счет расходов должен быть внутри счета {0}").format(
-            parent_account.name
+            scope.name
         ))
 
 

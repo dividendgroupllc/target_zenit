@@ -3,7 +3,10 @@
 
 // Konvertatsiya/peremeshenie uchun mode of payment turi NOMI bilan emas,
 // ulangan cash account valyutasi bilan aniqlanadi (server query orqali).
-const DIVIDEND_PARTY_TYPES = ["Дивиденд", "Дивиденд 1", "Дивиденд 2", "Дивиденд 3"];
+const BASE_PARTY_TYPES = ["Customer", "Supplier", "Shareholder", "Employee"];
+
+// Eski hujjatlarda qolgan qiymatlar — yangi hujjatda ro'yxatda ko'rinmaydi.
+const LEGACY_DIVIDEND_TYPES = ["Дивиденд", "Дивиденд 1", "Дивиденд 2", "Дивиденд 3"];
 
 frappe.ui.form.on("Kassa", {
     onload: function(frm) {
@@ -14,12 +17,16 @@ frappe.ui.form.on("Kassa", {
         frm._cash_account_to_currency = frm._cash_account_to_currency || "";
         frm.trigger("clear_copied_linked_document");
 
-        // Set expense account query
+        // "Тип контрагента" ro'yxati: standart party'lar + CoA'dagi xarajat papkalari
+        frm.trigger("load_party_type_options");
+
+        // Xarajat hisoblari — faqat tanlangan papka ichidan
         frm.set_query("expense_account", function() {
             return {
                 query: "target_zenit.target_zenit.doctype.kassa.kassa.get_expense_accounts",
                 filters: {
-                    company: frm.doc.company
+                    company: frm.doc.company,
+                    expense_group: frm.doc.party_type
                 }
             };
         });
@@ -76,8 +83,11 @@ frappe.ui.form.on("Kassa", {
         frm.set_value("balance", 0);
         frm.set_value("cash_account_to_currency", "");
         frm.set_value("target_amount_currency", "");
+        // Xarajat papkalari kompaniyaga bog'liq — turni ham qayta tanlash kerak
+        frm.set_value("party_type", "");
         frm.set_value("party", "");
         frm.set_value("expense_account", "");
+        frm.trigger("load_party_type_options");
         frm.trigger("sync_currency_fields");
         frm.trigger("update_exchange_fields");
         frm.trigger("render_currency_info");
@@ -514,19 +524,31 @@ frappe.ui.form.on("Kassa", {
         frm.refresh_field("balance");
     },
 
+    load_party_type_options: function(frm) {
+        if (!frm.doc.company) {
+            apply_party_type_options(frm, []);
+            return;
+        }
+
+        frappe.call({
+            method: "target_zenit.target_zenit.doctype.kassa.kassa.get_party_type_options",
+            args: { company: frm.doc.company },
+            callback: function(r) {
+                apply_party_type_options(frm, r.message || []);
+            }
+        });
+    },
+
     party_type: function(frm) {
         frm.set_value("party", "");
         frm.set_value("expense_account", "");
         frm.set_value("party_name", "");
         frm.set_value("expense_account_name", "");
 
-        if (frm.doc.party_type === "Расходы") {
+        if (isExpensePartyType(frm.doc.party_type)) {
             frm.set_df_property("expense_account", "reqd", 1);
             frm.set_df_property("party", "reqd", 0);
-        } else if (isDividendPartyType(frm.doc.party_type)) {
-            frm.set_df_property("expense_account", "reqd", 0);
-            frm.set_df_property("party", "reqd", 0);
-        } else if (frm.doc.party_type) {
+        } else if (frm.doc.party_type && !isLegacyDividendPartyType(frm.doc.party_type)) {
             frm.set_df_property("expense_account", "reqd", 0);
             frm.set_df_property("party", "reqd", 1);
         } else {
@@ -714,7 +736,7 @@ function getDefaultConversionTargetCurrency(frm) {
 function isPartyMulticurrencyPayment(frm) {
     return Boolean(
         in_list(["Приход", "Расход"], frm.doc.transaction_type) &&
-        in_list(["Customer", "Supplier", "Shareholder", "Employee"], frm.doc.party_type) &&
+        in_list(BASE_PARTY_TYPES, frm.doc.party_type) &&
         frm.doc.mode_of_payment &&
         frm.doc.party &&
         frm.doc.cash_account_currency &&
@@ -723,8 +745,30 @@ function isPartyMulticurrencyPayment(frm) {
     );
 }
 
-function isDividendPartyType(partyType) {
-    return DIVIDEND_PARTY_TYPES.includes(partyType);
+function isLegacyDividendPartyType(partyType) {
+    return LEGACY_DIVIDEND_TYPES.includes(partyType);
+}
+
+// Standart party emas — demak xarajat papkasi (CoA guruh account'i).
+// Eski "Расходы" qiymati ham xarajat sifatida qaraladi.
+function isExpensePartyType(partyType) {
+    return Boolean(
+        partyType &&
+        !BASE_PARTY_TYPES.includes(partyType) &&
+        !isLegacyDividendPartyType(partyType)
+    );
+}
+
+function apply_party_type_options(frm, options) {
+    const list = options && options.length ? options.slice() : BASE_PARTY_TYPES.slice();
+
+    // Ochilgan eski hujjatdagi qiymat ro'yxatda bo'lmasa — yo'qolib qolmasligi uchun qo'shamiz
+    if (frm.doc.party_type && !list.includes(frm.doc.party_type)) {
+        list.push(frm.doc.party_type);
+    }
+
+    frm.set_df_property("party_type", "options", [""].concat(list).join("\n"));
+    frm.refresh_field("party_type");
 }
 
 function getCurrencyInfoNote(frm, sourceCurrency, targetCurrency) {

@@ -205,10 +205,10 @@
    "fieldname": "party_type",
    "fieldtype": "Select",
    "label": "Тип контрагента",
-   "options": "\nCustomer\nSupplier\nShareholder\nEmployee\nДивиденд 1\nДивиденд 2\nДивиденд 3\nРасходы"
+   "options": "\nCustomer\nSupplier\nShareholder\nEmployee\nРасходы\nДивиденд\nДивиденд 1\nДивиденд 2\nДивиденд 3"
   },
   {
-   "depends_on": "eval:doc.party_type && doc.party_type !== 'Расходы' && !in_list(['Дивиденд', 'Дивиденд 1', 'Дивиденд 2', 'Дивиденд 3'], doc.party_type)",
+   "depends_on": "eval:in_list(['Customer', 'Supplier', 'Shareholder', 'Employee'], doc.party_type)",
    "fieldname": "party",
    "fieldtype": "Dynamic Link",
    "label": "Контрагент",
@@ -232,7 +232,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "depends_on": "eval:doc.party_type === 'Расходы'",
+   "depends_on": "eval:doc.party_type && !in_list(['Customer', 'Supplier', 'Shareholder', 'Employee', 'Дивиденд', 'Дивиденд 1', 'Дивиденд 2', 'Дивиденд 3'], doc.party_type)",
    "fieldname": "expense_account",
    "fieldtype": "Link",
    "label": "Счет расходов",

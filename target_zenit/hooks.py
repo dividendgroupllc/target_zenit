@@ -137,13 +137,17 @@ app_include_js = "/assets/target_zenit/js/instagram.js"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+# Chart of Accounts o'zgarsa — Kassa'dagi "Тип контрагента" ro'yxatidagi
+# xarajat papkalari yangilanadi.
+doc_events = {
+	"Account": {
+		"after_insert": "target_zenit.setup.kassa_party_types.on_account_change",
+		"on_update": "target_zenit.setup.kassa_party_types.on_account_change",
+		"on_trash": "target_zenit.setup.kassa_party_types.on_account_change",
+	}
+}
+
+after_migrate = ["target_zenit.setup.kassa_party_types.after_migrate"]
 
 # Scheduled Tasks
 # ---------------
