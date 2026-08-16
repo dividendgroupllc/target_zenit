@@ -551,9 +551,20 @@ def _tuition_section(company):
 ALLOWED_ROLES = ["System Manager", "Accounts Manager", "Accounts User", "investor"]
 
 
+def _guard():
+    """Rolni harf ko'rinishiga befarq (case-insensitive) tekshirish."""
+    allowed = {r.lower() for r in ALLOWED_ROLES}
+    user_roles = {r.lower() for r in frappe.get_roles()}
+    if not (allowed & user_roles):
+        frappe.throw(
+            "Ruxsat yo'q. Investor paneli uchun 'investor' roli kerak.",
+            frappe.PermissionError,
+        )
+
+
 @frappe.whitelist()
 def get_dashboard_data(year=None, month=None):
-    frappe.only_for(ALLOWED_ROLES)
+    _guard()
 
     tdy = getdate(today())
     year = int(year) if year else tdy.year

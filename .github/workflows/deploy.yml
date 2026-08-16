@@ -1,0 +1,70 @@
+name: Production Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false     # ketayotgan deploy o'ldirilmaydi, navbatda kutadi
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Sintaksis tekshiruvi (qattiq to'siq)
+        run: python -m compileall -q target_zenit
+
+      - name: Deploy skript sintaksisi
+        run: bash -n scripts/deploy.sh
+
+      - name: Ruff lint (hozircha faqat ogohlantirish — 46 mavjud xato tozalangach continue-on-error ni olib tashlang)
+        continue-on-error: true
+        run: |
+          pip install -q ruff
+          ruff check target_zenit --output-format=github
+
+  deploy:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Secretlarni tekshirish
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SITE_NAME: ${{ secrets.SITE_NAME }}
+        run: |
+          err=0
+          for v in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS SITE_NAME; do
+            if [ -z "${!v}" ]; then echo "::error::$v secret o'rnatilmagan"; err=1; fi
+          done
+          exit $err
+
+      - name: SSH sozlash
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Serverda deploy
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 \
+              -i ~/.ssh/id_ed25519 \
+              "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+              "SITE_NAME='${{ secrets.SITE_NAME }}' BENCH_DIR='${{ secrets.BENCH_DIR }}' DEPLOY_BRANCH='main' bash -s" \
+              < scripts/deploy.sh
