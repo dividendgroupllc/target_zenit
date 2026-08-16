@@ -231,7 +231,12 @@ class Kassa(Document):
         return is_expense_party_type(self.party_type, self.company)
 
     def create_expense_journal_entry(self):
-        """Xarajat uchun Journal Entry yaratish"""
+        """Xarajat uchun Journal Entry yaratish.
+
+        Yo'nalish operatsiya turiga bog'liq:
+          Расход — kassadan pul chiqadi:            xarajat Dt / kassa Kt
+          Приход — kassaga pul qaytadi (qaytarma):  kassa Dt / xarajat Kt
+        """
         if not self.expense_account:
             frappe.throw(_("Пожалуйста, выберите счет расходов"))
 
@@ -240,13 +245,19 @@ class Kassa(Document):
         company_currency = frappe.get_cached_value("Company", self.company, "default_currency")
         expense_account_currency = frappe.get_cached_value("Account", self.expense_account, "account_currency") or company_currency
 
+        is_inflow = self.transaction_type == "Приход"
+        cash_side = "debit" if is_inflow else "credit"
+        expense_side = "credit" if is_inflow else "debit"
+
         je = frappe.new_doc("Journal Entry")
         je.voucher_type = "Journal Entry"
         je.posting_date = self.date
         je.company = self.company
         je.cheque_no = self.name
         je.cheque_date = self.date
-        je.user_remark = self.remarks or f"Expense payment from {self.name}"
+        je.user_remark = self.remarks or (
+            f"Expense refund from {self.name}" if is_inflow else f"Expense payment from {self.name}"
+        )
 
         is_multicurrency = cash_account_currency != company_currency
 
@@ -262,32 +273,32 @@ class Kassa(Document):
 
             je.append("accounts", {
                 "account": self.cash_account,
-                "credit_in_account_currency": flt(self.amount),
+                f"{cash_side}_in_account_currency": flt(self.amount),
                 "account_currency": cash_account_currency,
                 "exchange_rate": exchange_rate,
-                "credit": company_amount
+                cash_side: company_amount,
             })
 
             je.append("accounts", {
                 "account": self.expense_account,
                 "cost_center": cost_center,
-                "debit_in_account_currency": expense_amount,
+                f"{expense_side}_in_account_currency": expense_amount,
                 "account_currency": expense_account_currency,
                 "exchange_rate": expense_exchange_rate,
-                "debit": company_amount
+                expense_side: company_amount,
             })
         else:
             je.append("accounts", {
                 "account": self.cash_account,
-                "credit_in_account_currency": flt(self.amount),
-                "credit": flt(self.amount)
+                f"{cash_side}_in_account_currency": flt(self.amount),
+                cash_side: flt(self.amount),
             })
 
             je.append("accounts", {
                 "account": self.expense_account,
                 "cost_center": cost_center,
-                "debit_in_account_currency": flt(self.amount),
-                "debit": flt(self.amount)
+                f"{expense_side}_in_account_currency": flt(self.amount),
+                expense_side: flt(self.amount),
             })
 
         je.flags.ignore_permissions = True
