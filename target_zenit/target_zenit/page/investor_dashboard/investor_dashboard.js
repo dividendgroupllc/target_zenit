@@ -266,6 +266,9 @@ class TZInvestorDashboard {
 			${this.moneyKpi({ label: "Oy oxiridagi qoldiq", raw: t.closing, pin: "var(--brand)" })}
 		</div>`;
 
+		// per-currency totals: Jami USD / Jami UZS ...
+		h += this.ccyTotals(cf.by_currency);
+
 		// accounts table
 		const rows = (cf.accounts || []).length ? cf.accounts.map((a) => `
 			<tr><td class="ell" data-tt="${this.esc(a.account)}">${this.esc(a.account)}</td>
@@ -317,6 +320,27 @@ class TZInvestorDashboard {
 				<div class="legend"><div class="it"><span class="sw" style="background:var(--card-2);border:1px solid var(--line)"></span> Yo'q</div><div class="it"><span class="sw" style="background:var(--h1)"></span> Kam</div><div class="it"><span class="sw" style="background:var(--h2)"></span> O'rta</div><div class="it"><span class="sw" style="background:var(--h3)"></span> Ko'p</div></div></div>
 			<div class="cal-head"><span>Du</span><span>Se</span><span>Ch</span><span>Pa</span><span>Ju</span><span>Sh</span><span>Ya</span></div>
 			<div class="cal">${cells}</div>`);
+	}
+
+	ccyTotals(list) {
+		// Har valyuta bo'yicha jami (Jami USD, Jami UZS...). Bitta valyuta bo'lsa — yuqoridagi KPI yetarli, ko'rsatmaymiz.
+		if (!list || list.length < 2) return "";
+		const base = this.data.meta.currency;
+		const cards = list.map((c) => {
+			const isBase = c.currency === base;
+			return `<div class="ccy-card${isBase ? " base" : ""}">
+				<div class="ccy-top"><span class="ccy-code">${this.esc(c.currency)}</span>${isBase ? `<span class="ccy-tag">asosiy</span>` : ""}</div>
+				<div class="ccy-close num" data-tt="${this.fmt(c.closing)} ${this.esc(c.currency)}">${this.fmt(c.closing)} <span class="cur">${this.ccyLabel(c.currency)}</span></div>
+				<div class="ccy-flow">
+					<span class="in num" data-tt="Kirim: ${this.fmt(c.kirim)}">▲ ${this.kc(c.kirim)}</span>
+					<span class="out num" data-tt="Chiqim: ${this.fmt(c.chiqim)}">▼ ${this.kc(c.chiqim)}</span>
+				</div>
+				<div class="ccy-open num">Oy boshi: ${this.kc(c.opening)}</div>
+			</div>`;
+		}).join("");
+		return this.card(`
+			<div class="hd"><div><h3>Valyutalar kesimida jami</h3><div class="meta">Har valyuta o'z birligida (kurs bo'yicha jamlanmaydi)</div></div></div>
+			<div class="ccy-grid">${cards}</div>`, "mb");
 	}
 
 	// ================= TAB: Debts =================

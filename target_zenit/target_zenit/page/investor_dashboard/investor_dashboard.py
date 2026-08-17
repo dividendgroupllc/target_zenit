@@ -155,6 +155,8 @@ def _cash_section(company, from_date, to_date, company_currency):
     rows_out = []
     tot = {"opening": 0.0, "kirim": 0.0, "chiqim": 0.0, "closing": 0.0}
     other = defaultdict(lambda: {"opening": 0.0, "closing": 0.0})
+    # Har valyuta kesimida to'liq jami (opening→kirim→chiqim→closing) — "Jami USD / Jami UZS"
+    by_ccy = defaultdict(lambda: {"opening": 0.0, "kirim": 0.0, "chiqim": 0.0, "closing": 0.0, "accounts": 0})
     main_accounts = []
     for account, mode in accs.items():
         cur = _acc_currency(account)
@@ -164,6 +166,12 @@ def _cash_section(company, from_date, to_date, company_currency):
         row = {"account": account, "mode": mode, "currency": cur,
                "opening": op, "kirim": kirim, "chiqim": chiqim, "closing": cl}
         rows_out.append(row)
+        b = by_ccy[cur]
+        b["opening"] += op
+        b["kirim"] += kirim
+        b["chiqim"] += chiqim
+        b["closing"] += cl
+        b["accounts"] += 1
         if cur == company_currency:
             main_accounts.append(account)
             tot["opening"] += op
@@ -174,10 +182,14 @@ def _cash_section(company, from_date, to_date, company_currency):
             other[cur]["opening"] += op
             other[cur]["closing"] += cl
     rows_out.sort(key=lambda r: -r["closing"])
+    # company valyutasi birinchi, keyin closing bo'yicha
+    by_currency = [dict(currency=c, **v) for c, v in by_ccy.items()]
+    by_currency.sort(key=lambda x: (x["currency"] != company_currency, -x["closing"]))
     return {
         "accounts": rows_out,
         "total": tot,
         "other": [{"currency": c, "opening": v["opening"], "closing": v["closing"]} for c, v in other.items()],
+        "by_currency": by_currency,
         "main_accounts": main_accounts,
     }
 
@@ -587,7 +599,7 @@ def get_dashboard_data(year=None, month=None):
         cash = _cash_section(company, f0, t0, ccy)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: cash")
-        cash = {"accounts": [], "total": {"opening": 0, "kirim": 0, "chiqim": 0, "closing": 0}, "other": [], "main_accounts": []}
+        cash = {"accounts": [], "total": {"opening": 0, "kirim": 0, "chiqim": 0, "closing": 0}, "other": [], "by_currency": [], "main_accounts": []}
     main_accounts = cash["main_accounts"]
     cash_now = cash["total"]["closing"]
     cash_prev = sum(_balance_upto(main_accounts, pt, company).values())
@@ -646,6 +658,7 @@ def get_dashboard_data(year=None, month=None):
         },
         "cashflow": {
             "accounts": cash["accounts"], "total": cash["total"], "other": cash["other"],
+            "by_currency": cash.get("by_currency", []),
             "categories": cat, "monthly": flow,
             "daily": _daily_collection(main_accounts, company, ref),
         },
