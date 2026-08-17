@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # target_zenit production deploy — idempotent, qulflangan, rollback'li
 set -Eeuo pipefail
-exec </dev/null   # stdin orqali kelganda buyruqlar stdin'ni "yeb" qo'ymasin
+
+# DIQQAT: bu skript "bash -s < deploy.sh" orqali yuboriladi — bash uni stdin'dan
+# o'qiydi. Shuning uchun butun mantiq main() ichida: bash avval hammasini o'qib
+# oladi, keyin "main </dev/null" bajaradi (ichki buyruqlar stdin'ni "yemasin").
+main() {
 
 # --- Sozlamalar (workflow env orqali beradi, defaultlar bor) ---
 APP="target_zenit"
@@ -96,3 +100,6 @@ for i in 1 2 3; do
 done
 echo "!!! Sayt javob bermayapti"
 rollback
+}
+
+main </dev/null
