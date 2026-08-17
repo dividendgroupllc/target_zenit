@@ -29,7 +29,7 @@ def build_options() -> str:
 	Formada foydalanuvchi faqat o'z kompaniyasining papkalarini ko'radi — buni
 	kassa.js `get_party_type_options(company)` orqali qiladi.
 	"""
-	options = [""] + list(BASE_PARTY_TYPES)
+	options = ["", *BASE_PARTY_TYPES]
 
 	for company in frappe.get_all("Company", pluck="name"):
 		for group in get_expense_groups(company):

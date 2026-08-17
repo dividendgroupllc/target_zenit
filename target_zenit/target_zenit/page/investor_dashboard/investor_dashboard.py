@@ -228,10 +228,10 @@ def _cashflow_by_category(main_accounts, company, from_date, to_date):
                 return ptmap[pt]
         if r.voucher_type == "Journal Entry":
             lines = je_info.get(r.voucher_no, [])
-            for party_type, root_type, num in lines:
+            for party_type, _root_type, _num in lines:
                 if party_type in ptmap:
                     return ptmap[party_type]
-            for party_type, root_type, num in lines:
+            for _party_type, root_type, num in lines:
                 if root_type == "Equity" and (num or "") in DIVIDEND_NUMBERS:
                     return "dividend"
                 if root_type == "Expense":

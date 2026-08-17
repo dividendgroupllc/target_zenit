@@ -5,7 +5,6 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
-
 CATEGORY_MAP = {
     "Покупатели": "customer",
     "Поставщики": "supplier",
@@ -180,14 +179,14 @@ def get_cash_accounts(filters):
 def get_opening_balance(cash_accounts, filters):
     placeholders = ", ".join(["%s"] * len(cash_accounts))
 
-    result = frappe.db.sql("""
+    result = frappe.db.sql(f"""
         SELECT IFNULL(SUM(debit_in_account_currency) - SUM(credit_in_account_currency), 0)
         FROM `tabGL Entry`
         WHERE account IN ({placeholders})
           AND posting_date < %s
           AND is_cancelled = 0
-    """.format(placeholders=placeholders),
-        tuple(cash_accounts) + (filters["from_date"],)
+    """,
+        (*cash_accounts, filters["from_date"])
     )
 
     return flt(result[0][0]) if result else 0
@@ -196,7 +195,7 @@ def get_opening_balance(cash_accounts, filters):
 def get_transactions(cash_accounts, filters):
     placeholders = ", ".join(["%s"] * len(cash_accounts))
 
-    return frappe.db.sql("""
+    return frappe.db.sql(f"""
         SELECT
             posting_date, voucher_type, voucher_no,
             party_type, party, against,
@@ -207,8 +206,8 @@ def get_transactions(cash_accounts, filters):
           AND posting_date BETWEEN %s AND %s
           AND is_cancelled = 0
         ORDER BY posting_date, creation
-    """.format(placeholders=placeholders),
-        tuple(cash_accounts) + (filters["from_date"], filters["to_date"]),
+    """,
+        (*cash_accounts, filters["from_date"], filters["to_date"]),
         as_dict=True
     )
 

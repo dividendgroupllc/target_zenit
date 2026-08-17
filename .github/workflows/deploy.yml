@@ -26,8 +26,7 @@ jobs:
       - name: Deploy skript sintaksisi
         run: bash -n scripts/deploy.sh
 
-      - name: Ruff lint (hozircha faqat ogohlantirish — 46 mavjud xato tozalangach continue-on-error ni olib tashlang)
-        continue-on-error: true
+      - name: Ruff lint (qattiq to'siq — xato bo'lsa deploy bo'lmaydi)
         run: |
           pip install -q ruff
           ruff check target_zenit --output-format=github

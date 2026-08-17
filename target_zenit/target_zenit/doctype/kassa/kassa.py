@@ -2,10 +2,10 @@
 # For license information, please see license.txt
 
 import frappe
+from erpnext.accounts.party import get_party_account as erpnext_get_party_account
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, flt
-from erpnext.accounts.party import get_party_account as erpnext_get_party_account
 
 # Konvertatsiya faqat shu valyutalar juftligida (UZS ↔ USD) amalga oshiriladi.
 # Mode of Payment turi nomidan EMAS, ulangan cash account valyutasidan aniqlanadi.
@@ -623,7 +623,7 @@ def get_cash_mode_of_payment_currencies(company, currencies=None):
         params["currencies"] = tuple(currencies)
 
     return frappe.db.sql(
-        """
+        f"""
         SELECT mpa.parent AS mode_of_payment, acc.account_currency AS currency
         FROM `tabMode of Payment Account` mpa
         INNER JOIN `tabAccount` acc ON acc.name = mpa.default_account
@@ -631,7 +631,7 @@ def get_cash_mode_of_payment_currencies(company, currencies=None):
         WHERE mpa.company = %(company)s
             AND mop.enabled = 1
             {currency_condition}
-        """.format(currency_condition=currency_condition),
+        """,
         params,
         as_dict=True,
     )

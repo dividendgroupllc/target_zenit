@@ -15,9 +15,8 @@
 import json
 import re
 
-import requests
-
 import frappe
+import requests
 from frappe.utils import add_days, get_datetime, now_datetime, today
 
 SETTINGS = "Eduvisit Settings"
@@ -66,8 +65,7 @@ def _paged(path, params=None):
 		q["page_size"] = PAGE_SIZE
 		data = _get(path, q)
 		results = data.get("results") or []
-		for row in results:
-			yield row
+		yield from results
 		if not data.get("next") or not results:
 			break
 		page += 1
@@ -275,7 +273,7 @@ def run_sync():
 			created += 1 if is_new else 0
 			updated += 0 if is_new else 1
 			frappe.db.commit()
-		except Exception as exc:  # noqa: BLE001
+		except Exception as exc:
 			frappe.db.rollback()
 			errors.append(f"{item.get('external_id')}: {exc}")
 			frappe.log_error(frappe.get_traceback(), "Eduvisit sync (o'quvchi)")
@@ -361,7 +359,7 @@ def sync_attendance(date=None, date_from=None, date_to=None):
 			if ev.get("date"):
 				dates.add(ev.get("date"))
 			frappe.db.commit()
-		except Exception as exc:  # noqa: BLE001
+		except Exception:
 			frappe.db.rollback()
 			frappe.log_error(frappe.get_traceback(), "Eduvisit sync (turniket)")
 

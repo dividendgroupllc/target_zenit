@@ -705,7 +705,7 @@ def generate_akt_sverka_pdf(filters):
 	except Exception as e:
 		frappe.log_error(message=frappe.get_traceback(), title="Akt Sverka PDF Error")
 		frappe.throw(
-			f"PDF генерациясида хато юз берди: {str(e)}\n"
+			f"PDF генерациясида хато юз берди: {e!s}\n"
 			"Лог: Site Logs > Error Log да кўринг."
 		)
 
@@ -714,7 +714,7 @@ def generate_akt_sverka_pdf(filters):
 
 def _fmt_num(value):
 	try:
-		return "{:,.2f}".format(float(value or 0))
+		return f"{float(value or 0):,.2f}"
 	except (TypeError, ValueError):
 		return "0.00"
 
@@ -772,7 +772,7 @@ def _render_pdf_html(data, filters, company, summary):
 			"akt_sverka_template.html файлини report папкасига қўйинг."
 		)
 
-	with open(template_path, "r", encoding="utf-8") as f:
+	with open(template_path, encoding="utf-8") as f:
 		template_str = f.read()
 
 	context = {

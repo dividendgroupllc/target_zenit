@@ -1,6 +1,7 @@
 import frappe
 from frappe.utils import flt
 
+
 def execute(filters=None):
     if not filters:
         return [], []

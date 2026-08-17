@@ -47,6 +47,9 @@ ignore = [
     "F405", # can't detect undefined names from * import
     "F722", # syntax error in forward type annotation
     "W191", # indentation contains tabs
+    "RUF001", # kirillcha UI matnlar (ruscha interfeys) — ataylab yozilgan
+    "RUF002", # kirillcha docstring — ataylab
+    "RUF003", # kirillcha kommentlar — ataylab
 ]
 typing-modules = ["frappe.types.DF"]
 
