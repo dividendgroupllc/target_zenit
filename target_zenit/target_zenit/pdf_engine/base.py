@@ -61,6 +61,8 @@ def register_fonts():
     for name, path in (
         ("Arial", "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf"),
         ("DejaVuSans", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        # Serverda tizim shriftlari bo'lmasligi mumkin — app bilan birga keladi
+        ("DejaVuSans", os.path.join(FONT_DIR, "DejaVuSans.ttf")),
     ):
         if os.path.exists(path):
             pdfmetrics.registerFont(TTFont(name, path))
@@ -79,7 +81,7 @@ def fmt_value(v, style="num"):
     pct    → 36%
     plain  → 1,234
     """
-    rv = int(round(v)) if isinstance(v, (int, float)) else 0
+    rv = round(v) if isinstance(v, (int, float)) else 0
     if style == "dollar":
         return f"${rv:,}"
     if style == "pct":

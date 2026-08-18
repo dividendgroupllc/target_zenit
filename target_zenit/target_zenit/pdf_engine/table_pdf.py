@@ -26,9 +26,16 @@ Stillar: red, hdr_aktiv, hdr_passiv, category, subsection, graysub,
 from reportlab.lib.colors import Color
 
 from .base import (
-    PAGE_W, PAGE_H,
-    C_WHITE, C_BLACK, C_RED, C_DARK_GRAY,
-    register_fonts, fmt_value, get_output_path, new_canvas,
+    C_BLACK,
+    C_DARK_GRAY,
+    C_RED,
+    C_WHITE,
+    PAGE_H,
+    PAGE_W,
+    fmt_value,
+    get_output_path,
+    new_canvas,
+    register_fonts,
 )
 
 MONTH_RU = {

@@ -9,6 +9,7 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=15.0.0" # Installed and managed by bench.
+    "reportlab~=4.4",  # P&L / Balance custom PDF renderer
 ]
 
 [build-system]

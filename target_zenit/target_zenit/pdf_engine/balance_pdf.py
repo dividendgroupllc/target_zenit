@@ -54,7 +54,7 @@ def _vsum(rows, n):
 
 def generate(payload: dict,
              output_filename: str = "balance_report.pdf",
-             col_keys: list = None,
+             col_keys: list | None = None,
              company: str = "Target Zenit",
              period_label: str = "") -> str:
 
