@@ -19,6 +19,7 @@ def get_columns(filters):
     columns = [
         {"label": "Контрагент тури", "fieldname": "party_type", "fieldtype": "Data", "width": 130},
         {"label": "Контрагент", "fieldname": "party", "fieldtype": "Dynamic Link", "options": "party_type", "width": 200},
+        {"label": "Контрагент гуруҳи", "fieldname": "party_group", "fieldtype": "Data", "width": 150},
         {"label": "Валюта", "fieldname": "currency", "fieldtype": "Link", "options": "Currency", "width": 80},
         {"label": "Акт Сверка", "fieldname": "akt_sverka_link", "fieldtype": "Data", "width": 120},
     ]
@@ -101,8 +102,15 @@ def get_data(filters):
         "final_debit_usd": 0,
     }
 
+    party_group_filter = filters.get("party_group")
+
     for party_info in parties:
-        row = calculate_party_balances(party_info, from_date, to_date)
+        # Guruh mos kelmasa, balans hisoblamasdan o'tkazib yuboriladi
+        party_group = get_party_group(party_info.get("party_type"), party_info.get("party"))
+        if party_group_filter and party_group != party_group_filter:
+            continue
+
+        row = calculate_party_balances(party_info, from_date, to_date, party_group)
         if row:
             # Filter by party's default currency if currency filter is set
             if currency_filter and row.get("currency") != currency_filter:
@@ -119,6 +127,7 @@ def get_data(filters):
         total_row = {
             "party_type": "",
             "party": "ЖАМИ",
+            "party_group": "",
             "currency": "",
             "akt_sverka_link": "",
             "is_total_row": True
@@ -156,13 +165,27 @@ def get_parties(party_type=None, party=None):
     return result
 
 
-def calculate_party_balances(party_info, from_date, to_date):
+def get_party_group(party_type, party):
+    """Customer/Supplier guruhini qaytaradi, boshqa turlar uchun bo'sh"""
+    if party_type == "Customer":
+        return frappe.db.get_value("Customer", party, "customer_group") or ""
+    if party_type == "Supplier":
+        return frappe.db.get_value("Supplier", party, "supplier_group") or ""
+    return ""
+
+
+def calculate_party_balances(party_info, from_date, to_date, party_group=""):
     """Calculate all balances for a party"""
     party_type = party_info.get("party_type")
     party = party_info.get("party")
 
     # Get party currency from Party Financial Defaults
     currency = get_party_currency(party_type, party)
+
+    # Employee uchun ID (EMP-0001) o'rniga ism ko'rsatiladi
+    party_name = party
+    if party_type == "Employee":
+        party_name = frappe.db.get_value("Employee", party, "employee_name") or party
 
     # Calculate opening balances (before from_date)
     opening_uzs = calculate_opening_balance(party_type, party, from_date, "UZS")
@@ -186,6 +209,8 @@ def calculate_party_balances(party_info, from_date, to_date):
     return {
         "party_type": party_type,
         "party": party,
+        "party_name": party_name,
+        "party_group": party_group,
         "currency": currency,
         "akt_sverka_link": "Акт Сверка",  # Will be formatted as link in JS
         "opening_credit_uzs": opening_uzs['credit'] if opening_uzs['credit'] > 0 else 0,
