@@ -9,7 +9,7 @@ import calendar
 from collections import defaultdict
 
 import frappe
-from frappe.utils import add_months, flt, get_first_day, get_last_day, getdate, today
+from frappe.utils import add_days, add_months, flt, get_first_day, get_last_day, getdate, today
 
 MONTHS_UZ = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
              "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"]
@@ -195,75 +195,122 @@ def _cash_section(company, from_date, to_date, company_currency):
 
 
 def _cashflow_by_category(main_accounts, company, from_date, to_date):
-    """Kassa kirim/chiqimini kontragent kategoriyasi bo'yicha ajratish."""
+    """Kassa kirim/chiqimini kontragent kategoriyasi + aniq kontragent (batafsil) bo'yicha ajratish."""
+    empty = {"in": [], "out": [], "in_detail": [], "out_detail": [], "in_tx": [], "out_tx": []}
     inflow = defaultdict(float)
     outflow = defaultdict(float)
+    inflow_p = defaultdict(float)   # (cat, party_type, party) -> summa
+    outflow_p = defaultdict(float)
     if not main_accounts:
-        return {"in": [], "out": []}
+        return empty
     rows = frappe.db.sql(
-        f"""SELECT voucher_type, voucher_no, party_type, `against`,
+        f"""SELECT voucher_type, voucher_no, party_type, party, `against`, posting_date,
                    debit_in_account_currency AS d, credit_in_account_currency AS c
             FROM `tabGL Entry`
             WHERE account IN %(a)s AND posting_date BETWEEN %(f)s AND %(t)s
               AND is_cancelled=0 {_co(company)}""",
         {"a": tuple(main_accounts), "f": from_date, "t": to_date, "company": company}, as_dict=True)
     if not rows:
-        return {"in": [], "out": []}
+        return empty
 
     pe_names = list({r.voucher_no for r in rows if r.voucher_type == "Payment Entry"})
     je_names = list({r.voucher_no for r in rows if r.voucher_type == "Journal Entry"})
     pe_info = {}
     if pe_names:
         for pe in frappe.get_all("Payment Entry", filters={"name": ["in", pe_names]},
-                                 fields=["name", "party_type", "payment_type"]):
-            pe_info[pe.name] = (pe.party_type, pe.payment_type)
+                                 fields=["name", "party_type", "party", "payment_type"]):
+            pe_info[pe.name] = (pe.party_type, pe.party, pe.payment_type)
     je_info = defaultdict(list)
     if je_names:
         jrows = frappe.db.sql(
-            """SELECT jea.parent, jea.party_type, a.root_type, a.account_number
+            """SELECT jea.parent, jea.party_type, jea.party, a.root_type, a.account_number
                FROM `tabJournal Entry Account` jea
                JOIN `tabAccount` a ON a.name = jea.account
                WHERE jea.parent IN %(n)s""",
             {"n": tuple(je_names)}, as_dict=True)
         for j in jrows:
-            je_info[j.parent].append((j.party_type, j.root_type, j.account_number))
+            je_info[j.parent].append((j.party_type, j.party, j.root_type, j.account_number))
 
     ptmap = {"Customer": "customer", "Supplier": "supplier",
              "Employee": "employee", "Shareholder": "shareholder", "Student": "customer"}
 
     def resolve(r):
+        """(kategoriya, party_type, party) qaytaradi."""
         if r.voucher_type == "Payment Entry":
-            pt, ptype = pe_info.get(r.voucher_no, (None, None))
+            pt, party, ptype = pe_info.get(r.voucher_no, (None, None, None))
             if ptype == "Internal Transfer":
-                return "transfer"
+                return "transfer", None, None
             if pt in ptmap:
-                return ptmap[pt]
+                return ptmap[pt], pt, party
+            if pt:
+                return "other", pt, party
         if r.voucher_type == "Journal Entry":
             lines = je_info.get(r.voucher_no, [])
-            for party_type, _root_type, _num in lines:
+            for party_type, party, _root_type, _num in lines:
                 if party_type in ptmap:
-                    return ptmap[party_type]
-            for _party_type, root_type, num in lines:
+                    return ptmap[party_type], party_type, party
+            for _party_type, _party, root_type, num in lines:
                 if root_type == "Equity" and (num or "") in DIVIDEND_NUMBERS:
-                    return "dividend"
+                    return "dividend", None, None
                 if root_type == "Expense":
-                    return "expense"
+                    return "expense", None, None
         if r.party_type in ptmap:
-            return ptmap[r.party_type]
-        return "other"
+            return ptmap[r.party_type], r.party_type, r.party
+        return "other", None, None
+
+    in_tx, out_tx = [], []      # har bir to'lov: sana + kontragent + kategoriya + summa (kimdan/kimga · qancha · qachon)
+    name_cache = {}
+
+    def pname(pt, party, cat):
+        if not party:
+            return CAT_LABELS.get(cat, cat)   # kontragentsiz (ko'chirma/dividend/xarajat) — kategoriya nomi
+        key = (pt, party)
+        if key not in name_cache:
+            name_cache[key] = _party_name(pt, party)
+        return name_cache[key]
 
     for r in rows:
-        cat = resolve(r)
-        if flt(r.d) > 0:
-            inflow[cat] += flt(r.d)
-        if flt(r.c) > 0:
-            outflow[cat] += flt(r.c)
+        cat, pt, party = resolve(r)
+        d, c = flt(r.d), flt(r.c)
+        if d > 0:
+            inflow[cat] += d
+            if party:
+                inflow_p[(cat, pt, party)] += d
+            in_tx.append({"date": str(r.posting_date), "category": cat,
+                          "category_label": CAT_LABELS.get(cat, cat), "party_type": pt,
+                          "party": party, "name": pname(pt, party, cat),
+                          "amount": d, "voucher": r.voucher_no})
+        if c > 0:
+            outflow[cat] += c
+            if party:
+                outflow_p[(cat, pt, party)] += c
+            out_tx.append({"date": str(r.posting_date), "category": cat,
+                           "category_label": CAT_LABELS.get(cat, cat), "party_type": pt,
+                           "party": party, "name": pname(pt, party, cat),
+                           "amount": c, "voucher": r.voucher_no})
 
     def pack(dd):
         items = [{"key": k, "label": CAT_LABELS.get(k, k), "amount": v} for k, v in dd.items() if v > 0.5]
         items.sort(key=lambda x: -x["amount"])
         return items
-    return {"in": pack(inflow), "out": pack(outflow)}
+
+    def pack_detail(dd):
+        items = []
+        for (cat, pt, party), amt in dd.items():
+            if amt <= 0.5:
+                continue
+            items.append({"category": cat, "category_label": CAT_LABELS.get(cat, cat),
+                          "party_type": pt, "party": party, "name": _party_name(pt, party),
+                          "amount": amt})
+        items.sort(key=lambda x: -x["amount"])
+        return items[:200]
+
+    # tranzaksiyalar: eng yangi sana birinchi, keyin summa bo'yicha; 300 ta bilan cheklangan
+    in_tx.sort(key=lambda x: (x["date"], x["amount"]), reverse=True)
+    out_tx.sort(key=lambda x: (x["date"], x["amount"]), reverse=True)
+    return {"in": pack(inflow), "out": pack(outflow),
+            "in_detail": pack_detail(inflow_p), "out_detail": pack_detail(outflow_p),
+            "in_tx": in_tx[:300], "out_tx": out_tx[:300]}
 
 
 def _monthly_flow(main_accounts, company, ref_date, months_back=12):
@@ -396,6 +443,58 @@ def _monthly_pnl(company, ref_date, currency, months_back=12):
         net.append(p["net"])
         margin.append(p["margin"] if p["margin"] is not None else 0)
     return {"months": labels, "income": income, "expense": expense, "net": net, "margin": margin}
+
+
+# ===========================================================================
+# Xarajat guruhlari — Budjet vs oddiy (Chart of Accounts guruhi bo'yicha)
+# ===========================================================================
+def _is_budget_group(name):
+    n = (name or "").lower()
+    return "budget" in n or "budjet" in n or "бюджет" in n or "byudjet" in n
+
+
+def _budget_split(company, from_date, to_date, currency):
+    """Xarajatni ikki guruhga ajratish: budjetga kirgan / kirmagan. Guruh nomidan avtomatik aniqlanadi."""
+    out = {"available": False, "budget": 0.0, "normal": 0.0,
+           "budget_label": "Budjet xarajati", "normal_label": "Budjetdan tashqari xarajat",
+           "budget_accounts": [], "normal_accounts": []}
+    try:
+        gfilt = {"root_type": "Expense", "is_group": 1}
+        if company:
+            gfilt["company"] = company
+        groups = frappe.get_all("Account", filters=gfilt, fields=["account_name", "lft", "rgt"])
+        branges = [(g.lft, g.rgt) for g in groups if _is_budget_group(g.account_name)]
+        if not branges:
+            return out  # budjet guruhi topilmadi → mavjud emas
+        rows = frappe.db.sql(
+            f"""SELECT a.account_name name, a.lft lft,
+                       IFNULL(SUM(ge.debit_in_account_currency - ge.credit_in_account_currency),0) amt
+                FROM `tabGL Entry` ge JOIN `tabAccount` a ON a.name=ge.account
+                WHERE a.root_type='Expense' AND a.is_group=0
+                  AND ge.posting_date BETWEEN %(f)s AND %(t)s AND ge.is_cancelled=0
+                  AND ge.account_currency=%(cur)s {_co(company,'ge')}
+                GROUP BY a.name, a.account_name, a.lft""",
+            {"f": from_date, "t": to_date, "cur": currency, "company": company}, as_dict=True)
+        bud_list, nor_list = [], []
+        for r in rows:
+            amt = flt(r.amt)
+            if abs(amt) < 0.5:
+                continue
+            item = {"label": r.name, "amount": amt}
+            if any(lo <= (r.lft or 0) <= hi for lo, hi in branges):
+                out["budget"] += amt
+                bud_list.append(item)
+            else:
+                out["normal"] += amt
+                nor_list.append(item)
+        bud_list.sort(key=lambda x: -x["amount"])
+        nor_list.sort(key=lambda x: -x["amount"])
+        out["budget_accounts"] = bud_list
+        out["normal_accounts"] = nor_list
+        out["available"] = True
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: budget_split")
+    return out
 
 
 # ===========================================================================
@@ -574,18 +673,30 @@ def _guard():
         )
 
 
+def _fmt_date(d):
+    return getdate(d).strftime("%d.%m.%Y")
+
+
+def _resolve_range(from_date, to_date):
+    tdy = getdate(today())
+    t0 = getdate(to_date) if to_date else tdy
+    f0 = getdate(from_date) if from_date else get_first_day(t0)
+    if f0 > t0:
+        f0, t0 = t0, f0
+    return f0, t0, tdy
+
+
 @frappe.whitelist()
-def get_dashboard_data(year=None, month=None):
+def get_dashboard_data(from_date=None, to_date=None):
     _guard()
 
-    tdy = getdate(today())
-    year = int(year) if year else tdy.year
-    month = int(month) if month else tdy.month
-    ref = getdate(f"{year}-{month:02d}-01")
-    f0, t0 = get_first_day(ref), get_last_day(ref)
-    pf, pt, _, _ = _month_bounds(ref, 1)          # oldingi oy
-    yf, yt, _, ydate = _month_bounds(ref, 12)     # o'tgan yil shu oy
-    is_future = ref > getdate(f"{tdy.year}-{tdy.month:02d}-01")
+    f0, t0, tdy = _resolve_range(from_date, to_date)
+    length = (t0 - f0).days
+    pt = add_days(f0, -1)                 # oldingi teng oraliq
+    pf = add_days(pt, -length)
+    yf = getdate(add_months(f0, -12))     # o'tgan yil shu oraliq
+    yt = getdate(add_months(t0, -12))
+    is_future = f0 > tdy
 
     company = _default_company()
     ccy = _company_currency(company)
@@ -605,8 +716,9 @@ def get_dashboard_data(year=None, month=None):
     cash_prev = sum(_balance_upto(main_accounts, pt, company).values())
     cash_yoy = sum(_balance_upto(main_accounts, yt, company).values())
 
-    flow = _monthly_flow(main_accounts, company, ref, 12)
+    flow = _monthly_flow(main_accounts, company, t0, 12)
     cat = _cashflow_by_category(main_accounts, company, f0, t0)
+    budget = _budget_split(company, f0, t0, ccy)
 
     # ---- P&L ----
     pnl_cur = _pnl_period(company, f0, t0, ccy)
@@ -623,72 +735,153 @@ def get_dashboard_data(year=None, month=None):
     # ---- O'quvchilar ----
     tuition = _tuition_section(company)
 
-    net_balance = cash_now + rec_now - pay_now - emp["total"]
-    net_prev = cash_prev + rec_prev - pay_prev - emp["total"]
-
     if not main_accounts:
         warnings.append("Kassa hisoblari topilmadi (Mode of Payment Account sozlanmagan).")
     if not flags["has_fees"]:
         warnings.append("Education Fees ma'lumoti yo'q — o'quvchi to'lov bo'limi cheklangan.")
     if is_future:
-        warnings.append("Tanlangan oy kelajakda — ba'zi ko'rsatkichlar hali to'lmagan.")
+        warnings.append("Tanlangan oraliq kelajakda — ba'zi ko'rsatkichlar hali to'lmagan.")
 
     return {
         "meta": {
             "company": company, "currency": ccy,
-            "period": {"year": year, "month": month, "label": f"{MONTHS_UZ[month - 1]} {year}",
-                       "from": str(f0), "to": str(t0)},
-            "prev_label": f"{MONTHS_SHORT_UZ[getdate(pf).month - 1]} {getdate(pf).year}",
-            "yoy_label": f"{ydate.year}",
+            "period": {"label": f"{_fmt_date(f0)} — {_fmt_date(t0)}",
+                       "from": str(f0), "to": str(t0), "days": length + 1},
+            "prev_label": f"{_fmt_date(pf)} — {_fmt_date(pt)}",
+            "yoy_label": "o'tgan yil",
             "is_future": is_future, "flags": flags, "warnings": warnings,
         },
         "overview": {
-            "cash": _cmp(cash_now, cash_prev), "cash_yoy": _cmp(cash_now, cash_yoy),
-            "cash_other": cash["other"],
-            "income": _cmp(pnl_cur["income"], pnl_prev["income"]), "income_yoy": _cmp(pnl_cur["income"], pnl_yoy["income"]),
-            "expense": _cmp(pnl_cur["expense"], pnl_prev["expense"]), "expense_yoy": _cmp(pnl_cur["expense"], pnl_yoy["expense"]),
-            "net_profit": _cmp(pnl_cur["net"], pnl_prev["net"]), "net_profit_yoy": _cmp(pnl_cur["net"], pnl_yoy["net"]),
-            "margin": pnl_cur["margin"],
+            "cash_accounts": [{"account": a["account"], "mode": a["mode"],
+                               "currency": a["currency"], "closing": a["closing"]}
+                              for a in cash["accounts"]],
+            "cash_total": _cmp(cash_now, cash_prev), "cash_yoy": _cmp(cash_now, cash_yoy),
+            "expense": _cmp(pnl_cur["expense"], pnl_prev["expense"]),
             "receivable": _cmp(rec_now, rec_prev), "payable": _cmp(pay_now, pay_prev),
-            "net_balance": _cmp(net_balance, net_prev),
-            "components": {"cash": cash_now, "receivable": rec_now, "payable": pay_now, "employee": emp["total"]},
             "active_students": tuition["active"],
             "collection_rate": tuition["rate"],
-            "balance_trend": _balance_trend(main_accounts, company, ref, 12),
         },
         "cashflow": {
             "accounts": cash["accounts"], "total": cash["total"], "other": cash["other"],
             "by_currency": cash.get("by_currency", []),
-            "categories": cat, "monthly": flow,
-            "daily": _daily_collection(main_accounts, company, ref),
+            "categories": cat, "monthly": flow, "budget": budget,
+            "daily": _daily_collection(main_accounts, company, t0),
         },
         "pnl": {
             "current": pnl_cur, "prev": pnl_prev, "yoy": pnl_yoy,
+            "income_cmp": _cmp(pnl_cur["income"], pnl_prev["income"]), "income_yoy": _cmp(pnl_cur["income"], pnl_yoy["income"]),
+            "expense_cmp": _cmp(pnl_cur["expense"], pnl_prev["expense"]), "expense_yoy": _cmp(pnl_cur["expense"], pnl_yoy["expense"]),
+            "net_cmp": _cmp(pnl_cur["net"], pnl_prev["net"]), "net_yoy": _cmp(pnl_cur["net"], pnl_yoy["net"]),
             "expense_breakdown": _expense_breakdown(company, f0, t0, ccy, pf, pt),
-            "monthly": _monthly_pnl(company, ref, ccy, 12),
+            "monthly": _monthly_pnl(company, t0, ccy, 12),
         },
         "debts": {
-            "receivable": {"total": rec_now, "cmp": _cmp(rec_now, rec_prev),
-                           "aging": _receivable_aging(company, t0, ccy),
-                           "top": _party_top(company, t0, "Receivable", True, ccy)},
-            "payable": {"total": pay_now, "cmp": _cmp(pay_now, pay_prev),
-                        "top": _party_top(company, t0, "Payable", False, ccy)},
+            "receivable_total": rec_now, "receivable_cmp": _cmp(rec_now, rec_prev),
+            "payable_total": pay_now, "payable_cmp": _cmp(pay_now, pay_prev),
             "employee": emp,
-            "net_working": rec_now - pay_now,
         },
         "tuition": tuition,
     }
 
 
+# ===========================================================================
+# Kontragent otchot (debts bo'limi jadvali) — GL Entry asosida, davr kesimida
+# ===========================================================================
+KONTRAGENT_TYPES = ["Customer", "Supplier", "Employee", "Shareholder", "Student"]
+
+
 @frappe.whitelist()
-def get_years():
+def get_kontragent(from_date=None, to_date=None, party_type=None, party=None, currency=None):
+    """Kontragent bo'yicha: boshlang'ich qoldiq → davr harakati (kredit/debet) → yakuniy qoldiq."""
+    _guard()
+    f0, t0, _ = _resolve_range(from_date, to_date)
+    company = _default_company()
+
+    conds = ["ge.is_cancelled=0", "ge.party IS NOT NULL", "ge.party!=''",
+             "ge.party_type IS NOT NULL", "ge.party_type!=''", "ge.posting_date<=%(t)s"]
+    vals = {"f": str(f0), "t": str(t0)}
+    if party_type:
+        conds.append("ge.party_type=%(pt)s")
+        vals["pt"] = party_type
+    if party:
+        conds.append("ge.party=%(p)s")
+        vals["p"] = party
+    if currency:
+        conds.append("ge.account_currency=%(cur)s")
+        vals["cur"] = currency
+    if company:
+        conds.append("ge.company=%(company)s")
+        vals["company"] = company
+    where = " AND ".join(conds)
+
     try:
-        rows = frappe.db.sql("SELECT DISTINCT YEAR(posting_date) y FROM `tabGL Entry` "
-                             "WHERE is_cancelled=0 ORDER BY y DESC")
-        years = [int(r[0]) for r in rows if r[0]]
+        rows = frappe.db.sql(
+            f"""SELECT ge.party_type, ge.party, ge.account_currency cur,
+                   IFNULL(SUM(CASE WHEN ge.posting_date < %(f)s
+                        THEN ge.credit_in_account_currency - ge.debit_in_account_currency ELSE 0 END),0) opening_net,
+                   IFNULL(SUM(CASE WHEN ge.posting_date >= %(f)s
+                        THEN ge.credit_in_account_currency ELSE 0 END),0) p_credit,
+                   IFNULL(SUM(CASE WHEN ge.posting_date >= %(f)s
+                        THEN ge.debit_in_account_currency ELSE 0 END),0) p_debit
+                FROM `tabGL Entry` ge
+                WHERE {where}
+                GROUP BY ge.party_type, ge.party, ge.account_currency""",
+            vals, as_dict=True)
     except Exception:
-        years = []
-    ty = getdate(today()).year
-    if ty not in years:
-        years.insert(0, ty)
-    return years
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: kontragent")
+        rows = []
+
+    data = []
+    tbc = defaultdict(lambda: defaultdict(float))
+    keys = ("opening_credit", "opening_debit", "period_credit", "period_debit", "final_credit", "final_debit")
+    for r in rows:
+        op = flt(r.opening_net)
+        pc, pd = flt(r.p_credit), flt(r.p_debit)
+        if abs(op) < 0.5 and pc < 0.5 and pd < 0.5:
+            continue  # harakatsiz kontragentni ko'rsatmaymiz
+        fin = op + pc - pd
+        cur = r.cur or "UZS"
+        row = {
+            "party_type": r.party_type, "party": r.party,
+            "name": _party_name(r.party_type, r.party), "currency": cur,
+            "opening_credit": op if op > 0 else 0.0, "opening_debit": -op if op < 0 else 0.0,
+            "period_credit": flt(r.p_credit), "period_debit": flt(r.p_debit),
+            "final_credit": fin if fin > 0 else 0.0, "final_debit": -fin if fin < 0 else 0.0,
+        }
+        row["_move"] = pc + pd
+        data.append(row)
+        for k in keys:
+            tbc[cur][k] += row[k]
+
+    data.sort(key=lambda x: -x["_move"])
+    data = data[:500]
+    for row in data:
+        row.pop("_move", None)
+
+    totals = [dict(currency=c, **{k: v[k] for k in keys}) for c, v in tbc.items()]
+    totals.sort(key=lambda x: x["currency"])
+    return {"rows": data, "totals": totals,
+            "period": {"from": str(f0), "to": str(t0),
+                       "label": f"{_fmt_date(f0)} — {_fmt_date(t0)}"},
+            "party_types": KONTRAGENT_TYPES}
+
+
+@frappe.whitelist()
+def get_kontragent_parties(party_type=None):
+    """Tanlangan tur bo'yicha kontragentlar ro'yxati (filter select uchun)."""
+    _guard()
+    if not party_type:
+        return []
+    company = _default_company()
+    conds = ["party_type=%(pt)s", "party IS NOT NULL", "party!=''", "is_cancelled=0"]
+    vals = {"pt": party_type}
+    if company:
+        conds.append("company=%(company)s")
+        vals["company"] = company
+    try:
+        rows = frappe.db.sql(
+            f"SELECT DISTINCT party FROM `tabGL Entry` WHERE {' AND '.join(conds)} ORDER BY party LIMIT 1000",
+            vals, as_dict=True)
+    except Exception:
+        rows = []
+    return [{"value": r.party, "label": _party_name(party_type, r.party)} for r in rows]

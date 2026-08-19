@@ -7,10 +7,17 @@ class TZInvestorDashboard {
 	constructor(wrapper) {
 		this.wrapper = $(wrapper);
 		this.page = frappe.ui.make_app_page({ parent: wrapper, title: __("Investor paneli"), single_column: true });
-		const d = frappe.datetime.str_to_obj(frappe.datetime.now_datetime());
-		this.state = { year: d.getFullYear(), month: d.getMonth() + 1 };
 		this.data = null;
 		this.active = "overview";
+		this.state = { from_date: frappe.datetime.month_start(), to_date: frappe.datetime.get_today() };
+		// kassa/pul oqimi interaktiv holati
+		this.cfMetric = "kirim";     // opening | kirim | chiqim | closing
+		this.cfCcy = null;           // valyuta filtri (USD/UZS...)
+		this.cfFlow = null;          // batafsil jadval: null | 'kirim' | 'chiqim'
+		this.budgetView = null;      // budjet breakdown: null | 'budget' | 'normal'
+		// kontragent jadvali holati
+		this.ktFilter = { party_type: "Supplier", party: "", currency: "" };
+		this.kontragent = null;
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
 			{ key: "overview", label: "Umumiy" },
@@ -19,14 +26,17 @@ class TZInvestorDashboard {
 			{ key: "tuition", label: "O'quvchilar to'lovi" },
 			{ key: "pnl", label: "Foyda (P&L)" },
 		];
+		// kassa hisob kartalari uchun rang palitrasi (har shot alohida rang)
+		this.acctColors = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c6)", "var(--good)", "var(--warn)", "var(--c5)"];
 		this.make_skeleton();
-		this.load_years();
 		this.load_data();
 	}
 
 	// ================= helpers =================
 	ccyLabel(c) { return c === "UZS" ? "so'm" : (c || ""); }
 	esc(s) { return frappe.utils.escape_html(String(s == null ? "" : s)); }
+	acctName(a) { return String(a || "").replace(/\s*-\s*[A-Z]{1,4}\s*$/, ""); } // " - TZ" suffiksni olib tashlash
+	dmy(s) { const p = String(s || "").slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : String(s || ""); }
 
 	fmt(n) { // to'liq, bo'shliqli
 		n = Math.round(Number(n) || 0);
@@ -52,7 +62,7 @@ class TZInvestorDashboard {
 	badge(cmp, opt) {
 		opt = opt || {};
 		if (!cmp) return "";
-		const invert = !!opt.invert, label = opt.label || "o'tgan oyga", p = cmp.delta_pct;
+		const invert = !!opt.invert, label = opt.label || "oldingi davr", p = cmp.delta_pct;
 		if (p === null || p === undefined) {
 			if (Math.abs(cmp.value) < 0.5 && Math.abs(cmp.prev) < 0.5) return "";
 			return `<span class="delta up">yangi <span class="dl">${label}</span></span>`;
@@ -65,7 +75,6 @@ class TZInvestorDashboard {
 	// ================= skeleton =================
 	make_skeleton() {
 		this.page.main.addClass("tz-inv");
-		// Butun ekranni to'ldirish: desk container max-width va padding cheklovini olib tashlash
 		this.wrapper.find(".layout-main-section-wrapper").addClass("tz-fullbleed-wrap");
 		this.wrapper.find(".container").addClass("tz-container-fluid");
 		this.page.main.removeClass("frappe-card");
@@ -73,19 +82,26 @@ class TZInvestorDashboard {
 			<div class="topbar">
 				<div><h1>Investor paneli</h1><div class="sub tz-ctx"></div></div>
 				<div class="spacer"></div>
-				<select class="form-control tz-year" style="width:auto;min-width:88px"></select>
-				<select class="form-control tz-month" style="width:auto;min-width:118px"></select>
+				<div class="daterange">
+					<label>dan</label><input type="date" class="form-control tz-from" value="${this.state.from_date}">
+					<label>gacha</label><input type="date" class="form-control tz-to" value="${this.state.to_date}">
+					<div class="presets tz-presets">
+						<button data-preset="month">Bu oy</button>
+						<button data-preset="quarter">Chorak</button>
+						<button data-preset="year">Bu yil</button>
+					</div>
+				</div>
 				<button class="refresh tz-refresh"><span class="dot"></span> Yangilash</button>
 			</div>
 			<div class="tabnav tz-tabs"></div>
 			<div class="tz-future" style="display:none"></div>
 			<div class="tz-body"><div class="tz-loader">Ma'lumot yuklanyapti…</div></div>
 		`);
-		const mo = this.page.main.find(".tz-month");
-		this.months_uz.forEach((m, i) => mo.append(`<option value="${i + 1}">${m}</option>`));
-		mo.val(this.state.month).on("change", () => { this.state.month = parseInt(mo.val()); this.load_data(); });
-		this.page.main.find(".tz-year").on("change", (e) => { this.state.year = parseInt(e.target.value); this.load_data(); });
+		this.page.main.find(".tz-from").on("change", (e) => { this.state.from_date = e.target.value; this.load_data(); });
+		this.page.main.find(".tz-to").on("change", (e) => { this.state.to_date = e.target.value; this.load_data(); });
 		this.page.main.find(".tz-refresh").on("click", () => this.load_data());
+		this.page.main.find(".tz-presets").on("click", "button", (e) => this.applyPreset($(e.currentTarget).data("preset")));
+
 		const nav = this.page.main.find(".tz-tabs");
 		this.tabs.forEach((t) => nav.append(`<button data-k="${t.key}" class="${t.key === this.active ? "on" : ""}">${t.label}</button>`));
 		nav.on("click", "button", (e) => {
@@ -94,23 +110,58 @@ class TZInvestorDashboard {
 			$(e.currentTarget).addClass("on");
 			this.renderTab();
 		});
+
+		// kassa/pul oqimi — bitta jadval: tanlovlar o'zaro istisno (birini bossa boshqasi o'chadi)
+		const body = this.page.main.find(".tz-body");
+		body.on("click", "[data-cf-ccy]", (e) => {
+			const c = String($(e.currentTarget).data("cf-ccy"));
+			this.cfCcy = (this.cfCcy === c) ? null : c;
+			this.cfFlow = null; this.budgetView = null;
+			this.renderTab();
+		});
+		body.on("click", "[data-cf-flow]", (e) => {
+			const f = String($(e.currentTarget).data("cf-flow"));
+			this.cfFlow = (this.cfFlow === f) ? null : f;
+			this.cfCcy = null; this.budgetView = null;
+			this.renderTab();
+		});
+		body.on("click", "[data-budget]", (e) => {
+			const k = String($(e.currentTarget).data("budget"));
+			this.budgetView = (this.budgetView === k) ? null : k;
+			this.cfCcy = null; this.cfFlow = null;
+			this.renderTab();
+		});
+		// kontragent filtrlari
+		body.on("change", ".tz-kt-type", (e) => {
+			this.ktFilter.party_type = e.target.value; this.ktFilter.party = "";
+			this.loadKontragentParties(); this.loadKontragent();
+		});
+		body.on("change", ".tz-kt-party", (e) => { this.ktFilter.party = e.target.value; this.loadKontragent(); });
+		body.on("change", ".tz-kt-ccy", (e) => { this.ktFilter.currency = e.target.value; this.loadKontragent(); });
 	}
 
-	load_years() {
-		frappe.call({ method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_years" }).then((r) => {
-			const years = (r.message && r.message.length) ? r.message : [this.state.year];
-			const sel = this.page.main.find(".tz-year").empty();
-			years.forEach((y) => sel.append(`<option value="${y}">${y}</option>`));
-			if (years.indexOf(this.state.year) < 0) this.state.year = years[0];
-			sel.val(this.state.year);
-		});
+	applyPreset(p) {
+		const t = frappe.datetime.get_today();
+		const d = frappe.datetime.str_to_obj(t);
+		let from;
+		if (p === "month") from = frappe.datetime.month_start();
+		else if (p === "year") from = d.getFullYear() + "-01-01";
+		else if (p === "quarter") {
+			const qm = Math.floor(d.getMonth() / 3) * 3 + 1;
+			from = d.getFullYear() + "-" + String(qm).padStart(2, "0") + "-01";
+		}
+		this.state.from_date = from; this.state.to_date = t;
+		this.page.main.find(".tz-from").val(from);
+		this.page.main.find(".tz-to").val(t);
+		this.load_data();
 	}
 
 	load_data() {
+		this.kontragent = null;
 		this.page.main.find(".tz-body").html(`<div class="tz-loader">Ma'lumot yuklanyapti…</div>`);
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_dashboard_data",
-			args: { year: this.state.year, month: this.state.month },
+			args: { from_date: this.state.from_date, to_date: this.state.to_date },
 		}).then((r) => { this.data = r.message || {}; this.afterLoad(); })
 			.catch(() => this.page.main.find(".tz-body").html(`<div class="empty-hint">Ma'lumotni yuklab bo'lmadi.</div>`));
 	}
@@ -118,9 +169,9 @@ class TZInvestorDashboard {
 	afterLoad() {
 		const m = this.data.meta || {};
 		this.page.main.find(".tz-ctx").text(
-			`${m.company || ""} · ${m.period ? m.period.label : ""} · taqqoslash: ${m.prev_label || ""} va ${m.yoy_label || ""}-yil`);
+			`${m.company || ""} · ${m.period ? m.period.label : ""} · taqqoslash: ${m.prev_label || ""}`);
 		const fb = this.page.main.find(".tz-future");
-		if (m.is_future) fb.show().html(`⚠️ Tanlangan oy kelajakda — ba'zi ko'rsatkichlar hali to'lmagan.`);
+		if (m.is_future) fb.show().html(`⚠️ Tanlangan oraliq kelajakda — ba'zi ko'rsatkichlar hali to'lmagan.`);
 		else fb.hide();
 		this.renderTab();
 	}
@@ -138,29 +189,30 @@ class TZInvestorDashboard {
 	sec(title, sub) { return `<div class="sec-h"><h2>${this.esc(title)}</h2>${sub ? `<span>${this.esc(sub)}</span>` : ""}</div>`; }
 
 	kpi(o) {
-		const badges = [this.badge(o.cmp, { invert: o.invert }), o.cmpYoy ? this.badge(o.cmpYoy, { invert: o.invert, label: (this.data.meta.yoy_label || "") + "-yilga" }) : ""].filter(Boolean).join("");
-		return this.card(`
+		const badges = [this.badge(o.cmp, { invert: o.invert }), o.cmpYoy ? this.badge(o.cmpYoy, { invert: o.invert, label: (this.data.meta.yoy_label || "") + "ga" }) : ""].filter(Boolean).join("");
+		const clickAttr = o.click ? o.click : "";
+		return `<div class="card kpi ${o.cls || ""}" ${clickAttr}>
 			<div class="lab"><span class="pin" style="background:${o.pin || "var(--brand)"}"></span> ${this.esc(o.label)}</div>
 			<div class="val num" ${o.valColor ? `style="color:${o.valColor}"` : ""} ${o.tt ? `data-tt="${this.esc(o.tt)}"` : ""}>${o.value}${o.unit ? ` <span class="cur">${o.unit}</span>` : ""}</div>
 			${o.sub ? `<div class="sub num">${o.sub}</div>` : ""}
-			<div class="badges">${badges || "<span class='muted-s'>taqqoslash yo'q</span>"}</div>
-		`, "kpi");
+			${o.noBadge ? "" : `<div class="badges">${badges || "<span class='muted-s'>taqqoslash yo'q</span>"}</div>`}
+		</div>`;
 	}
 
-	moneyKpi(o) { // pul KPI — kompakt + to'liq tooltip
+	moneyKpi(o) { // pul KPI — kompakt + to'liq tooltip. o.ccy — valyutani majburlash
+		const cur = o.ccy || this.data.meta.currency;
 		o.value = this.kc(o.raw);
-		o.unit = o.unit || this.ccyLabel(this.data.meta.currency);
-		o.tt = this.fmt(o.raw) + " " + this.ccyLabel(this.data.meta.currency);
+		o.unit = o.unit || this.ccyLabel(cur);
+		o.tt = this.fmt(o.raw) + " " + this.ccyLabel(cur);
 		return this.kpi(o);
 	}
 
-	// horizontal bars list
 	hbars(items, color) {
 		if (!items || !items.length) return `<div class="empty-hint">Ma'lumot yo'q.</div>`;
 		const max = Math.max(1, ...items.map((i) => Math.abs(i.amount)));
 		return `<div class="hbars">` + items.map((it) => `
 			<div class="hb">
-				<div class="hb-t"><span>${this.esc(it.label)}</span><b class="num" data-tt="${this.fmt(it.amount)}">${this.kc(it.amount)}</b></div>
+				<div class="hb-t"><span>${this.esc(it.label)}</span><b class="num" data-tt="${this.fmt(it.amount)}">${this.kc(it.amount)}${it.currency && it.currency !== this.data.meta.currency ? " " + this.esc(it.currency) : ""}</b></div>
 				<div class="hb-track"><span style="width:${Math.max(2, Math.abs(it.amount) / max * 100)}%;background:${color}"></span></div>
 			</div>`).join("") + `</div>`;
 	}
@@ -177,7 +229,7 @@ class TZInvestorDashboard {
 			<div class="center"><div class="big num">${big}</div><div class="cap">${cap}</div></div></div>`;
 	}
 
-	lineChart(labels, series) { // series: [{name,data,color,fill}]
+	lineChart(labels, series) {
 		if (!labels || !labels.length) return `<div class="empty-hint">Ma'lumot yo'q.</div>`;
 		const W = 760, H = 240, pL = 54, pR = 16, pT = 18, pB = 30, n = labels.length;
 		let max = 1; series.forEach((s) => s.data.forEach((v) => { if (v > max) max = v; }));
@@ -193,7 +245,7 @@ class TZInvestorDashboard {
 		return `<svg width="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"><g>${grid}</g>${paths}<g>${labs}</g></svg>`;
 	}
 
-	barChart(labels, values, opt) { // ijobiy/salbiy ranglar
+	barChart(labels, values, opt) {
 		opt = opt || {};
 		if (!labels || !labels.length) return `<div class="empty-hint">Ma'lumot yo'q.</div>`;
 		const max = Math.max(1, ...values.map((v) => Math.abs(v)));
@@ -205,103 +257,232 @@ class TZInvestorDashboard {
 		}).join("") + `</div>`;
 	}
 
-	trendStrip(trend) {
-		if (!trend || !trend.length) return `<div class="empty-hint">Dinamika yo'q.</div>`;
-		const max = Math.max(1, ...trend.map((t) => Math.abs(t.value)));
-		return `<div class="trend">` + trend.map((t, i) => {
-			const up = i === 0 || t.value >= trend[i - 1].value, h = Math.max(6, Math.abs(t.value) / max * 100);
-			return `<div class="b ${up ? "up" : "dn"}" style="height:${h}%" data-tt="${this.esc(t.label)}: ${this.fmt(t.value)}"></div>`;
-		}).join("") + `</div>`;
-	}
-
 	// ================= TAB: Overview =================
 	renderOverview() {
 		const o = this.data.overview, ccy = this.ccyLabel(this.data.meta.currency);
-		let h = "";
-		h += this.sec("Asosiy ko'rsatkichlar", `${this.data.meta.period.label} holatiga`);
+		let h = this.sec("Asosiy ko'rsatkichlar", "Bir xil rangda — kassa qoldiqlaridan farqli");
 		h += `<div class="grid cols-4 mb">
-			${this.moneyKpi({ label: "Sof balans (pozitsiya)", raw: o.net_balance.value, cmp: o.net_balance, pin: "var(--brand)", valColor: o.net_balance.value < 0 ? "var(--bad-ink)" : "" })}
-			${this.moneyKpi({ label: "Umumiy kassa qoldig'i", raw: o.cash.value, cmp: o.cash, cmpYoy: o.cash_yoy, pin: "var(--c1)", sub: this.otherCash(o.cash_other) })}
-			${this.moneyKpi({ label: "Oylik daromad", raw: o.income.value, cmp: o.income, cmpYoy: o.income_yoy, pin: "var(--good)", valColor: "var(--good-ink)" })}
-			${this.moneyKpi({ label: "Oylik xarajat", raw: o.expense.value, cmp: o.expense, cmpYoy: o.expense_yoy, invert: true, pin: "var(--bad)", valColor: "var(--bad-ink)" })}
-		</div>`;
-		h += `<div class="grid cols-4 mb">
-			${this.moneyKpi({ label: "Sof foyda", raw: o.net_profit.value, cmp: o.net_profit, cmpYoy: o.net_profit_yoy, pin: "var(--good)", valColor: o.net_profit.value < 0 ? "var(--bad-ink)" : "var(--good-ink)", sub: o.margin != null ? `Rentabellik ${o.margin}%` : "Rentabellik —" })}
-			${this.moneyKpi({ label: "Debitorka (bizga qarz)", raw: o.receivable.value, cmp: o.receivable, invert: true, pin: "var(--warn)" })}
-			${this.moneyKpi({ label: "Kreditorka (biz qarz)", raw: o.payable.value, cmp: o.payable, invert: true, pin: "var(--c5)" })}
-			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(o.active_students), pin: "var(--c2)", sub: o.collection_rate != null ? `To'lov yig'imi ${o.collection_rate}%` : "To'lov ma'lumoti cheklangan" })}
+			${this.moneyKpi({ label: "Debitorka (bizga qarz)", raw: o.receivable.value, cmp: o.receivable, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
+			${this.moneyKpi({ label: "Kreditorka (biz qarz)", raw: o.payable.value, cmp: o.payable, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
+			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(o.active_students), pin: "var(--brand)", valColor: "var(--brand-ink)", noBadge: true, sub: o.collection_rate != null ? `To'lov yig'imi ${o.collection_rate}%` : "To'lov ma'lumoti cheklangan" })}
+			${this.moneyKpi({ label: "Davr xarajati", raw: o.expense.value, cmp: o.expense, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
 		</div>`;
 
-		// net position + trend
-		const c = o.components;
-		h += `<div class="grid cols-2 mb">
-			${this.card(`
-				<div class="hd"><div><h3>Sof moliyaviy pozitsiya</h3><div class="meta">Nimadan tashkil topgan</div></div></div>
-				<div class="pos">
-					<div class="pos-row"><span>Kassa (naqd + bank)</span><b class="num">${this.fmt(c.cash)}</b></div>
-					<div class="pos-row"><span>+ Debitorka</span><b class="num" style="color:var(--good-ink)">+${this.fmt(c.receivable)}</b></div>
-					<div class="pos-row"><span>− Kreditorka</span><b class="num" style="color:var(--bad-ink)">−${this.fmt(c.payable)}</b></div>
-					<div class="pos-row"><span>− Xodim avanslari</span><b class="num" style="color:var(--bad-ink)">−${this.fmt(c.employee)}</b></div>
-					<div class="pos-total"><span>SOF BALANS</span><b class="num">${this.fmt(o.net_balance.value)} ${ccy}</b></div>
-				</div>`)}
-			${this.card(`
-				<div class="hd"><div><h3>Kassa qoldig'i dinamikasi</h3><div class="meta">Oxirgi 12 oy · ${ccy}</div></div></div>
-				<div class="trend-lab">Har oy oxiridagi umumiy kassa</div>
-				${this.trendStrip(o.balance_trend)}
-				<div class="mini-legend"><span class="up-s"></span> o'sdi &nbsp; <span class="dn-s"></span> kamaydi</div>`)}
-		</div>`;
+		h += this.sec("Kassa hisoblari (shotlar)", `${this.data.meta.period.label} oxiriga qoldiq · har shot alohida`);
+		const accs = o.cash_accounts || [];
+		h += accs.length
+			? `<div class="grid cols-4 mb">` + accs.map((a, i) => this.cashAccCard(a, i)).join("") + `</div>`
+			: this.card(`<div class="empty-hint">Kassa hisoblari topilmadi.</div>`, "mb");
 		return h + this.note();
 	}
 
-	otherCash(arr) { return (!arr || !arr.length) ? "Yagona valyuta" : arr.map((o) => `+ ${this.kc(o.closing)} ${o.currency}`).join(" · "); }
+	cashAccCard(a, i) {
+		const col = this.acctColors[i % this.acctColors.length];
+		const isForeign = a.currency !== this.data.meta.currency;
+		const neg = a.closing < 0;
+		return `<div class="card kpi acct" style="border-top:3px solid ${col}">
+			<div class="lab"><span class="pin" style="background:${col}"></span> ${this.esc(this.acctName(a.account))}</div>
+			<div class="val num" style="color:${neg ? "var(--bad-ink)" : col}" data-tt="${this.fmt(a.closing)} ${this.esc(a.currency)}">${this.kc(a.closing)} <span class="cur">${this.ccyLabel(a.currency)}</span></div>
+			<div class="sub">${this.esc(a.mode || "—")}${isForeign ? ` · <b>${this.esc(a.currency)}</b>` : ""}</div>
+		</div>`;
+	}
 
 	// ================= TAB: Cashflow =================
+	cfMetricMeta() {
+		return {
+			opening: { label: "Boshlang'ich qoldiq", color: "var(--muted)" },
+			kirim: { label: "Davr kirimi", color: "var(--good)" },
+			chiqim: { label: "Davr chiqimi", color: "var(--bad)" },
+			closing: { label: "Yakuniy qoldiq", color: "var(--brand)" },
+		};
+	}
+
 	renderCashflow() {
-		const cf = this.data.cashflow, ccy = this.ccyLabel(this.data.meta.currency), t = cf.total;
-		let h = this.sec("Kassa harakati", `${this.data.meta.period.label} · ochilish → kirim → chiqim → yopilish`);
+		const cf = this.data.cashflow, ccy = this.ccyLabel(this.data.meta.currency);
+		const mm = this.cfMetricMeta();
+		// Tanlangan valyutaga qarab KPI qiymatlari (USD tanlansa USD, UZS tanlansa UZS)
+		let kt = cf.total, kpiCcy = this.data.meta.currency;
+		if (this.cfCcy) {
+			const bc = (cf.by_currency || []).find((b) => b.currency === this.cfCcy);
+			if (bc) { kt = bc; kpiCcy = this.cfCcy; }
+		}
+
+		// TOP: valyuta jami (chap) | chiziq | budjet xarajati (o'ng) — tanlash tugmalari
+		let h = this.sec("Valyuta kesimida va budjet xarajati", this.data.meta.period.label);
+		h += this.topCombined(cf);
+
+		// Kassa harakati KPI — tanlangan valyuta bo'yicha
+		h += this.sec("Kassa harakati", `boshlang'ich → kirim → chiqim → yakuniy${this.cfCcy ? " · " + this.esc(this.cfCcy) : ""}`);
+		const kpi = (metric, raw, pin, valColor) => {
+			const clickable = metric === "kirim" || metric === "chiqim";
+			return this.moneyKpi({
+				label: mm[metric].label, raw, pin, valColor, ccy: kpiCcy, noBadge: true,
+				cls: clickable ? ("clickable" + (this.cfFlow === metric ? " active" : "")) : "",
+				click: clickable ? `data-cf-flow="${metric}"` : "",
+			});
+		};
 		h += `<div class="grid cols-4 mb">
-			${this.moneyKpi({ label: "Oy boshidagi qoldiq", raw: t.opening, pin: "var(--muted)" })}
-			${this.moneyKpi({ label: "Oylik kirim", raw: t.kirim, pin: "var(--good)", valColor: "var(--good-ink)" })}
-			${this.moneyKpi({ label: "Oylik chiqim", raw: t.chiqim, pin: "var(--bad)", valColor: "var(--bad-ink)" })}
-			${this.moneyKpi({ label: "Oy oxiridagi qoldiq", raw: t.closing, pin: "var(--brand)" })}
+			${kpi("opening", kt.opening, "var(--muted)")}
+			${kpi("kirim", kt.kirim, "var(--good)", "var(--good-ink)")}
+			${kpi("chiqim", kt.chiqim, "var(--bad)", "var(--bad-ink)")}
+			${kpi("closing", kt.closing, "var(--brand)")}
 		</div>`;
 
-		// per-currency totals: Jami USD / Jami UZS ...
-		h += this.ccyTotals(cf.by_currency);
+		// BITTA JADVAL — tanlovga qarab bittasi ko'rinadi (kirim/chiqim/valyuta/budjet)
+		const selected = this.cfFlow || this.budgetView || this.cfCcy;
+		if (this.cfFlow) {
+			h += this.flowDetailTable(cf, this.cfFlow);
+		} else if (this.budgetView) {
+			h += this.budgetBreakdown(cf);
+		} else {
+			h += this.accountsTable(cf);   // cfCcy bo'lsa shu valyuta bo'yicha, aks holda hammasi
+		}
 
-		// accounts table
-		const rows = (cf.accounts || []).length ? cf.accounts.map((a) => `
-			<tr><td class="ell" data-tt="${this.esc(a.account)}">${this.esc(a.account)}</td>
+		// Grafiklar faqat hech narsa tanlanmaganda (default holat)
+		if (!selected) {
+			h += `<div class="grid cols-2 mb">
+				${this.card(`<div class="hd"><div><h3>Kirim manbalari</h3><div class="meta">Pul qayerdan keldi</div></div></div>${this.hbars(cf.categories.in, "var(--good)")}`)}
+				${this.card(`<div class="hd"><div><h3>Chiqim yo'nalishlari</h3><div class="meta">Pul qayerga ketdi</div></div></div>${this.hbars(cf.categories.out, "var(--bad)")}`)}
+			</div>`;
+			h += `<div class="grid cols-2 mb">
+				${this.card(`<div class="hd"><div><h3>Kirim va chiqim — 12 oy</h3><div class="meta">mln ${ccy}</div></div>
+					<div class="legend"><div class="it"><span class="sw" style="background:var(--good)"></span> Kirim</div><div class="it"><span class="sw" style="background:var(--bad)"></span> Chiqim</div></div></div>
+					${this.lineChart(cf.monthly.months, [{ data: cf.monthly.expense, color: "var(--bad)", fill: true }, { data: cf.monthly.income, color: "var(--good)", fill: true }])}`)}
+				${this.calendarCard(cf.daily)}
+			</div>`;
+		}
+		return h + this.note();
+	}
+
+	ccyCards(list) {
+		const base = this.data.meta.currency;
+		if (!list || !list.length) return `<div class="empty-hint">Valyuta ma'lumoti yo'q.</div>`;
+		const cards = list.map((c) => {
+			const isBase = c.currency === base, active = this.cfCcy === c.currency;
+			return `<div class="ccy-card${isBase ? " base" : ""}${active ? " active" : ""}" data-cf-ccy="${this.esc(c.currency)}">
+				<div class="ccy-top"><span class="ccy-code">${this.esc(c.currency)}</span>${isBase ? `<span class="ccy-tag">asosiy</span>` : ""}</div>
+				<div class="ccy-close num" data-tt="${this.fmt(c.closing)} ${this.esc(c.currency)}">${this.fmt(c.closing)} <span class="cur">${this.ccyLabel(c.currency)}</span></div>
+				<div class="ccy-flow">
+					<span class="in num" data-tt="Kirim: ${this.fmt(c.kirim)}">▲ ${this.kc(c.kirim)}</span>
+					<span class="out num" data-tt="Chiqim: ${this.fmt(c.chiqim)}">▼ ${this.kc(c.chiqim)}</span>
+				</div>
+				<div class="ccy-open num">Boshi: ${this.kc(c.opening)}</div>
+			</div>`;
+		}).join("");
+		return `<div class="ccy-grid">${cards}</div>`;
+	}
+
+	budgetCells(b) {
+		if (!b || !b.available) {
+			return `<div class="empty-hint">Budjet guruhi topilmadi (Chart of Accounts'da "Budget/Budjet" nomli guruh yo'q).</div>`;
+		}
+		const ccy = this.ccyLabel(this.data.meta.currency);
+		const bud = Math.max(0, b.budget), nor = Math.max(0, b.normal), tot = bud + nor || 1;
+		const cell = (key, label, amount, color) => `
+			<div class="bud-cell clickable${this.budgetView === key ? " active" : ""}" data-budget="${key}">
+				<div class="bud-lab"><span class="sw" style="background:${color}"></span> ${this.esc(label)}</div>
+				<div class="bud-val num" data-tt="${this.fmt(amount)} ${ccy}">${this.kc(amount)} <span class="cur">${ccy}</span></div>
+				<div class="bud-pct num">${(amount / tot * 100).toFixed(1)}% · bosing ▾</div>
+			</div>`;
+		return `<div class="bud-grid">
+			${cell("budget", b.budget_label, bud, "var(--c1)")}
+			${cell("normal", b.normal_label, nor, "var(--c3)")}
+		</div>`;
+	}
+
+	// TOP blok: chapda valyuta jami, o'ngda budjet xarajati — o'rtada chiziq
+	topCombined(cf) {
+		const ccy = this.ccyLabel(this.data.meta.currency), b = cf.budget;
+		const budTotal = (b && b.available) ? Math.max(0, b.budget) + Math.max(0, b.normal) : 0;
+		return this.card(`
+			<div class="topsplit">
+				<div class="topsplit-col">
+					<div class="hd"><div><h3>Valyutalar kesimida jami</h3><div class="meta">Bosib jadvalni filtrlang · har valyuta o'z birligida</div></div></div>
+					${this.ccyCards(cf.by_currency)}
+				</div>
+				<div class="topsplit-div"></div>
+				<div class="topsplit-col">
+					<div class="hd"><div><h3>Xarajat — budjet bo'yicha</h3><div class="meta">${this.data.meta.period.label} · budjetga kirgan / kirmagan</div></div>
+						${(b && b.available) ? `<div class="focus-total num">Jami: ${this.fmt(budTotal)} ${ccy}</div>` : ""}</div>
+					${this.budgetCells(b)}
+				</div>
+			</div>`, "mb");
+	}
+
+	// hisoblar kesimi jadvali (default; cfCcy bo'lsa shu valyuta bo'yicha filtr)
+	accountsTable(cf) {
+		let accts = cf.accounts || [];
+		if (this.cfCcy) accts = accts.filter((a) => a.currency === this.cfCcy);
+		const rows = accts.length ? accts.map((a) => `
+			<tr><td class="ell" data-tt="${this.esc(a.account)}">${this.esc(this.acctName(a.account))}</td>
 			<td class="ell">${this.esc(a.mode || "")}</td>
 			<td class="r num">${this.fmt(a.opening)}${a.currency !== this.data.meta.currency ? " " + this.esc(a.currency) : ""}</td>
 			<td class="r num" style="color:var(--good-ink)">${this.fmt(a.kirim)}</td>
 			<td class="r num" style="color:var(--bad-ink)">${this.fmt(a.chiqim)}</td>
 			<td class="r num" style="font-weight:700">${this.fmt(a.closing)}</td></tr>`).join("")
-			: `<tr><td colspan="6" class="empty-hint">Kassa hisoblari topilmadi.</td></tr>`;
-		h += this.card(`
-			<div class="hd"><div><h3>Hisoblar kesimida</h3><div class="meta">Har bir kassa/bank hisobi</div></div></div>
+			: `<tr><td colspan="6" class="empty-hint">Hisob topilmadi.</td></tr>`;
+		return this.card(`
+			<div class="hd"><div><h3>Hisoblar kesimida${this.cfCcy ? ` · ${this.esc(this.cfCcy)}` : ""}</h3><div class="meta">Har bir kassa/bank hisobi</div></div></div>
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>Hisob</th><th>Usul</th><th class="r">Ochilish</th><th class="r">Kirim</th><th class="r">Chiqim</th><th class="r">Yopilish</th></tr></thead>
+				<thead><tr><th>Hisob</th><th>Usul</th><th class="r">Boshi</th><th class="r">Kirim</th><th class="r">Chiqim</th><th class="r">Yakun</th></tr></thead>
 				<tbody>${rows}</tbody>
-				<tfoot><tr><td colspan="2">Jami (${ccy})</td><td class="r num">${this.fmt(t.opening)}</td><td class="r num" style="color:var(--good-ink)">${this.fmt(t.kirim)}</td><td class="r num" style="color:var(--bad-ink)">${this.fmt(t.chiqim)}</td><td class="r num">${this.fmt(t.closing)}</td></tr></tfoot>
+			</table></div>`, "mb");
+	}
+
+	// kirim/chiqim bosilganda — batafsil jadval: har bir to'lov KIM · QANCHA · QACHON
+	flowDetailTable(cf, dir) {
+		const inflow = dir === "kirim";
+		const tx = (inflow ? cf.categories.in_tx : cf.categories.out_tx) || [];
+		const ccy = this.ccyLabel(this.data.meta.currency);
+		const color = inflow ? "var(--good-ink)" : "var(--bad-ink)";
+		const title = inflow ? "Kirim — kimdan, qancha, qachon" : "Chiqim — kimga, qancha, qachon";
+		const whoHead = inflow ? "Kimdan" : "Kimga";
+		const total = tx.reduce((s, x) => s + x.amount, 0);
+		const body = tx.length ? tx.map((x) => `
+			<tr>
+				<td class="num" style="white-space:nowrap">${this.dmy(x.date)}</td>
+				<td class="ell" data-tt="${this.esc(x.name)}">${this.esc(x.name)}</td>
+				<td><span class="cat-badge">${this.esc(x.category_label)}</span></td>
+				<td class="r num" style="color:${color};font-weight:600">${this.fmt(x.amount)}</td>
+			</tr>`).join("")
+			: `<tr><td colspan="4" class="empty-hint">Bu davrda ${inflow ? "kirim" : "chiqim"} harakati topilmadi.</td></tr>`;
+		return this.card(`
+			<div class="hd"><div><h3>${title}</h3><div class="meta">${this.data.meta.period.label} · ${ccy} · sana bo'yicha (eng yangisi tepada)</div></div>
+				<div class="focus-total num">Jami: ${this.fmt(total)} ${ccy} · ${tx.length} ta</div></div>
+			<div class="tbl-wrap"><table>
+				<thead><tr><th>Sana</th><th>${whoHead}</th><th>Kategoriya</th><th class="r">Summa (${ccy})</th></tr></thead>
+				<tbody>${body}</tbody>
 			</table></div>
-			${(cf.other || []).length ? `<div class="othccy">Boshqa valyuta: ${cf.other.map((o) => `${this.esc(o.currency)} ${this.fmt(o.closing)}`).join(" · ")}</div>` : ""}
-		`, "mb");
+			${tx.length >= 300 ? `<div class="kt-count">Eng yangi 300 ta harakat ko'rsatildi.</div>` : ""}`, "mb budget-breakdown");
+	}
 
-		// categories in/out
-		h += `<div class="grid cols-2 mb">
-			${this.card(`<div class="hd"><div><h3>Kirim manbalari</h3><div class="meta">Pul qayerdan keldi</div></div></div>${this.hbars(cf.categories.in, "var(--good)")}`)}
-			${this.card(`<div class="hd"><div><h3>Chiqim yo'nalishlari</h3><div class="meta">Pul qayerga ketdi</div></div></div>${this.hbars(cf.categories.out, "var(--bad)")}`)}
-		</div>`;
-
-		// 12m flow + daily calendar
-		h += `<div class="grid cols-2 mb">
-			${this.card(`<div class="hd"><div><h3>Kirim va chiqim — 12 oy</h3><div class="meta">mln ${ccy}</div></div>
-				<div class="legend"><div class="it"><span class="sw" style="background:var(--good)"></span> Kirim</div><div class="it"><span class="sw" style="background:var(--bad)"></span> Chiqim</div></div></div>
-				${this.lineChart(cf.monthly.months, [{ data: cf.monthly.expense, color: "var(--bad)", fill: true }, { data: cf.monthly.income, color: "var(--good)", fill: true }])}`)}
-			${this.calendarCard(cf.daily)}
-		</div>`;
-		return h + this.note();
+	// budjet karta bosilganda — o'sha guruh tarkibi JADVALda: hisob (xarajat) va sarflangan summa
+	budgetBreakdown(cf) {
+		if (!this.budgetView) return "";
+		const b = cf.budget;
+		if (!b || !b.available) return "";
+		const isBud = this.budgetView === "budget";
+		const list = (isBud ? b.budget_accounts : b.normal_accounts) || [];
+		const label = isBud ? b.budget_label : b.normal_label;
+		const color = isBud ? "var(--c1)" : "var(--c3)";
+		const ccy = this.ccyLabel(this.data.meta.currency);
+		const total = list.reduce((s, x) => s + x.amount, 0) || 1;
+		const body = list.length ? list.map((x, i) => `
+			<tr>
+				<td class="num muted-s" style="width:34px">${i + 1}</td>
+				<td class="ell" data-tt="${this.esc(x.label)}"><span class="pin" style="display:inline-block;width:8px;height:8px;border-radius:3px;background:${color};margin-right:7px"></span>${this.esc(x.label)}</td>
+				<td class="r num" style="font-weight:600">${this.fmt(x.amount)}</td>
+				<td class="r num muted-s">${(x.amount / total * 100).toFixed(1)}%</td>
+			</tr>`).join("")
+			: `<tr><td colspan="4" class="empty-hint">Bu davrda bu guruhda xarajat topilmadi.</td></tr>`;
+		return this.card(`
+			<div class="hd"><div><h3>${this.esc(label)} — tarkibi</h3><div class="meta">Qaysi xarajatga qancha sarflandi · ${this.data.meta.period.label}</div></div>
+				<div class="focus-total num">Jami: ${this.fmt(total)} ${ccy}</div></div>
+			<div class="tbl-wrap"><table>
+				<thead><tr><th>#</th><th>Xarajat hisobi</th><th class="r">Summa (${ccy})</th><th class="r">Ulush</th></tr></thead>
+				<tbody>${body}</tbody>
+				<tfoot><tr class="b"><td></td><td>Jami</td><td class="r num">${this.fmt(total)}</td><td class="r num">100%</td></tr></tfoot>
+			</table></div>`, "mb budget-breakdown");
 	}
 
 	calendarCard(cal) {
@@ -316,73 +497,104 @@ class TZInvestorDashboard {
 			cells += `<div class="cell h${lvl(v)}" data-tt="${dd}-${this.esc(cal.month_label)}: ${v ? this.fmt(v) : "yig'im yo'q"}"><span class="d">${dd}</span><span class="m">${v ? this.kcT(v) : ""}</span></div>`;
 		}
 		return this.card(`
-			<div class="hd"><div><h3>Kunlik kassa kirimi</h3><div class="meta">${this.esc(cal.month_label)} ${cal.year}</div></div>
+			<div class="hd"><div><h3>Kunlik kassa kirimi</h3><div class="meta">${this.esc(cal.month_label)} ${cal.year} (oraliq oxirgi oyi)</div></div>
 				<div class="legend"><div class="it"><span class="sw" style="background:var(--card-2);border:1px solid var(--line)"></span> Yo'q</div><div class="it"><span class="sw" style="background:var(--h1)"></span> Kam</div><div class="it"><span class="sw" style="background:var(--h2)"></span> O'rta</div><div class="it"><span class="sw" style="background:var(--h3)"></span> Ko'p</div></div></div>
 			<div class="cal-head"><span>Du</span><span>Se</span><span>Ch</span><span>Pa</span><span>Ju</span><span>Sh</span><span>Ya</span></div>
 			<div class="cal">${cells}</div>`);
 	}
 
-	ccyTotals(list) {
-		// Har valyuta bo'yicha jami (Jami USD, Jami UZS...). Bitta valyuta bo'lsa — yuqoridagi KPI yetarli, ko'rsatmaymiz.
-		if (!list || list.length < 2) return "";
-		const base = this.data.meta.currency;
-		const cards = list.map((c) => {
-			const isBase = c.currency === base;
-			return `<div class="ccy-card${isBase ? " base" : ""}">
-				<div class="ccy-top"><span class="ccy-code">${this.esc(c.currency)}</span>${isBase ? `<span class="ccy-tag">asosiy</span>` : ""}</div>
-				<div class="ccy-close num" data-tt="${this.fmt(c.closing)} ${this.esc(c.currency)}">${this.fmt(c.closing)} <span class="cur">${this.ccyLabel(c.currency)}</span></div>
-				<div class="ccy-flow">
-					<span class="in num" data-tt="Kirim: ${this.fmt(c.kirim)}">▲ ${this.kc(c.kirim)}</span>
-					<span class="out num" data-tt="Chiqim: ${this.fmt(c.chiqim)}">▼ ${this.kc(c.chiqim)}</span>
-				</div>
-				<div class="ccy-open num">Oy boshi: ${this.kc(c.opening)}</div>
-			</div>`;
-		}).join("");
-		return this.card(`
-			<div class="hd"><div><h3>Valyutalar kesimida jami</h3><div class="meta">Har valyuta o'z birligida (kurs bo'yicha jamlanmaydi)</div></div></div>
-			<div class="ccy-grid">${cards}</div>`, "mb");
-	}
-
-	// ================= TAB: Debts =================
+	// ================= TAB: Debts (kontragent) =================
 	renderDebts() {
-		const d = this.data.debts, ccy = this.ccyLabel(this.data.meta.currency);
+		const d = this.data.debts;
 		let h = this.sec("Qarzdorlik holati", `${this.data.meta.period.label} oxiriga`);
-		h += `<div class="grid cols-4 mb">
-			${this.moneyKpi({ label: "Debitorka (bizga qarz)", raw: d.receivable.total, cmp: d.receivable.cmp, invert: true, pin: "var(--warn)", valColor: "var(--warn-ink)" })}
-			${this.moneyKpi({ label: "Kreditorka (biz qarz)", raw: d.payable.total, cmp: d.payable.cmp, invert: true, pin: "var(--c5)" })}
-			${this.moneyKpi({ label: "Sof aylanma (deb − kred)", raw: d.net_working, pin: "var(--brand)", valColor: d.net_working < 0 ? "var(--bad-ink)" : "" })}
-			${this.moneyKpi({ label: "Xodim avanslari", raw: d.employee.total, pin: "var(--c3)", sub: d.employee.available ? "" : "Employee Advance moduli yo'q" })}
+		h += `<div class="grid mb" style="grid-template-columns:1fr 1fr">
+			${this.moneyKpi({ label: "Jami debitorka (bizga qarz)", raw: d.receivable_total, cmp: d.receivable_cmp, invert: true, pin: "var(--warn)", valColor: "var(--warn-ink)" })}
+			${this.moneyKpi({ label: "Jami kreditorka (biz qarz)", raw: d.payable_total, cmp: d.payable_cmp, invert: true, pin: "var(--c5)" })}
 		</div>`;
 
-		// aging + top debtors
-		const ag = d.receivable.aging || [];
-		const agp = ag.map((a) => Math.max(0, a.amount));
-		const agTot = agp.reduce((a, b) => a + b, 0) || 1;
-		const sc = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
-		const stack = ag.map((a, i) => `<span style="flex:0 0 ${Math.max(0, agp[i] / agTot * 100)}%;background:${sc[i]}" data-tt="${this.esc(a.label)}: ${this.fmt(a.amount)}"></span>`).join("");
-		const agleg = ag.map((a, i) => `<div class="it"><span class="sw" style="background:${sc[i]}"></span> ${this.esc(a.label)} <b>${this.kc(a.amount)}</b></div>`).join("");
-		h += `<div class="grid cols-2 mb">
-			${this.card(`<div class="hd"><div><h3>Debitorka muddati (aging)</h3><div class="meta">Qancha eskirgan — shuncha xavfli · taxminiy</div></div></div>
-				<div class="stack">${stack || ""}</div><div class="legend" style="margin-top:12px">${agleg}</div>`)}
-			${this.partyTable("Eng katta debitorlar", d.receivable.top, "var(--warn-ink)")}
-		</div>`;
-		h += `<div class="grid cols-2 mb">
-			${this.partyTable("Eng katta kreditorlar (ta'minotchilar)", d.payable.top, "var(--ink)")}
-			${this.card(`<div class="hd"><div><h3>Xodim avanslari</h3><div class="meta">Yopilmagan qism</div></div></div>${this.empList(d.employee)}`)}
-		</div>`;
+		// kontragent otchot jadvali (filtr + jadval)
+		const types = ["Customer", "Supplier", "Employee", "Shareholder", "Student"];
+		const typeOpts = types.map((t) => `<option value="${t}"${this.ktFilter.party_type === t ? " selected" : ""}>${t}</option>`).join("");
+		const ccyOpts = ["", "UZS", "USD"].map((c) => `<option value="${c}"${this.ktFilter.currency === c ? " selected" : ""}>${c || "Barcha valyuta"}</option>`).join("");
+		h += this.card(`
+			<div class="hd"><div><h3>Kontragent otchot</h3><div class="meta">Boshlang'ich qoldiq → davr harakati → yakuniy qoldiq · ${this.data.meta.period.label}</div></div>
+				<div class="kt-filter">
+					<select class="form-control tz-kt-type">${typeOpts}</select>
+					<select class="form-control tz-kt-party"><option value="">Barcha kontragent</option></select>
+					<select class="form-control tz-kt-ccy">${ccyOpts}</select>
+				</div>
+			</div>
+			<div class="tz-kt-body"><div class="tz-loader">Kontragentlar yuklanyapti…</div></div>
+		`);
+		// jadval + party ro'yxatini yuklash
+		setTimeout(() => { this.loadKontragentParties(); this.loadKontragent(); }, 0);
 		return h + this.note();
 	}
 
-	partyTable(title, top, color) {
-		const rows = (top || []).length ? top.map((t) => `<tr><td class="ell" data-tt="${this.esc(t.name)}">${this.esc(t.name)}</td><td class="r num" style="color:${color}">${this.fmt(t.amount)}</td></tr>`).join("")
-			: `<tr><td colspan="2" class="empty-hint">Ma'lumot yo'q.</td></tr>`;
-		return this.card(`<div class="hd"><div><h3>${this.esc(title)}</h3></div></div><table><tbody>${rows}</tbody></table>`);
+	loadKontragentParties() {
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_kontragent_parties",
+			args: { party_type: this.ktFilter.party_type },
+		}).then((r) => {
+			const list = r.message || [];
+			const sel = this.page.main.find(".tz-kt-party");
+			if (!sel.length) return;
+			sel.html(`<option value="">Barcha kontragent (${list.length})</option>` +
+				list.map((p) => `<option value="${this.esc(p.value)}"${this.ktFilter.party === p.value ? " selected" : ""}>${this.esc(p.label)}</option>`).join(""));
+		});
 	}
 
-	empList(emp) {
-		if (!emp.available) return `<div class="empty-hint">HR (Employee Advance) moduli o'rnatilmagan.</div>`;
-		if (!emp.top || !emp.top.length) return `<div class="empty-hint">Yopilmagan avans yo'q.</div>`;
-		return `<div class="list">` + emp.top.map((t) => `<div class="it"><span class="av">${this.esc((t.name || "?").substr(0, 2).toUpperCase())}</span><div><div class="nm ell">${this.esc(t.name)}</div><div class="cl">avans</div></div><span class="amt">${this.fmt(t.amount)}</span></div>`).join("") + `</div>`;
+	loadKontragent() {
+		const body = this.page.main.find(".tz-kt-body");
+		if (!body.length) return;
+		body.html(`<div class="tz-loader">Jadval yuklanyapti…</div>`);
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_kontragent",
+			args: {
+				from_date: this.state.from_date, to_date: this.state.to_date,
+				party_type: this.ktFilter.party_type, party: this.ktFilter.party || null,
+				currency: this.ktFilter.currency || null,
+			},
+		}).then((r) => {
+			this.kontragent = r.message || { rows: [], totals: [] };
+			this.page.main.find(".tz-kt-body").html(this.renderKontragentTable(this.kontragent));
+			this.page.main.find(".tz-kt-body [data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+		}).catch(() => body.html(`<div class="empty-hint">Kontragent ma'lumotini yuklab bo'lmadi.</div>`));
+	}
+
+	renderKontragentTable(k) {
+		const rows = k.rows || [];
+		if (!rows.length) return `<div class="empty-hint" style="padding:22px 8px">Tanlangan filtr bo'yicha harakat topilmadi.</div>`;
+		const bal = (cr, dr) => {
+			if (cr > 0.5) return `<span class="num" style="color:var(--c5)">${this.fmt(cr)} <small>Kт</small></span>`;
+			if (dr > 0.5) return `<span class="num" style="color:var(--warn-ink)">${this.fmt(dr)} <small>Дт</small></span>`;
+			return `<span class="num muted-s">0</span>`;
+		};
+		const body = rows.map((r) => `
+			<tr>
+				<td class="ell" data-tt="${this.esc(r.name)}">${this.esc(r.name)}</td>
+				<td>${this.esc(r.currency)}</td>
+				<td class="r">${bal(r.opening_credit, r.opening_debit)}</td>
+				<td class="r num" style="color:var(--c5)">${this.fmt(r.period_credit)}</td>
+				<td class="r num" style="color:var(--warn-ink)">${this.fmt(r.period_debit)}</td>
+				<td class="r">${bal(r.final_credit, r.final_debit)}</td>
+			</tr>`).join("");
+		const tot = (k.totals || []).map((t) => `
+			<tr class="b">
+				<td>JAMI</td><td>${this.esc(t.currency)}</td>
+				<td class="r">${bal(t.opening_credit, t.opening_debit)}</td>
+				<td class="r num" style="color:var(--c5)">${this.fmt(t.period_credit)}</td>
+				<td class="r num" style="color:var(--warn-ink)">${this.fmt(t.period_debit)}</td>
+				<td class="r">${bal(t.final_credit, t.final_debit)}</td>
+			</tr>`).join("");
+		return `
+			<div class="kt-legend"><b>Kт</b> — biz qarzmiz (kreditor) · <b>Дт</b> — bizga qarzdor (debitor)</div>
+			<div class="tbl-wrap"><table>
+				<thead><tr><th>Kontragent</th><th>Valyuta</th><th class="r">Boshi (qoldiq)</th><th class="r">Davr Kт (kirim)</th><th class="r">Davr Дт (chiqim)</th><th class="r">Oxiri (qoldiq)</th></tr></thead>
+				<tbody>${body}</tbody>
+				<tfoot>${tot}</tfoot>
+			</table></div>
+			<div class="kt-count">${rows.length} ta kontragent ko'rsatildi${rows.length >= 500 ? " (500 ta bilan cheklangan)" : ""}.</div>`;
 	}
 
 	// ================= TAB: Tuition =================
@@ -397,13 +609,12 @@ class TZInvestorDashboard {
 			return h + this.note();
 		}
 		h += `<div class="grid cols-4 mb">
-			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(t.active), pin: "var(--c2)", sub: `${t.with_fees} tada to'lov yozuvi` })}
-			${this.moneyKpi({ label: "Hisoblangan (billed)", raw: t.billed, pin: "var(--c1)" })}
-			${this.moneyKpi({ label: "Yig'ilgan (collected)", raw: t.collected, pin: "var(--good)", valColor: "var(--good-ink)" })}
-			${this.kpi({ label: "Yig'im foizi", value: (t.rate != null ? t.rate : "—"), unit: t.rate != null ? "%" : "", pin: "var(--warn)", sub: `Qoldiq qarz ${this.kc(t.outstanding)} ${ccy}` })}
+			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(t.active), pin: "var(--c2)", noBadge: true, sub: `${t.with_fees} tada to'lov yozuvi` })}
+			${this.moneyKpi({ label: "Hisoblangan (billed)", raw: t.billed, pin: "var(--c1)", noBadge: true })}
+			${this.moneyKpi({ label: "Yig'ilgan (collected)", raw: t.collected, pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true })}
+			${this.kpi({ label: "Yig'im foizi", value: (t.rate != null ? t.rate : "—"), unit: t.rate != null ? "%" : "", pin: "var(--warn)", noBadge: true, sub: `Qoldiq qarz ${this.kc(t.outstanding)} ${ccy}` })}
 		</div>`;
 
-		// status donut + by class
 		const st = t.status, tot = st.paid + st.partial + st.debtor;
 		const donut = tot ? `<div class="donut-wrap">
 			${this.donutSvg([{ pct: st.paid / tot * 100 }, { pct: st.partial / tot * 100 }, { pct: st.debtor / tot * 100 }], ["var(--good)", "var(--warn)", "var(--bad)"], `${Math.round(st.paid / tot * 100)}%`, "to'ladi")}
@@ -416,10 +627,14 @@ class TZInvestorDashboard {
 			${this.card(`<div class="hd"><div><h3>To'lov holati</h3><div class="meta">${tot} o'quvchi</div></div></div>${donut}`)}
 			${this.classCard(t.by_class)}
 		</div>`;
-
-		// top debtors
 		h += this.partyTable("Eng katta qarzdor o'quvchilar", t.top_debtors, "var(--bad-ink)");
 		return h + this.note();
+	}
+
+	partyTable(title, top, color) {
+		const rows = (top || []).length ? top.map((t) => `<tr><td class="ell" data-tt="${this.esc(t.name)}">${this.esc(t.name)}</td><td class="r num" style="color:${color}">${this.fmt(t.amount)}</td></tr>`).join("")
+			: `<tr><td colspan="2" class="empty-hint">Ma'lumot yo'q.</td></tr>`;
+		return this.card(`<div class="hd"><div><h3>${this.esc(title)}</h3></div></div><table><tbody>${rows}</tbody></table>`);
 	}
 
 	classCard(items) {
@@ -435,22 +650,21 @@ class TZInvestorDashboard {
 
 	// ================= TAB: P&L =================
 	renderPnl() {
-		const p = this.data.pnl, ccy = this.ccyLabel(this.data.meta.currency), cur = p.current, o = this.data.overview;
+		const p = this.data.pnl, ccy = this.ccyLabel(this.data.meta.currency), cur = p.current;
 		let h = this.sec("Foyda va zarar (P&L)", `${this.data.meta.period.label} · accrual (hisoblangan)`);
 		h += `<div class="grid cols-4 mb">
-			${this.moneyKpi({ label: "Daromad", raw: cur.income, cmp: o.income, cmpYoy: o.income_yoy, pin: "var(--good)", valColor: "var(--good-ink)" })}
-			${this.moneyKpi({ label: "Xarajat", raw: cur.expense, cmp: o.expense, cmpYoy: o.expense_yoy, invert: true, pin: "var(--bad)", valColor: "var(--bad-ink)" })}
-			${this.moneyKpi({ label: "Sof foyda", raw: cur.net, cmp: o.net_profit, cmpYoy: o.net_profit_yoy, pin: "var(--brand)", valColor: cur.net < 0 ? "var(--bad-ink)" : "var(--good-ink)" })}
-			${this.kpi({ label: "Rentabellik (margin)", value: cur.margin != null ? cur.margin : "—", unit: cur.margin != null ? "%" : "", pin: "var(--c5)", sub: "Sof foyda / daromad" })}
+			${this.moneyKpi({ label: "Daromad", raw: cur.income, cmp: p.income_cmp, cmpYoy: p.income_yoy, pin: "var(--good)", valColor: "var(--good-ink)" })}
+			${this.moneyKpi({ label: "Xarajat", raw: cur.expense, cmp: p.expense_cmp, cmpYoy: p.expense_yoy, invert: true, pin: "var(--bad)", valColor: "var(--bad-ink)" })}
+			${this.moneyKpi({ label: "Sof foyda", raw: cur.net, cmp: p.net_cmp, cmpYoy: p.net_yoy, pin: "var(--brand)", valColor: cur.net < 0 ? "var(--bad-ink)" : "var(--good-ink)" })}
+			${this.kpi({ label: "Rentabellik (margin)", value: cur.margin != null ? cur.margin : "—", unit: cur.margin != null ? "%" : "", pin: "var(--c5)", noBadge: true, sub: "Sof foyda / daromad" })}
 		</div>`;
 
-		// comparison income statement table
 		const pv = p.prev, yy = p.yoy;
 		const line = (lbl, a, b, c, bold) => `<tr class="${bold ? "b" : ""}"><td>${lbl}</td><td class="r num">${this.fmt(a)}</td><td class="r num">${this.fmt(b)}</td><td class="r num">${this.fmt(c)}</td></tr>`;
 		h += this.card(`
 			<div class="hd"><div><h3>Foyda hisoboti — taqqoslash</h3><div class="meta">${ccy}</div></div></div>
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>Ko'rsatkich</th><th class="r">${this.data.meta.period.label}</th><th class="r">${this.esc(this.data.meta.prev_label)}</th><th class="r">${this.esc(this.data.meta.yoy_label)}-yil</th></tr></thead>
+				<thead><tr><th>Ko'rsatkich</th><th class="r">Joriy davr</th><th class="r">Oldingi davr</th><th class="r">O'tgan yil</th></tr></thead>
 				<tbody>
 					${line("Daromad", cur.income, pv.income, yy.income)}
 					${line("(−) Xarajat", cur.expense, pv.expense, yy.expense)}
@@ -459,7 +673,6 @@ class TZInvestorDashboard {
 				</tbody>
 			</table></div>`, "mb");
 
-		// expense donut + monthly net
 		const eb = p.expense_breakdown || [];
 		const colors = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--c6)", "var(--muted)"];
 		const ebTot = eb.reduce((a, b) => a + b.amount, 0);
@@ -477,6 +690,6 @@ class TZInvestorDashboard {
 	note() {
 		const w = (this.data.meta.warnings || []);
 		const wh = w.length ? `<b>Diqqat:</b> ${w.map((x) => this.esc(x)).join(" ")} ` : "";
-		return `<div class="note">${wh}Barcha raqamlar real vaqtda ERPNext'dan (GL Entry): kassa — Mode of Payment hisoblari; debitorka/kreditorka — Receivable/Payable; foyda — Income/Expense; o'quvchi to'lovi — Education Fees; xodim avansi — Employee Advance. Aging va kategoriya taxminiy hisob-kitob asosida.</div>`;
+		return `<div class="note">${wh}Barcha raqamlar real vaqtda ERPNext'dan (GL Entry): kassa — Mode of Payment hisoblari; debitorka/kreditorka va kontragent — Receivable/Payable; foyda — Income/Expense; o'quvchi to'lovi — Education Fees; xodim avansi — Employee Advance. Budjet bo'linishi Chart of Accounts guruhiga tayanadi.</div>`;
 	}
 }
