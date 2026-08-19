@@ -554,6 +554,30 @@ def _party_name(party_type, party):
     return party
 
 
+def _party_groups_map(rows):
+    """Kontragent qatorlari uchun guruhni to'plamli aniqlaydi (Customer->customer_group,
+    Supplier->supplier_group). Kam so'rov: har tur uchun bitta IN-so'rov."""
+    cust, supp = set(), set()
+    for r in rows:
+        if r["party_type"] == "Customer":
+            cust.add(r["party"])
+        elif r["party_type"] == "Supplier":
+            supp.add(r["party"])
+    m = {}
+    try:
+        if cust:
+            for d in frappe.get_all("Customer", filters={"name": ["in", list(cust)]},
+                                    fields=["name", "customer_group"]):
+                m[("Customer", d.name)] = d.customer_group or ""
+        if supp:
+            for d in frappe.get_all("Supplier", filters={"name": ["in", list(supp)]},
+                                    fields=["name", "supplier_group"]):
+                m[("Supplier", d.name)] = d.supplier_group or ""
+    except Exception:
+        pass
+    return m
+
+
 def _receivable_aging(company, date, currency):
     buckets = [("0–30 kun", 0, 30), ("30–60 kun", 30, 60), ("60–90 kun", 60, 90), ("90+ kun", 90, 10 ** 6)]
     out = [{"label": b[0], "amount": 0.0} for b in buckets]
@@ -799,7 +823,7 @@ KONTRAGENT_TYPES = ["Customer", "Supplier", "Employee", "Shareholder", "Student"
 
 
 @frappe.whitelist()
-def get_kontragent(from_date=None, to_date=None, party_type=None, party=None, currency=None):
+def get_kontragent(from_date=None, to_date=None, party_type=None, party=None, currency=None, party_group=None):
     """Kontragent bo'yicha: boshlang'ich qoldiq → davr harakati (kredit/debet) → yakuniy qoldiq."""
     _guard()
     f0, t0, _ = _resolve_range(from_date, to_date)
@@ -839,9 +863,8 @@ def get_kontragent(from_date=None, to_date=None, party_type=None, party=None, cu
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: kontragent")
         rows = []
 
-    data = []
-    tbc = defaultdict(lambda: defaultdict(float))
     keys = ("opening_credit", "opening_debit", "period_credit", "period_debit", "final_credit", "final_debit")
+    tmp = []
     for r in rows:
         op = flt(r.opening_net)
         pc, pd = flt(r.p_credit), flt(r.p_debit)
@@ -857,7 +880,19 @@ def get_kontragent(from_date=None, to_date=None, party_type=None, party=None, cu
             "final_credit": fin if fin > 0 else 0.0, "final_debit": -fin if fin < 0 else 0.0,
         }
         row["_move"] = pc + pd
+        tmp.append(row)
+
+    # kontragent guruhini to'plamli aniqlab, guruh filtri bo'lsa qo'llaymiz
+    gmap = _party_groups_map(tmp)
+    data = []
+    tbc = defaultdict(lambda: defaultdict(float))
+    for row in tmp:
+        grp = gmap.get((row["party_type"], row["party"]), "")
+        if party_group and grp != party_group:
+            continue
+        row["party_group"] = grp
         data.append(row)
+        cur = row["currency"]
         for k in keys:
             tbc[cur][k] += row[k]
 
@@ -893,3 +928,23 @@ def get_kontragent_parties(party_type=None):
     except Exception:
         rows = []
     return [{"value": r.party, "label": _party_name(party_type, r.party)} for r in rows]
+
+
+@frappe.whitelist()
+def get_kontragent_groups(party_type=None):
+    """Kontragent guruhlari ro'yxati (filter select uchun). Customer->Customer Group,
+    Supplier->Supplier Group. Boshqa turlar uchun guruh tushunchasi yo'q."""
+    _guard()
+    groups = set()
+    try:
+        if not party_type or party_type == "Customer":
+            for r in frappe.get_all("Customer", fields=["distinct customer_group as g"]):
+                if r.g:
+                    groups.add(r.g)
+        if not party_type or party_type == "Supplier":
+            for r in frappe.get_all("Supplier", fields=["distinct supplier_group as g"]):
+                if r.g:
+                    groups.add(r.g)
+    except Exception:
+        pass
+    return sorted(groups)

@@ -16,7 +16,7 @@ class TZInvestorDashboard {
 		this.cfFlow = null;          // batafsil jadval: null | 'kirim' | 'chiqim'
 		this.budgetView = null;      // budjet breakdown: null | 'budget' | 'normal'
 		// kontragent jadvali holati
-		this.ktFilter = { party_type: "Supplier", party: "", currency: "" };
+		this.ktFilter = { party_type: "Supplier", party: "", currency: "", party_group: "" };
 		this.kontragent = null;
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
@@ -134,10 +134,11 @@ class TZInvestorDashboard {
 		});
 		// kontragent filtrlari
 		body.on("change", ".tz-kt-type", (e) => {
-			this.ktFilter.party_type = e.target.value; this.ktFilter.party = "";
-			this.loadKontragentParties(); this.loadKontragent();
+			this.ktFilter.party_type = e.target.value; this.ktFilter.party = ""; this.ktFilter.party_group = "";
+			this.loadKontragentParties(); this.loadKontragentGroups(); this.loadKontragent();
 		});
 		body.on("change", ".tz-kt-party", (e) => { this.ktFilter.party = e.target.value; this.loadKontragent(); });
+		body.on("change", ".tz-kt-group", (e) => { this.ktFilter.party_group = e.target.value; this.loadKontragent(); });
 		body.on("change", ".tz-kt-ccy", (e) => { this.ktFilter.currency = e.target.value; this.loadKontragent(); });
 	}
 
@@ -524,13 +525,14 @@ class TZInvestorDashboard {
 				<div class="kt-filter">
 					<select class="form-control tz-kt-type">${typeOpts}</select>
 					<select class="form-control tz-kt-party"><option value="">Barcha kontragent</option></select>
+					<select class="form-control tz-kt-group"><option value="">Barcha guruh</option></select>
 					<select class="form-control tz-kt-ccy">${ccyOpts}</select>
 				</div>
 			</div>
 			<div class="tz-kt-body"><div class="tz-loader">Kontragentlar yuklanyapti…</div></div>
 		`);
-		// jadval + party ro'yxatini yuklash
-		setTimeout(() => { this.loadKontragentParties(); this.loadKontragent(); }, 0);
+		// jadval + party/guruh ro'yxatini yuklash
+		setTimeout(() => { this.loadKontragentParties(); this.loadKontragentGroups(); this.loadKontragent(); }, 0);
 		return h + this.note();
 	}
 
@@ -547,6 +549,23 @@ class TZInvestorDashboard {
 		});
 	}
 
+	loadKontragentGroups() {
+		const sel = this.page.main.find(".tz-kt-group");
+		if (!sel.length) return;
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_kontragent_groups",
+			args: { party_type: this.ktFilter.party_type },
+		}).then((r) => {
+			const list = r.message || [];
+			const sel2 = this.page.main.find(".tz-kt-group");
+			if (!sel2.length) return;
+			// tanlangan guruh yangi ro'yxatda bo'lmasa — tozalash
+			if (this.ktFilter.party_group && list.indexOf(this.ktFilter.party_group) === -1) this.ktFilter.party_group = "";
+			sel2.html(`<option value="">Barcha guruh</option>` +
+				list.map((g) => `<option value="${this.esc(g)}"${this.ktFilter.party_group === g ? " selected" : ""}>${this.esc(g)}</option>`).join(""));
+		});
+	}
+
 	loadKontragent() {
 		const body = this.page.main.find(".tz-kt-body");
 		if (!body.length) return;
@@ -557,6 +576,7 @@ class TZInvestorDashboard {
 				from_date: this.state.from_date, to_date: this.state.to_date,
 				party_type: this.ktFilter.party_type, party: this.ktFilter.party || null,
 				currency: this.ktFilter.currency || null,
+				party_group: this.ktFilter.party_group || null,
 			},
 		}).then((r) => {
 			this.kontragent = r.message || { rows: [], totals: [] };
@@ -576,6 +596,7 @@ class TZInvestorDashboard {
 		const body = rows.map((r) => `
 			<tr>
 				<td class="ell" data-tt="${this.esc(r.name)}">${this.esc(r.name)}</td>
+				<td class="ell">${r.party_group ? this.esc(r.party_group) : `<span class="muted-s">—</span>`}</td>
 				<td>${this.esc(r.currency)}</td>
 				<td class="r">${bal(r.opening_credit, r.opening_debit)}</td>
 				<td class="r num" style="color:var(--c5)">${this.fmt(r.period_credit)}</td>
@@ -584,7 +605,7 @@ class TZInvestorDashboard {
 			</tr>`).join("");
 		const tot = (k.totals || []).map((t) => `
 			<tr class="b">
-				<td>JAMI</td><td>${this.esc(t.currency)}</td>
+				<td>JAMI</td><td></td><td>${this.esc(t.currency)}</td>
 				<td class="r">${bal(t.opening_credit, t.opening_debit)}</td>
 				<td class="r num" style="color:var(--c5)">${this.fmt(t.period_credit)}</td>
 				<td class="r num" style="color:var(--warn-ink)">${this.fmt(t.period_debit)}</td>
@@ -593,7 +614,7 @@ class TZInvestorDashboard {
 		return `
 			<div class="kt-legend"><b>Kт</b> — biz qarzmiz (kreditor) · <b>Дт</b> — bizga qarzdor (debitor)</div>
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>Kontragent</th><th>Valyuta</th><th class="r">Boshi (qoldiq)</th><th class="r">Davr Kт (kirim)</th><th class="r">Davr Дт (chiqim)</th><th class="r">Oxiri (qoldiq)</th></tr></thead>
+				<thead><tr><th>Kontragent</th><th>Guruh</th><th>Valyuta</th><th class="r">Boshi (qoldiq)</th><th class="r">Davr Kт (kirim)</th><th class="r">Davr Дт (chiqim)</th><th class="r">Oxiri (qoldiq)</th></tr></thead>
 				<tbody>${body}</tbody>
 				<tfoot>${tot}</tfoot>
 			</table></div>
