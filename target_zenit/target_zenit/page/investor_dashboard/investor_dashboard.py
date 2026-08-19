@@ -194,22 +194,24 @@ def _cash_section(company, from_date, to_date, company_currency):
     }
 
 
-def _cashflow_by_category(main_accounts, company, from_date, to_date):
-    """Kassa kirim/chiqimini kontragent kategoriyasi + aniq kontragent (batafsil) bo'yicha ajratish."""
+def _cashflow_by_category(all_accounts, main_set, acc_ccy, company_currency, company, from_date, to_date):
+    """Kassa kirim/chiqimini kontragent kategoriyasi + aniq kontragent (batafsil) + valyuta bo'yicha ajratish.
+    Kategoriya/party jamlanmasi faqat asosiy (company) valyuta hisoblari (main_set) bo'yicha;
+    tranzaksiyalar (in_tx/out_tx) esa barcha valyutalar bo'yicha (har biri o'z valyuta belgisi bilan)."""
     empty = {"in": [], "out": [], "in_detail": [], "out_detail": [], "in_tx": [], "out_tx": []}
     inflow = defaultdict(float)
     outflow = defaultdict(float)
     inflow_p = defaultdict(float)   # (cat, party_type, party) -> summa
     outflow_p = defaultdict(float)
-    if not main_accounts:
+    if not all_accounts:
         return empty
     rows = frappe.db.sql(
-        f"""SELECT voucher_type, voucher_no, party_type, party, `against`, posting_date,
+        f"""SELECT voucher_type, voucher_no, party_type, party, `against`, account, posting_date,
                    debit_in_account_currency AS d, credit_in_account_currency AS c
             FROM `tabGL Entry`
             WHERE account IN %(a)s AND posting_date BETWEEN %(f)s AND %(t)s
               AND is_cancelled=0 {_co(company)}""",
-        {"a": tuple(main_accounts), "f": from_date, "t": to_date, "company": company}, as_dict=True)
+        {"a": tuple(all_accounts), "f": from_date, "t": to_date, "company": company}, as_dict=True)
     if not rows:
         return empty
 
@@ -272,22 +274,26 @@ def _cashflow_by_category(main_accounts, company, from_date, to_date):
     for r in rows:
         cat, pt, party = resolve(r)
         d, c = flt(r.d), flt(r.c)
+        is_main = r.account in main_set               # asosiy valyuta hisobi (jamlanma faqat shu)
+        cur = acc_ccy.get(r.account) or company_currency
         if d > 0:
-            inflow[cat] += d
-            if party:
-                inflow_p[(cat, pt, party)] += d
+            if is_main:
+                inflow[cat] += d
+                if party:
+                    inflow_p[(cat, pt, party)] += d
             in_tx.append({"date": str(r.posting_date), "category": cat,
                           "category_label": CAT_LABELS.get(cat, cat), "party_type": pt,
                           "party": party, "name": pname(pt, party, cat),
-                          "amount": d, "voucher": r.voucher_no})
+                          "amount": d, "currency": cur, "voucher": r.voucher_no})
         if c > 0:
-            outflow[cat] += c
-            if party:
-                outflow_p[(cat, pt, party)] += c
+            if is_main:
+                outflow[cat] += c
+                if party:
+                    outflow_p[(cat, pt, party)] += c
             out_tx.append({"date": str(r.posting_date), "category": cat,
                            "category_label": CAT_LABELS.get(cat, cat), "party_type": pt,
                            "party": party, "name": pname(pt, party, cat),
-                           "amount": c, "voucher": r.voucher_no})
+                           "amount": c, "currency": cur, "voucher": r.voucher_no})
 
     def pack(dd):
         items = [{"key": k, "label": CAT_LABELS.get(k, k), "amount": v} for k, v in dd.items() if v > 0.5]
@@ -305,12 +311,12 @@ def _cashflow_by_category(main_accounts, company, from_date, to_date):
         items.sort(key=lambda x: -x["amount"])
         return items[:200]
 
-    # tranzaksiyalar: eng yangi sana birinchi, keyin summa bo'yicha; 300 ta bilan cheklangan
+    # tranzaksiyalar: eng yangi sana birinchi, keyin summa bo'yicha (barcha valyuta; frontend filtrlaydi)
     in_tx.sort(key=lambda x: (x["date"], x["amount"]), reverse=True)
     out_tx.sort(key=lambda x: (x["date"], x["amount"]), reverse=True)
     return {"in": pack(inflow), "out": pack(outflow),
             "in_detail": pack_detail(inflow_p), "out_detail": pack_detail(outflow_p),
-            "in_tx": in_tx[:300], "out_tx": out_tx[:300]}
+            "in_tx": in_tx[:600], "out_tx": out_tx[:600]}
 
 
 def _monthly_flow(main_accounts, company, ref_date, months_back=12):
@@ -717,7 +723,9 @@ def get_dashboard_data(from_date=None, to_date=None):
     cash_yoy = sum(_balance_upto(main_accounts, yt, company).values())
 
     flow = _monthly_flow(main_accounts, company, t0, 12)
-    cat = _cashflow_by_category(main_accounts, company, f0, t0)
+    all_cash = [a["account"] for a in cash["accounts"]]
+    acc_ccy = {a["account"]: a["currency"] for a in cash["accounts"]}
+    cat = _cashflow_by_category(all_cash, set(main_accounts), acc_ccy, ccy, company, f0, t0)
     budget = _budget_split(company, f0, t0, ccy)
 
     # ---- P&L ----

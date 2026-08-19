@@ -113,16 +113,17 @@ class TZInvestorDashboard {
 
 		// kassa/pul oqimi — bitta jadval: tanlovlar o'zaro istisno (birini bossa boshqasi o'chadi)
 		const body = this.page.main.find(".tz-body");
+		// valyuta va kirim/chiqim BIRGA ishlaydi (USD + davriy kirim = USD kirimlar ro'yxati)
 		body.on("click", "[data-cf-ccy]", (e) => {
 			const c = String($(e.currentTarget).data("cf-ccy"));
 			this.cfCcy = (this.cfCcy === c) ? null : c;
-			this.cfFlow = null; this.budgetView = null;
+			this.budgetView = null;   // budjet bilan esa birga emas
 			this.renderTab();
 		});
 		body.on("click", "[data-cf-flow]", (e) => {
 			const f = String($(e.currentTarget).data("cf-flow"));
 			this.cfFlow = (this.cfFlow === f) ? null : f;
-			this.cfCcy = null; this.budgetView = null;
+			this.budgetView = null;
 			this.renderTab();
 		});
 		body.on("click", "[data-budget]", (e) => {
@@ -429,13 +430,15 @@ class TZInvestorDashboard {
 			</table></div>`, "mb");
 	}
 
-	// kirim/chiqim bosilganda — batafsil jadval: har bir to'lov KIM · QANCHA · QACHON
+	// kirim/chiqim bosilganda — batafsil jadval: har bir to'lov KIM · QANCHA · QACHON (tanlangan valyuta bo'yicha)
 	flowDetailTable(cf, dir) {
 		const inflow = dir === "kirim";
-		const tx = (inflow ? cf.categories.in_tx : cf.categories.out_tx) || [];
-		const ccy = this.ccyLabel(this.data.meta.currency);
+		const curCode = this.cfCcy || this.data.meta.currency;   // valyuta tanlansa o'sha, aks holda asosiy
+		const all = (inflow ? cf.categories.in_tx : cf.categories.out_tx) || [];
+		const tx = all.filter((x) => (x.currency || this.data.meta.currency) === curCode);
+		const ccy = this.ccyLabel(curCode);
 		const color = inflow ? "var(--good-ink)" : "var(--bad-ink)";
-		const title = inflow ? "Kirim — kimdan, qancha, qachon" : "Chiqim — kimga, qancha, qachon";
+		const title = inflow ? `Kirim — kimdan, qancha, qachon${this.cfCcy ? " · " + this.esc(curCode) : ""}` : `Chiqim — kimga, qancha, qachon${this.cfCcy ? " · " + this.esc(curCode) : ""}`;
 		const whoHead = inflow ? "Kimdan" : "Kimga";
 		const total = tx.reduce((s, x) => s + x.amount, 0);
 		const body = tx.length ? tx.map((x) => `
