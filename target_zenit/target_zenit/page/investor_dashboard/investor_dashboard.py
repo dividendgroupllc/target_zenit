@@ -689,7 +689,7 @@ def _tuition_section(company):
 # ===========================================================================
 # Asosiy API
 # ===========================================================================
-ALLOWED_ROLES = ["System Manager", "Accounts Manager", "Accounts User", "investor"]
+ALLOWED_ROLES = ["System Manager", "Accounts Manager", "Accounts User", "investor", "Xojakbar_Operator"]
 
 
 def _guard():
@@ -928,6 +928,118 @@ def get_kontragent_parties(party_type=None):
     except Exception:
         rows = []
     return [{"value": r.party, "label": _party_name(party_type, r.party)} for r in rows]
+
+
+DDS_CATEGORY_ORDER = [
+    ("customer", "Покупатели"),
+    ("supplier", "Поставщики"),
+    ("shareholder", "Учредители"),
+    ("dividend", "Дивиденды"),
+    ("employee", "Сотрудники"),
+    ("transfer", "Перемещения"),
+    ("other", "Прочие"),
+    ("expense", "Расходы"),
+]
+
+
+@frappe.whitelist()
+def get_dds(from_date=None, to_date=None, mode_of_payment=None, party_type=None, party=None, category=None):
+    """DDS (pul oqimi) hisoboti — kassa hisoblari bo'yicha boshlang'ich qoldiq →
+    kategoriyalar kesimida kirim/chiqim → yakuniy qoldiq + harakatlar ro'yxati.
+    DDS reportining o'z get_data() mantig'i qayta ishlatiladi (raqamlar aynan mos)."""
+    _guard()
+    f0, t0, _ = _resolve_range(from_date, to_date)
+    from target_zenit.target_zenit.report.dds import dds as _dds
+
+    filters = {"from_date": str(f0), "to_date": str(t0)}
+    if mode_of_payment:
+        filters["mode_of_payment"] = mode_of_payment
+    if party_type:
+        filters["party_type"] = party_type
+    if party:
+        filters["party"] = party
+    if category:
+        filters["category"] = category
+
+    try:
+        data, expense_summaries, dividend_summaries = _dds.get_data(filters)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: dds")
+        data, expense_summaries, dividend_summaries = [], {}, {}
+
+    opening = 0.0
+    closing = 0.0
+    cat_tot = {k: {"kirim": 0.0, "chiqim": 0.0} for k, _ in DDS_CATEGORY_ORDER}
+    tx = []
+    for row in data:
+        if "_opening_balance" in row:
+            opening = flt(row["_opening_balance"])
+        if "_closing_balance" in row:
+            closing = flt(row["_closing_balance"])
+        cat = row.get("category") or "other"
+        if cat not in cat_tot:
+            cat = "other"
+        k = flt(row.get("kirim"))
+        c = flt(row.get("chiqim"))
+        cat_tot[cat]["kirim"] += k
+        cat_tot[cat]["chiqim"] += c
+        tx.append({
+            "date": str(row.get("posting_date") or ""),
+            "account": row.get("account") or "",
+            "category": row.get("category") or "other",
+            "category_label": _dds.CATEGORY_LABELS.get(row.get("category") or "other", "Прочие"),
+            "description": row.get("description") or "",
+            "kirim": k, "chiqim": c,
+            "remarks": row.get("remarks") or "",
+            "voucher_type": row.get("voucher_type") or "",
+            "voucher_no": row.get("voucher_no") or "",
+        })
+
+    if not data:
+        closing = opening
+
+    # eng oxirgi (yangi) submit qilingan transaksiyalar tepada bo'lsin:
+    # get_data() posting_date, creation bo'yicha o'sish tartibida beradi → teskari qilamiz.
+    tx.reverse()
+
+    categories = []
+    for k, label in DDS_CATEGORY_ORDER:
+        t = cat_tot[k]
+        if abs(t["kirim"]) > 0.005 or abs(t["chiqim"]) > 0.005:
+            categories.append({"key": k, "label": label,
+                               "kirim": t["kirim"], "chiqim": t["chiqim"]})
+
+    total_kirim = sum(t["kirim"] for t in cat_tot.values())
+    total_chiqim = sum(t["chiqim"] for t in cat_tot.values())
+
+    expense_bd = [{
+        "label": (kk[len("Расходы: "):] if kk.startswith("Расходы: ") else kk),
+        "kirim": flt(v["kirim"]), "chiqim": flt(v["chiqim"]),
+    } for kk, v in expense_summaries.items()]
+    expense_bd.sort(key=lambda x: -(x["kirim"] + x["chiqim"]))
+
+    dividend_bd = [{
+        "label": kk, "kirim": flt(v["kirim"]), "chiqim": flt(v["chiqim"]),
+    } for kk, v in dividend_summaries.items()]
+    dividend_bd.sort(key=lambda x: -(x["kirim"] + x["chiqim"]))
+
+    try:
+        modes = [m.name for m in frappe.get_all("Mode of Payment", fields=["name"], order_by="name")]
+    except Exception:
+        modes = []
+
+    return {
+        "opening": opening, "closing": closing,
+        "total_kirim": total_kirim, "total_chiqim": total_chiqim,
+        "categories": categories,
+        "expense_breakdown": expense_bd,
+        "dividend_breakdown": dividend_bd,
+        "transactions": tx[:800],
+        "tx_count": len(tx),
+        "modes": modes,
+        "period": {"from": str(f0), "to": str(t0),
+                   "label": f"{_fmt_date(f0)} — {_fmt_date(t0)}"},
+    }
 
 
 @frappe.whitelist()

@@ -18,11 +18,15 @@ class TZInvestorDashboard {
 		// kontragent jadvali holati
 		this.ktFilter = { party_type: "Supplier", party: "", currency: "", party_group: "" };
 		this.kontragent = null;
+		// DDS (pul oqimi hisoboti) holati
+		this.ddsFilter = { mode_of_payment: "", party_type: "", party: "", category: "" };
+		this.dds = null;
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
 			{ key: "overview", label: "Umumiy" },
 			{ key: "cashflow", label: "Kassa va pul oqimi" },
 			{ key: "debts", label: "Qarzdorlik" },
+			{ key: "dds", label: "Pul oqimi (DDS)" },
 			{ key: "tuition", label: "O'quvchilar to'lovi" },
 			{ key: "pnl", label: "Foyda (P&L)" },
 		];
@@ -140,6 +144,22 @@ class TZInvestorDashboard {
 		body.on("change", ".tz-kt-party", (e) => { this.ktFilter.party = e.target.value; this.loadKontragent(); });
 		body.on("change", ".tz-kt-group", (e) => { this.ktFilter.party_group = e.target.value; this.loadKontragent(); });
 		body.on("change", ".tz-kt-ccy", (e) => { this.ktFilter.currency = e.target.value; this.loadKontragent(); });
+		// DDS filtrlari
+		body.on("change", ".tz-dds-mode", (e) => { this.ddsFilter.mode_of_payment = e.target.value; this.loadDds(); });
+		body.on("change", ".tz-dds-type", (e) => {
+			this.ddsFilter.party_type = e.target.value; this.ddsFilter.party = "";
+			this.loadDdsParties(); this.loadDds();
+		});
+		body.on("change", ".tz-dds-party", (e) => { this.ddsFilter.party = e.target.value; this.loadDds(); });
+		body.on("change", ".tz-dds-category", (e) => { this.ddsFilter.category = e.target.value; this.loadDds(); });
+		body.on("click", "[data-dds-toggle]", (e) => {
+			const k = String($(e.currentTarget).data("dds-toggle"));
+			const rows = this.page.main.find(".dds-sub-" + k);
+			if (!rows.length) return;
+			const vis = rows.first().is(":visible");
+			rows.css("display", vis ? "none" : "table-row");
+			this.page.main.find(`.dds-arrow[data-arrow="${k}"]`).text(vis ? "▶" : "▼");
+		});
 	}
 
 	applyPreset(p) {
@@ -160,6 +180,7 @@ class TZInvestorDashboard {
 
 	load_data() {
 		this.kontragent = null;
+		this.dds = null;
 		this.page.main.find(".tz-body").html(`<div class="tz-loader">Ma'lumot yuklanyapti…</div>`);
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_dashboard_data",
@@ -181,7 +202,7 @@ class TZInvestorDashboard {
 	renderTab() {
 		if (!this.data || !this.data.meta) return;
 		const body = this.page.main.find(".tz-body");
-		const fn = { overview: "renderOverview", cashflow: "renderCashflow", debts: "renderDebts", tuition: "renderTuition", pnl: "renderPnl" }[this.active];
+		const fn = { overview: "renderOverview", cashflow: "renderCashflow", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", pnl: "renderPnl" }[this.active];
 		body.html(this[fn]());
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
 	}
@@ -619,6 +640,127 @@ class TZInvestorDashboard {
 				<tfoot>${tot}</tfoot>
 			</table></div>
 			<div class="kt-count">${rows.length} ta kontragent ko'rsatildi${rows.length >= 500 ? " (500 ta bilan cheklangan)" : ""}.</div>`;
+	}
+
+	// ================= TAB: DDS (pul oqimi) =================
+	renderDds() {
+		const meta = this.data.meta;
+		let h = this.sec("Pul oqimi hisoboti (DDS)", meta.period.label);
+		const types = ["", "Customer", "Supplier", "Shareholder", "Employee"];
+		const typeOpts = types.map((t) => `<option value="${t}"${this.ddsFilter.party_type === t ? " selected" : ""}>${t || "Barcha tur"}</option>`).join("");
+		const cats = ["", "Покупатели", "Поставщики", "Учредители", "Расходы", "Дивиденд 1", "Дивиденд 2", "Дивиденд 3", "Сотрудники", "Перемещения"];
+		const catOpts = cats.map((c) => `<option value="${c}"${this.ddsFilter.category === c ? " selected" : ""}>${c || "Barcha kategoriya"}</option>`).join("");
+		h += this.card(`
+			<div class="hd"><div><h3>Kassa pul oqimi</h3><div class="meta">Boshlang'ich qoldiq → kategoriyalar → yakuniy qoldiq · ${meta.period.label}</div></div>
+				<div class="kt-filter">
+					<select class="form-control tz-dds-mode"><option value="">Barcha kassa</option></select>
+					<select class="form-control tz-dds-type">${typeOpts}</select>
+					<select class="form-control tz-dds-party"><option value="">Barcha kontragent</option></select>
+					<select class="form-control tz-dds-category">${catOpts}</select>
+				</div>
+			</div>
+			<div class="tz-dds-body"><div class="tz-loader">Yuklanyapti…</div></div>
+		`);
+		setTimeout(() => { this.loadDdsParties(); this.loadDds(); }, 0);
+		return h + this.note();
+	}
+
+	loadDds() {
+		const body = this.page.main.find(".tz-dds-body");
+		if (!body.length) return;
+		body.html(`<div class="tz-loader">Jadval yuklanyapti…</div>`);
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_dds",
+			args: {
+				from_date: this.state.from_date, to_date: this.state.to_date,
+				mode_of_payment: this.ddsFilter.mode_of_payment || null,
+				party_type: this.ddsFilter.party_type || null,
+				party: this.ddsFilter.party || null,
+				category: this.ddsFilter.category || null,
+			},
+		}).then((r) => {
+			this.dds = r.message || {};
+			this.fillDdsModes(this.dds.modes || []);
+			const b = this.page.main.find(".tz-dds-body");
+			b.html(this.renderDdsSummary(this.dds) + this.renderDdsTable(this.dds));
+			b.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+		}).catch(() => body.html(`<div class="empty-hint">DDS ma'lumotini yuklab bo'lmadi.</div>`));
+	}
+
+	fillDdsModes(list) {
+		const sel = this.page.main.find(".tz-dds-mode");
+		if (!sel.length) return;
+		sel.html(`<option value="">Barcha kassa</option>` +
+			list.map((m) => `<option value="${this.esc(m)}"${this.ddsFilter.mode_of_payment === m ? " selected" : ""}>${this.esc(m)}</option>`).join(""));
+	}
+
+	loadDdsParties() {
+		const sel = this.page.main.find(".tz-dds-party");
+		if (!sel.length) return;
+		if (!this.ddsFilter.party_type) { sel.html(`<option value="">Barcha kontragent</option>`); return; }
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_kontragent_parties",
+			args: { party_type: this.ddsFilter.party_type },
+		}).then((r) => {
+			const list = r.message || [];
+			const s = this.page.main.find(".tz-dds-party");
+			if (!s.length) return;
+			s.html(`<option value="">Barcha kontragent (${list.length})</option>` +
+				list.map((p) => `<option value="${this.esc(p.value)}"${this.ddsFilter.party === p.value ? " selected" : ""}>${this.esc(p.label)}</option>`).join(""));
+		});
+	}
+
+	renderDdsSummary(d) {
+		const g = (v) => (Math.abs(v) > 0.005 ? `<span class="num" style="color:var(--good)">${this.fmt(v)}</span>` : `<span class="muted-s">—</span>`);
+		const rr = (v) => (Math.abs(v) > 0.005 ? `<span class="num" style="color:var(--warn-ink)">${this.fmt(v)}</span>` : `<span class="muted-s">—</span>`);
+		let rows = "";
+		(d.categories || []).forEach((cat) => {
+			const isExp = cat.key === "expense" && (d.expense_breakdown || []).length;
+			const isDiv = cat.key === "dividend" && (d.dividend_breakdown || []).length;
+			const tk = isExp ? "expense" : (isDiv ? "dividend" : "");
+			rows += `<tr class="${tk ? "dds-parent" : ""}"${tk ? ` data-dds-toggle="${tk}" style="cursor:pointer"` : ""}>
+				<td>${tk ? `<span class="dds-arrow" data-arrow="${tk}">▶</span> ` : ""}${this.esc(cat.label)}</td>
+				<td class="r">${g(cat.kirim)}</td>
+				<td class="r">${rr(cat.chiqim)}</td></tr>`;
+			const bd = isDiv ? d.dividend_breakdown : (isExp ? d.expense_breakdown : null);
+			if (bd) rows += bd.map((b) => `<tr class="dds-sub dds-sub-${tk}" style="display:none">
+				<td class="dds-subcell ell" data-tt="${this.esc(b.label)}">${this.esc(b.label)}</td>
+				<td class="r">${g(b.kirim)}</td>
+				<td class="r">${rr(b.chiqim)}</td></tr>`).join("");
+		});
+		return this.card(`
+			<div class="hd"><div><h3>Umumiy oqim</h3><div class="meta">Kategoriyalar kesimida kirim/chiqim</div></div></div>
+			<div class="tbl-wrap"><table>
+				<thead><tr><th>Kategoriya</th><th class="r">Kirim</th><th class="r">Chiqim</th></tr></thead>
+				<tbody>
+					<tr class="b"><td>Начальный остаток (boshlang'ich)</td><td class="r" colspan="2">${this.fmt(d.opening)}</td></tr>
+					${rows || `<tr><td colspan="3"><span class="muted-s">Harakat yo'q</span></td></tr>`}
+					<tr class="b"><td>Конечный остаток (yakuniy)</td><td class="r" colspan="2">${this.fmt(d.closing)}</td></tr>
+				</tbody>
+				<tfoot><tr class="b"><td>Jami harakat</td>
+					<td class="r"><span class="num" style="color:var(--good)">${this.fmt(d.total_kirim)}</span></td>
+					<td class="r"><span class="num" style="color:var(--warn-ink)">${this.fmt(d.total_chiqim)}</span></td></tr></tfoot>
+			</table></div>`, "mb");
+	}
+
+	renderDdsTable(d) {
+		const tx = d.transactions || [];
+		if (!tx.length) return this.card(`<div class="empty-hint" style="padding:22px 8px">Tanlangan filtr bo'yicha harakat topilmadi.</div>`, "mb");
+		const body = tx.map((x) => `<tr>
+			<td>${this.dmy(x.date)}</td>
+			<td class="ell" data-tt="${this.esc(x.account)}">${this.esc(x.account)}</td>
+			<td class="ell" data-tt="${this.esc(x.description)}">${this.esc(x.description)}</td>
+			<td class="r num" style="color:var(--good)">${x.kirim ? this.fmt(x.kirim) : ""}</td>
+			<td class="r num" style="color:var(--warn-ink)">${x.chiqim ? this.fmt(x.chiqim) : ""}</td>
+			<td class="ell" data-tt="${this.esc(x.remarks)}">${this.esc(x.remarks)}</td>
+			<td class="ell" data-tt="${this.esc(x.voucher_no)}">${this.esc(x.voucher_no)}</td>
+		</tr>`).join("");
+		return this.card(`
+			<div class="hd"><div><h3>Harakatlar</h3><div class="meta">${d.tx_count} ta yozuv${d.tx_count > 800 ? " · eng yangi 800 tasi" : ""}</div></div></div>
+			<div class="tbl-wrap"><table>
+				<thead><tr><th>Sana</th><th>Kassa</th><th>Kategoriya / kontragent</th><th class="r">Kirim</th><th class="r">Chiqim</th><th>Izoh</th><th>Hujjat</th></tr></thead>
+				<tbody>${body}</tbody>
+			</table></div>`, "mb");
 	}
 
 	// ================= TAB: Tuition =================

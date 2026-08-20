@@ -165,6 +165,12 @@
 .tz-inv tr.cat-row td { background:var(--card-2); border-top:1px solid var(--line-strong); font-size:12px; }
 .tz-inv .party-cell { padding-left:20px; }
 .tz-inv .cat-badge { display:inline-block; font-size:11px; font-weight:600; color:var(--ink-2); background:var(--card-2); border:1px solid var(--line); border-radius:20px; padding:2px 9px; white-space:nowrap; }
+/* DDS (pul oqimi) */
+.tz-inv tr.dds-parent td { font-weight:600; }
+.tz-inv tr.dds-parent:hover td { background:var(--card-2); }
+.tz-inv .dds-arrow { display:inline-block; font-size:9px; color:var(--muted); width:12px; }
+.tz-inv td.dds-subcell { padding-left:26px; font-style:italic; color:var(--ink-2); max-width:260px; }
+.tz-inv tr.dds-sub td { background:var(--card-2); font-size:12px; }
 .tz-inv .tz-loader { padding:24px 8px; text-align:center; color:var(--muted); font-size:13px; }
 
 /* horizontal bars */
