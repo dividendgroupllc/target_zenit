@@ -42,17 +42,24 @@ MAX_COLS = 12
 
 PROVISIONAL_KEY = "'Provisional Profit / Loss (Credit)'"
 
-# Kontragent qatorlari (armada shablonidagi AYNAN shu labellar)
+# Kontragent qatorlari (armada shablonidagi AYNAN shu labellar).
+# DIQQAT: ro'yxat yopiq EMAS — GL'da uchragan boshqa party_type'lar ham
+# (masalan Shareholder) avtomatik qatorga tushadi, aks holda summa yo'qoladi.
 PARTY_DEBIT_LABEL = {
     "Customer": "Задолженность клиентов",
     "Supplier": "Выданные авансы поставщикам",
     "Employee": "Задолженность сотр-в",
+    "Shareholder": "Задолженность акционеров",
+    "": "Прочие дебиторы (без контрагента)",
 }
 PARTY_CREDIT_LABEL = {
     "Customer": "Полученные авансы от клиентов",
     "Supplier": "Задолженность перед поставщиками",
     "Employee": "Задолженность перед сотрудниками",
+    "Shareholder": "Задолженность перед акционерами",
+    "": "Прочие кредиторы (без контрагента)",
 }
+PARTY_ORDER = ["Customer", "Supplier", "Employee", "Shareholder", ""]
 
 # Standart hisob nomlari uchun ruscha ko'rinish (armada formati);
 # maxsus (o'zbekcha) hisoblar o'z nomi bilan chiqadi
@@ -107,25 +114,30 @@ def _column_end_dates(col_keys, period_end_date):
     return ends
 
 
-def _party_balances(company, col_keys, period_end_date):
-    """Har (party_type, party) bo'yicha barcha hisoblardagi netto qoldiq
-    (debet − kredit) har ustun oxiriga hisoblanadi; musbat → aktiv qator,
-    manfiy → passiv qatorga yig'iladi."""
+def _party_balances(company, col_keys, period_end_date, account_names):
+    """Har (party_type, party) bo'yicha netto qoldiq (debet − kredit) har
+    ustun oxiriga hisoblanadi; musbat → aktiv, manfiy → passiv qatorga.
+
+    Faqat account_names dagi hisoblar olinadi — bu hisob-based bo'limlardan
+    chiqarib tashlangan subtree'lar (AR/AP/avanslar) bilan AYNAN bir xil
+    to'plam, shunda hech bir summa ikki marta ham, nol marta ham sanalmaydi.
+    party_type cheklanmaydi (Shareholder va b. ham kiradi); party
+    belgilanmagan yozuvlar "" kaliti ostida alohida qatorga tushadi."""
     from collections import defaultdict
 
     from frappe.utils import flt
 
     ends = _column_end_dates(col_keys, period_end_date)
-    debit = {pt: [0.0] * len(ends) for pt in PARTY_DEBIT_LABEL}
-    credit = {pt: [0.0] * len(ends) for pt in PARTY_CREDIT_LABEL}
-    if not ends:
+    debit = defaultdict(lambda: [0.0] * len(ends))
+    credit = defaultdict(lambda: [0.0] * len(ends))
+    if not ends or not account_names:
         return debit, credit
 
     rows = frappe.db.sql(
         """
         SELECT
-            party_type,
-            party,
+            IFNULL(party_type, '') AS party_type,
+            IFNULL(party, '')      AS party,
             YEAR(posting_date)  AS yr,
             MONTH(posting_date) AS mo,
             SUM(debit - credit) AS net
@@ -133,18 +145,19 @@ def _party_balances(company, col_keys, period_end_date):
         WHERE
             is_cancelled = 0
             AND company = %(company)s
-            AND party_type IN ('Customer', 'Supplier', 'Employee')
-            AND party IS NOT NULL AND party != ''
+            AND account IN %(accounts)s
             AND posting_date <= %(last_date)s
         GROUP BY party_type, party, YEAR(posting_date), MONTH(posting_date)
         """,
-        {"company": company, "last_date": ends[-1]},
+        {"company": company, "last_date": ends[-1],
+         "accounts": tuple(account_names)},
         as_dict=True,
     )
 
     per_party = defaultdict(lambda: defaultdict(float))
     for r in rows:
-        per_party[(r.party_type, r.party)][(int(r.yr), int(r.mo))] += flt(r.net)
+        pt = r.party_type if r.party else ""
+        per_party[(pt, r.party)][(int(r.yr), int(r.mo))] += flt(r.net)
 
     for (party_type, _party), months in per_party.items():
         for i, end in enumerate(ends):
@@ -156,6 +169,15 @@ def _party_balances(company, col_keys, period_end_date):
                 credit[party_type][i] += -bal
 
     return debit, credit
+
+
+def _party_rows(balances, labels):
+    """defaultdict → [(label, values)] — armada tartibida, nol qatorlar
+    tashlanadi, ro'yxatda yo'q party_type'lar oxiriga qo'shiladi."""
+    keys = [k for k in PARTY_ORDER if k in balances]
+    keys += sorted(k for k in balances if k not in PARTY_ORDER)
+    return [(labels.get(k, k), balances[k])
+            for k in keys if any(balances[k])]
 
 
 @frappe.whitelist()
@@ -238,13 +260,19 @@ def generate_balance_pdf(filters):
     ]
 
     # ── Kontragent qatorlari ─────────────────────────────────────────────
+    # Netting doirasi = hisob-based bo'limlardan chiqarilgan hisoblar
+    # (AR 1300 + AP 2100 + Employee Advances 1610) — aynan shu to'plam.
+    netted_accounts = (
+        [a.name for a in _leaves(ar_grp)]
+        + [a.name for a in _leaves(ap_grp)]
+        + [a.name for a in emp_adv]
+    )
     party_debit, party_credit = _party_balances(
-        company, col_keys, normalized.get("period_end_date"))
+        company, col_keys, normalized.get("period_end_date"),
+        netted_accounts)
 
-    debit_rows = [(PARTY_DEBIT_LABEL[pt], party_debit[pt])
-                  for pt in ("Customer", "Supplier", "Employee")]
-    credit_rows = [(PARTY_CREDIT_LABEL[pt], party_credit[pt])
-                   for pt in ("Customer", "Supplier", "Employee")]
+    debit_rows = _party_rows(party_debit, PARTY_DEBIT_LABEL)
+    credit_rows = _party_rows(party_credit, PARTY_CREDIT_LABEL)
 
     # ── Капитал: oylik oqim + tuzatilgan «прошлых периодов» ──────────────
     def _get(key, src):
