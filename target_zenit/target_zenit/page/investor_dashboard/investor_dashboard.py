@@ -134,8 +134,72 @@ def _balance_upto(accounts, date, company):
     return {r.account: flt(r.bal) for r in rows}
 
 
+def _cash_bank_universe(tracked, company):
+    """Ichki o'tkazmani aniqlash uchun KENG kassa/bank to'plami: account_type Cash/Bank bo'lgan
+    barcha hisoblar + kuzatilayotgan (Mode of Payment) hisoblar. Bu ba'zi bank hisobi to'lov usuli
+    sifatida sozlanmagan bo'lsa ham ko'chirmani to'g'ri tutadi."""
+    uni = set(tracked or [])
+    try:
+        f = {"account_type": ["in", ["Cash", "Bank"]], "is_group": 0}
+        if company:
+            f["company"] = company
+        for a in frappe.get_all("Account", filters=f, fields=["name"]):
+            uni.add(a.name)
+    except Exception:
+        pass
+    return uni
+
+
+def _internal_transfer_flows(cash_accounts, company, from_date, to_date):
+    """'Ichki o'tkazma' (konvertatsiya / kassa-bank ko'chirma) — pul o'z kassa/bank hisoblari orasida
+    yuradi. Voucher ≥2 ta har xil kassa/bank hisobiga tegsa → ichki o'tkazma (DDS 'Перемещения' bilan
+    bir xil g'oya). Haqiqiy tashqi harakat (mijoz to'lovi, xarajat, maosh) faqat BITTA kassa hisobiga
+    tegadi → noto'g'ri chiqarib yuborilmaydi. Valyuta ayirmasi (Income/Expense) oyog'i bo'lsa ham tutadi.
+
+    Qaytaradi: ({account: {kirim, chiqim}}, {ichki o'tkazma voucher_no lar to'plami})."""
+    flows = defaultdict(lambda: {"kirim": 0.0, "chiqim": 0.0})
+    internal = set()
+    if not cash_accounts:
+        return flows, internal
+    rows = frappe.db.sql(
+        f"""SELECT voucher_no, account,
+                   debit_in_account_currency d, credit_in_account_currency c
+            FROM `tabGL Entry`
+            WHERE account IN %(a)s AND posting_date BETWEEN %(f)s AND %(t)s
+              AND is_cancelled=0 {_co(company)}""",
+        {"a": tuple(cash_accounts), "f": from_date, "t": to_date, "company": company}, as_dict=True)
+    if not rows:
+        return flows, internal
+    vnos = list({r.voucher_no for r in rows if r.voucher_no})
+    if not vnos:
+        return flows, internal
+    universe = _cash_bank_universe(cash_accounts, company)
+    # Har voucher nechta HAR XIL kassa/bank hisobiga tegadi? ≥2 → ichki o'tkazma
+    ncash = {}
+    chunk = 800
+    for i in range(0, len(vnos), chunk):
+        part = vnos[i:i + chunk]
+        res = frappe.db.sql(
+            f"""SELECT voucher_no, COUNT(DISTINCT account) n
+                FROM `tabGL Entry`
+                WHERE voucher_no IN %(v)s AND account IN %(u)s AND is_cancelled=0 {_co(company)}
+                GROUP BY voucher_no""",
+            {"v": tuple(part), "u": tuple(universe), "company": company}, as_dict=True)
+        for r in res:
+            ncash[r.voucher_no] = int(r.n or 0)
+    internal = {vn for vn, n in ncash.items() if n >= 2}
+    for r in rows:
+        if r.voucher_no in internal:
+            flows[r.account]["kirim"] += flt(r.d)
+            flows[r.account]["chiqim"] += flt(r.c)
+    return flows, internal
+
+
 def _cash_section(company, from_date, to_date, company_currency):
-    """Har hisob: opening → kirim → chiqim → closing (DDS uslubi)."""
+    """Har hisob: opening → kirim → chiqim → closing (DDS uslubi).
+    Kirim/chiqim HAMMA joyda (KPI, valyuta kesimi va hisoblar jadvali) ichki o'tkazmasiz —
+    konvertatsiya va ko'chirma (peremeshenie) chiqarib tashlanadi, chunki bular kompaniya ichidagi
+    harakat, real savdo oqimi emas. Yakuniy qoldiq esa haqiqiy kassa balansi bo'lib qoladi."""
     accs = _cash_accounts(company)
     account_list = list(accs.keys())
     opening = _balance_before(account_list, from_date, company)
@@ -152,31 +216,39 @@ def _cash_section(company, from_date, to_date, company_currency):
             {"a": tuple(account_list), "f": from_date, "t": to_date, "company": company}, as_dict=True)
         period = {r.account: (flt(r.kirim), flt(r.chiqim)) for r in rows}
 
+    # Ichki o'tkazma (konvertatsiya/ko'chirma) oqimlari — jami kirim/chiqimdan chiqariladi
+    tflows, pure_vouchers = _internal_transfer_flows(account_list, company, from_date, to_date)
+
     rows_out = []
     tot = {"opening": 0.0, "kirim": 0.0, "chiqim": 0.0, "closing": 0.0}
     other = defaultdict(lambda: {"opening": 0.0, "closing": 0.0})
-    # Har valyuta kesimida to'liq jami (opening→kirim→chiqim→closing) — "Jami USD / Jami UZS"
+    # Har valyuta kesimida jami (kirim/chiqim ichki o'tkazmasiz, closing haqiqiy) — "Jami USD / Jami UZS"
     by_ccy = defaultdict(lambda: {"opening": 0.0, "kirim": 0.0, "chiqim": 0.0, "closing": 0.0, "accounts": 0})
     main_accounts = []
     for account, mode in accs.items():
         cur = _acc_currency(account)
         op = flt(opening.get(account, 0.0))
         kirim, chiqim = period.get(account, (0.0, 0.0))
-        cl = op + kirim - chiqim
+        cl = op + kirim - chiqim                       # HAQIQIY yakuniy qoldiq (to'liq harakat)
+        tf = tflows.get(account, {"kirim": 0.0, "chiqim": 0.0})
+        k_ext = kirim - flt(tf["kirim"])               # ichki o'tkazmasiz kirim
+        c_ext = chiqim - flt(tf["chiqim"])             # ichki o'tkazmasiz chiqim
+        # hisoblar kesimi jadvali: kirim/chiqim ICHKI O'TKAZMASIZ (konvertatsiya/ko'chirma chiqarilgan);
+        # yakuniy qoldiq esa haqiqiy kassa balansi (op + to'liq kirim − to'liq chiqim).
         row = {"account": account, "mode": mode, "currency": cur,
-               "opening": op, "kirim": kirim, "chiqim": chiqim, "closing": cl}
+               "opening": op, "kirim": k_ext, "chiqim": c_ext, "closing": cl}
         rows_out.append(row)
         b = by_ccy[cur]
         b["opening"] += op
-        b["kirim"] += kirim
-        b["chiqim"] += chiqim
+        b["kirim"] += k_ext
+        b["chiqim"] += c_ext
         b["closing"] += cl
         b["accounts"] += 1
         if cur == company_currency:
             main_accounts.append(account)
             tot["opening"] += op
-            tot["kirim"] += kirim
-            tot["chiqim"] += chiqim
+            tot["kirim"] += k_ext
+            tot["chiqim"] += c_ext
             tot["closing"] += cl
         else:
             other[cur]["opening"] += op
@@ -191,13 +263,17 @@ def _cash_section(company, from_date, to_date, company_currency):
         "other": [{"currency": c, "opening": v["opening"], "closing": v["closing"]} for c, v in other.items()],
         "by_currency": by_currency,
         "main_accounts": main_accounts,
+        "pure_transfer_vouchers": pure_vouchers,
     }
 
 
-def _cashflow_by_category(all_accounts, main_set, acc_ccy, company_currency, company, from_date, to_date):
+def _cashflow_by_category(all_accounts, main_set, acc_ccy, company_currency, company, from_date, to_date,
+                          pure_vouchers=None):
     """Kassa kirim/chiqimini kontragent kategoriyasi + aniq kontragent (batafsil) + valyuta bo'yicha ajratish.
     Kategoriya/party jamlanmasi faqat asosiy (company) valyuta hisoblari (main_set) bo'yicha;
-    tranzaksiyalar (in_tx/out_tx) esa barcha valyutalar bo'yicha (har biri o'z valyuta belgisi bilan)."""
+    tranzaksiyalar (in_tx/out_tx) esa barcha valyutalar bo'yicha (har biri o'z valyuta belgisi bilan).
+    Ichki o'tkazma (pure_vouchers — konvertatsiya/ko'chirma) kirim/chiqimga KIRMAYDI (chiqarib tashlanadi)."""
+    pure_set = pure_vouchers or set()
     empty = {"in": [], "out": [], "in_detail": [], "out_detail": [], "in_tx": [], "out_tx": []}
     inflow = defaultdict(float)
     outflow = defaultdict(float)
@@ -272,7 +348,11 @@ def _cashflow_by_category(all_accounts, main_set, acc_ccy, company_currency, com
         return name_cache[key]
 
     for r in rows:
+        if r.voucher_no in pure_set:
+            continue  # ichki o'tkazma (konvertatsiya/ko'chirma) — kassa kirim/chiqimiga kirmaydi
         cat, pt, party = resolve(r)
+        if cat == "transfer":
+            continue  # zaxira: resolve() ichki o'tkazma deb topgan bo'lsa ham chiqarib tashlaymiz
         d, c = flt(r.d), flt(r.c)
         is_main = r.account in main_set               # asosiy valyuta hisobi (jamlanma faqat shu)
         cur = acc_ccy.get(r.account) or company_currency
@@ -749,7 +829,8 @@ def get_dashboard_data(from_date=None, to_date=None):
     flow = _monthly_flow(main_accounts, company, t0, 12)
     all_cash = [a["account"] for a in cash["accounts"]]
     acc_ccy = {a["account"]: a["currency"] for a in cash["accounts"]}
-    cat = _cashflow_by_category(all_cash, set(main_accounts), acc_ccy, ccy, company, f0, t0)
+    cat = _cashflow_by_category(all_cash, set(main_accounts), acc_ccy, ccy, company, f0, t0,
+                                pure_vouchers=cash.get("pure_transfer_vouchers"))
     budget = _budget_split(company, f0, t0, ccy)
 
     # ---- P&L ----

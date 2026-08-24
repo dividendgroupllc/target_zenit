@@ -335,7 +335,7 @@ class TZInvestorDashboard {
 		h += this.topCombined(cf);
 
 		// Kassa harakati KPI — tanlangan valyuta bo'yicha
-		h += this.sec("Kassa harakati", `boshlang'ich → kirim → chiqim → yakuniy${this.cfCcy ? " · " + this.esc(this.cfCcy) : ""}`);
+		h += this.sec("Kassa harakati", `boshlang'ich → kirim → chiqim → yakuniy · kirim/chiqim ichki o'tkazmasiz (konvertatsiya/ko'chirma)${this.cfCcy ? " · " + this.esc(this.cfCcy) : ""}`);
 		const kpi = (metric, raw, pin, valColor) => {
 			const clickable = metric === "kirim" || metric === "chiqim";
 			return this.moneyKpi({
@@ -445,7 +445,7 @@ class TZInvestorDashboard {
 			<td class="r num" style="font-weight:700">${this.fmt(a.closing)}</td></tr>`).join("")
 			: `<tr><td colspan="6" class="empty-hint">Hisob topilmadi.</td></tr>`;
 		return this.card(`
-			<div class="hd"><div><h3>Hisoblar kesimida${this.cfCcy ? ` · ${this.esc(this.cfCcy)}` : ""}</h3><div class="meta">Har bir kassa/bank hisobi</div></div></div>
+			<div class="hd"><div><h3>Hisoblar kesimida${this.cfCcy ? ` · ${this.esc(this.cfCcy)}` : ""}</h3><div class="meta">Kirim/chiqim ichki o'tkazmasiz (konvertatsiya/ko'chirma) · yakun — haqiqiy qoldiq</div></div></div>
 			<div class="tbl-wrap"><table>
 				<thead><tr><th>Hisob</th><th>Usul</th><th class="r">Boshi</th><th class="r">Kirim</th><th class="r">Chiqim</th><th class="r">Yakun</th></tr></thead>
 				<tbody>${rows}</tbody>
