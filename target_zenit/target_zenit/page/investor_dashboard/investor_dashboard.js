@@ -160,6 +160,24 @@ class TZInvestorDashboard {
 			rows.css("display", vis ? "none" : "table-row");
 			this.page.main.find(`.dds-arrow[data-arrow="${k}"]`).text(vis ? "▶" : "▼");
 		});
+		// o'quvchilar to'lovi jadvali — ko'rinishni almashtirish (segment toggle)
+		body.on("click", "[data-tv]", (e) => {
+			const v = String($(e.currentTarget).data("tv"));
+			if (this.tuitionView === v) return;
+			this.tuitionView = v;
+			this.renderTab();
+		});
+		// o'quvchi bo'yicha qidiruv — HAR IKKALA ko'rinishda ham ishlaydi (tr[data-sname])
+		body.on("input", ".tz-stud-filter", (e) => {
+			const q = String(e.target.value || "").trim().toLowerCase();
+			let shown = 0;
+			this.page.main.find("tr[data-sname]").each((i, el) => {
+				const match = !q || (el.getAttribute("data-sname") || "").indexOf(q) !== -1;
+				el.style.display = match ? "" : "none";
+				if (match) shown++;
+			});
+			this.page.main.find(".tz-stud-count").text(shown);
+		});
 	}
 
 	applyPreset(p) {
@@ -766,34 +784,93 @@ class TZInvestorDashboard {
 	// ================= TAB: Tuition =================
 	renderTuition() {
 		const t = this.data.tuition, ccy = this.ccyLabel(this.data.meta.currency);
-		let h = this.sec("O'quvchilar to'lovi", "Education Fees asosida");
-		if (!t.available) {
-			h += this.card(`<div class="empty-hint" style="padding:26px 8px">
-				<b>Education Fees ma'lumoti topilmadi.</b><br>O'quvchilar to'lovga (Fees) ulangach, bu bo'lim avtomatik to'ladi:
-				hisoblangan/yig'ilgan summa, yig'im foizi, sinf kesimi, qarzdor o'quvchilar.<br>
-				Hozircha faol o'quvchilar: <b>${this.fmt(t.active)}</b> ta.</div>`);
-			return h + this.note();
-		}
+		const p = (t && t.payments) || { by_currency: [], students: [], recent: [], total_count: 0, total_students: 0 };
+		// summa: so'm butun (kasrsiz), boshqa valyuta 2 kasr bilan
+		const m2 = (n) => { n = Number(n) || 0; const neg = n < 0 ? "−" : ""; const a = Math.abs(n).toFixed(2).split("."); return neg + a[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ") + "," + a[1]; };
+		const mAmt = (n, c) => (c === "UZS" ? this.fmt(n) : m2(n));
+		const main = (p.by_currency || [])[0] || null;   // eng katta valyuta buketi (asosan so'm)
+		let h = this.sec("O'quvchilar to'lovi", `To'lovlar (Payment Entry) asosida · kassaga tushgan real pul · ${this.esc(this.data.meta.period.label)}`);
+
+		// ---- To'lov KPI'lari ----
 		h += `<div class="grid cols-4 mb">
-			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(t.active), pin: "var(--c2)", noBadge: true, sub: `${t.with_fees} tada to'lov yozuvi` })}
-			${this.moneyKpi({ label: "Hisoblangan (billed)", raw: t.billed, pin: "var(--c1)", noBadge: true })}
-			${this.moneyKpi({ label: "Yig'ilgan (collected)", raw: t.collected, pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true })}
-			${this.kpi({ label: "Yig'im foizi", value: (t.rate != null ? t.rate : "—"), unit: t.rate != null ? "%" : "", pin: "var(--warn)", noBadge: true, sub: `Qoldiq qarz ${this.kc(t.outstanding)} ${ccy}` })}
+			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(t.active), pin: "var(--c2)", noBadge: true, sub: "jami ro'yxatda" })}
+			${this.kpi({ label: "Davr to'lovlari", value: this.fmt(p.total_count), pin: "var(--brand)", valColor: "var(--brand-ink)", noBadge: true, sub: "ta to'lov yozuvi" })}
+			${this.kpi({ label: "To'lagan o'quvchilar", value: this.fmt(p.total_students), pin: "var(--c1)", noBadge: true, sub: "shu davrda" })}
+			${this.kpi({ label: "Davr yig'imi", value: (main ? mAmt(main.total, main.currency) : "0"), unit: main ? " " + this.esc(main.currency) : "", pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: (p.by_currency || []).length > 1 ? "boshqa valyuta pastda" : "kassaga tushgan" })}
 		</div>`;
 
-		const st = t.status, tot = st.paid + st.partial + st.debtor;
-		const donut = tot ? `<div class="donut-wrap">
-			${this.donutSvg([{ pct: st.paid / tot * 100 }, { pct: st.partial / tot * 100 }, { pct: st.debtor / tot * 100 }], ["var(--good)", "var(--warn)", "var(--bad)"], `${Math.round(st.paid / tot * 100)}%`, "to'ladi")}
-			<div class="legend" style="flex-direction:column;gap:11px">
-				<div class="it"><span class="sw" style="background:var(--good)"></span> To'liq to'ladi <b>${st.paid} ta</b></div>
-				<div class="it"><span class="sw" style="background:var(--warn)"></span> Qisman <b>${st.partial} ta</b></div>
-				<div class="it"><span class="sw" style="background:var(--bad)"></span> Qarzdor <b>${st.debtor} ta</b></div>
-			</div></div>` : `<div class="empty-hint">To'lov holati ma'lumoti yo'q.</div>`;
-		h += `<div class="grid cols-2 mb">
-			${this.card(`<div class="hd"><div><h3>To'lov holati</h3><div class="meta">${tot} o'quvchi</div></div></div>${donut}`)}
-			${this.classCard(t.by_class)}
-		</div>`;
-		h += this.partyTable("Eng katta qarzdor o'quvchilar", t.top_debtors, "var(--bad-ink)");
+		// ---- Valyuta kesimi (KICHIK — chip ko'rinishida, cardga sig'adi) ----
+		const ccyChips = (p.by_currency || []).length
+			? p.by_currency.map((b) => `<span class="ccy-chip"><b>${this.esc(b.currency)}</b> <b style="color:var(--good-ink)">${mAmt(b.total, b.currency)}</b> <span style="color:var(--muted);font-size:12px">· ${b.count} to'lov · ${b.students} o'quvchi</span></span>`).join("")
+			: `<span class="empty-hint">Davrda to'lov yo'q.</span>`;
+		h += this.card(`<div class="hd"><div><h3>Davr yig'imi — valyuta kesimida</h3><div class="meta">kassaga tushgan real pul, konvertatsiyasiz</div></div></div>
+			<div style="display:flex;flex-wrap:wrap;gap:10px;padding:2px">${ccyChips}</div>`, "mb");
+
+		// ---- BITTA jadval + toggle: o'quvchilar kesimi (default) ⇄ har bir to'lov ----
+		const view = this.tuitionView === "payments" ? "payments" : "students";
+		let title, meta, thead, tbodyRows;
+		if (view === "students") {
+			title = "O'quvchilar kesimi — har biri qancha to'lagan";
+			meta = `ko'pdan kamga · <span class="tz-stud-count">${(p.students || []).length}</span> ta o'quvchi`;
+			thead = `<tr><th class="r">#</th><th>O'quvchi</th><th class="r">To'lovlar</th><th class="r">Jami</th><th class="r">Oxirgi</th></tr>`;
+			tbodyRows = (p.students || []).length
+				? p.students.map((s, i) => `<tr data-sname="${this.esc(String(s.name || "").toLowerCase())}">
+					<td class="r num" style="color:var(--muted)">${i + 1}</td>
+					<td class="ell" data-tt="${this.esc(s.name)}">${this.esc(s.name)}</td>
+					<td class="r num">${s.count}</td>
+					<td class="r num" style="font-weight:700">${mAmt(s.total, s.currency)} ${this.esc(s.currency)}</td>
+					<td class="r">${this.esc(s.last_date || "")}</td></tr>`).join("")
+				: `<tr><td colspan="5" class="empty-hint">Ma'lumot yo'q.</td></tr>`;
+		} else {
+			title = "Har bir to'lov — izohlari bilan";
+			meta = `har bir to'lov · <span class="tz-stud-count">${(p.recent || []).length}</span> ta · kassir izohi (Kassa)`;
+			thead = `<tr><th>Sana</th><th>O'quvchi</th><th class="r">Summa</th><th>Usul</th><th>Izoh</th><th>Kassa</th></tr>`;
+			tbodyRows = (p.recent || []).length
+				? p.recent.map((r) => `<tr data-sname="${this.esc(String(r.student || "").toLowerCase())}">
+					<td>${this.esc(r.date)}</td>
+					<td class="ell" data-tt="${this.esc(r.student)}">${this.esc(r.student)}</td>
+					<td class="r num" style="color:var(--good-ink);font-weight:700">${mAmt(r.amount, r.currency)} ${this.esc(r.currency)}${r.orig_currency && r.orig_currency !== r.currency ? `<div style="font-size:11px;color:var(--muted);font-weight:400">o'quvchi: ${mAmt(r.orig_amount, r.orig_currency)} ${this.esc(r.orig_currency)}</div>` : ""}</td>
+					<td class="ell">${this.esc(r.mode)}</td>
+					<td style="max-width:340px;white-space:normal;color:var(--muted);font-size:12px" data-tt="${this.esc(r.remarks)}">${this.esc(r.remarks).replace(/\n/g, " · ")}</td>
+					<td>${r.ref ? `<a class="tz-kassa-link" href="/app/kassa/${encodeURIComponent(r.ref)}" target="_blank" rel="noopener">${this.esc(r.ref)}</a>` : "—"}</td>
+				</tr>`).join("")
+				: `<tr><td colspan="6" class="empty-hint">To'lov topilmadi.</td></tr>`;
+		}
+		const seg = `<div class="tz-seg" role="tablist">
+				<button class="tz-seg-opt${view === "students" ? " on" : ""}" data-tv="students">O'quvchilar kesimi</button>
+				<button class="tz-seg-opt${view === "payments" ? " on" : ""}" data-tv="payments">Har bir to'lov</button>
+			</div>`;
+		h += this.card(`<div class="hd tz-tuition-hd">
+				<div><h3>${title}</h3><div class="meta">${meta}</div></div>
+				<div class="tz-tuition-tools">
+					<input type="text" class="tz-stud-filter" placeholder="O'quvchi qidirish…" autocomplete="off">
+					${seg}
+				</div>
+			</div>
+			<div class="tbl-wrap"><table><thead>${thead}</thead><tbody>${tbodyRows}</tbody></table></div>`, "mb");
+
+		// ---- Agar Education Fees ham ishlatilsa — billing bloklari qo'shiladi ----
+		if (t.available) {
+			h += `<div class="grid cols-4 mb">
+				${this.moneyKpi({ label: "Hisoblangan (billed)", raw: t.billed, pin: "var(--c1)", noBadge: true })}
+				${this.moneyKpi({ label: "Yig'ilgan (collected)", raw: t.collected, pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true })}
+				${this.kpi({ label: "Yig'im foizi", value: (t.rate != null ? t.rate : "—"), unit: t.rate != null ? "%" : "", pin: "var(--warn)", noBadge: true, sub: `Qoldiq qarz ${this.kc(t.outstanding)} ${ccy}` })}
+				${this.kpi({ label: "Fees yozuvi", value: this.fmt(t.with_fees), pin: "var(--c2)", noBadge: true, sub: "ta o'quvchida" })}
+			</div>`;
+			const st = t.status, tot = st.paid + st.partial + st.debtor;
+			const donut = tot ? `<div class="donut-wrap">
+				${this.donutSvg([{ pct: st.paid / tot * 100 }, { pct: st.partial / tot * 100 }, { pct: st.debtor / tot * 100 }], ["var(--good)", "var(--warn)", "var(--bad)"], `${Math.round(st.paid / tot * 100)}%`, "to'ladi")}
+				<div class="legend" style="flex-direction:column;gap:11px">
+					<div class="it"><span class="sw" style="background:var(--good)"></span> To'liq to'ladi <b>${st.paid} ta</b></div>
+					<div class="it"><span class="sw" style="background:var(--warn)"></span> Qisman <b>${st.partial} ta</b></div>
+					<div class="it"><span class="sw" style="background:var(--bad)"></span> Qarzdor <b>${st.debtor} ta</b></div>
+				</div></div>` : `<div class="empty-hint">To'lov holati ma'lumoti yo'q.</div>`;
+			h += `<div class="grid cols-2 mb">
+				${this.card(`<div class="hd"><div><h3>To'lov holati</h3><div class="meta">${tot} o'quvchi</div></div></div>${donut}`)}
+				${this.classCard(t.by_class)}
+			</div>`;
+			h += this.partyTable("Eng katta qarzdor o'quvchilar", t.top_debtors, "var(--bad-ink)");
+		}
 		return h + this.note();
 	}
 

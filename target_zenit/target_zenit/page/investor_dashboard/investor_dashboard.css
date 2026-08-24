@@ -96,6 +96,21 @@
 .tz-inv tbody tr.b td, .tz-inv tr.b td { font-weight:700; }
 .tz-inv .ell { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tz-inv .othccy { font-size:12px; color:var(--muted); margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); }
+/* o'quvchi to'lovi — valyuta chip + qidiruv input */
+.tz-inv .ccy-chip { display:inline-flex; gap:8px; align-items:baseline; padding:7px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card-2); font-variant-numeric:tabular-nums; }
+.tz-inv .tz-stud-filter { padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card-2); color:var(--ink); font:inherit; font-size:13px; min-width:220px; outline:none; }
+.tz-inv .tz-stud-filter:focus { border-color:var(--brand); }
+.tz-inv .tz-stud-filter::placeholder { color:var(--muted); }
+/* o'ng tarafdagi asboblar: qidiruv + segment toggle */
+.tz-inv .tz-tuition-hd { align-items:center; }
+.tz-inv .tz-tuition-tools { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-left:auto; }
+/* segment toggle (o'quvchilar kesimi ⇄ har bir to'lov) — davr yig'imidan ajralib turadi */
+.tz-inv .tz-seg { display:inline-flex; padding:3px; gap:3px; background:var(--card-2); border:1px solid var(--line); border-radius:11px; }
+.tz-inv .tz-seg-opt { border:0; background:transparent; color:var(--ink-2); font:inherit; font-size:12.5px; font-weight:650; padding:7px 15px; border-radius:8px; cursor:pointer; white-space:nowrap; transition:background .12s, color .12s; }
+.tz-inv .tz-seg-opt:hover { color:var(--ink); }
+.tz-inv .tz-seg-opt.on { background:var(--brand); color:#fff; box-shadow:0 1px 3px rgba(14,124,134,.35); }
+.tz-inv .tz-kassa-link { color:var(--brand-ink); font-weight:600; font-size:12px; white-space:nowrap; text-decoration:none; }
+.tz-inv .tz-kassa-link:hover { text-decoration:underline; }
 
 /* valyutalar kesimida jami (Jami USD / Jami UZS) */
 .tz-inv .ccy-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px; }

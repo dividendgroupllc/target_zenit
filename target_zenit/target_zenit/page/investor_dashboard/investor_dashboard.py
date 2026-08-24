@@ -702,11 +702,91 @@ def _employee_advances():
 # ===========================================================================
 # O'quvchilar to'lovi (Education Fees)
 # ===========================================================================
-def _tuition_section(company):
+def _student_payments(company, from_date, to_date):
+    """O'quvchi to'lovlari — bevosita Payment Entry (Receive) asosida.
+    Maktabda Fees (schyot) ishlatilmaydi, faqat to'lovlar yoziladi → to'lovlarni
+    o'quvchi kesimida, izohlari (remarks) bilan ko'rsatamiz. Faqat customer_group='Student'
+    bo'lgan mijozlar; payment_type='Receive' (chiquvchi/xato 'Pay' yozuvlar chiqarib tashlanadi).
+    Summa = KASSAGA TUSHGAN REAL PUL (received_amount), valyutasi = tushgan hisob valyutasi.
+    Kassalar asosan so'm bo'lgani uchun ko'pchiligi so'm da chiqadi (USD $166.66 → 2 000 000 so'm).
+    Yon ma'lumot sifatida o'quvchi to'lagan asl summa (paid_amount + paid_from valyutasi) ham beriladi."""
+    res = {"by_currency": [], "students": [], "recent": [],
+           "total_count": 0, "total_students": 0, "period_total_base": 0.0}
+    if not from_date or not to_date:
+        return res
+    try:
+        rows = frappe.db.sql(
+            f"""SELECT pe.name, pe.posting_date, pe.party, pe.party_name,
+                       pe.paid_amount, pe.paid_from_account_currency ccy,
+                       pe.received_amount, pe.paid_to_account_currency deposit_ccy,
+                       pe.base_paid_amount, pe.mode_of_payment, pe.paid_to,
+                       pe.reference_no, k.remarks kassa_remarks, pe.remarks pe_remarks
+                FROM `tabPayment Entry` pe
+                JOIN `tabCustomer` c ON c.name = pe.party AND c.customer_group = 'Student'
+                LEFT JOIN `tabKassa` k ON k.name = pe.reference_no
+                WHERE pe.docstatus = 1 AND pe.party_type = 'Customer'
+                  AND pe.payment_type = 'Receive'
+                  AND pe.posting_date BETWEEN %(f)s AND %(t)s {_co(company, 'pe')}
+                ORDER BY pe.posting_date DESC, pe.name DESC""",
+            {"f": from_date, "t": to_date, "company": company}, as_dict=True)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: student payments")
+        return res
+    if not rows:
+        return res
+
+    byc = defaultdict(lambda: {"total": 0.0, "count": 0, "students": set()})
+    stud = defaultdict(lambda: {"total": 0.0, "count": 0, "last_date": None,
+                                "currency": None, "name": None})
+    all_students = set()
+    base_total = 0.0
+    for r in rows:
+        amt = flt(r.received_amount)          # KASSAGA TUSHGAN REAL PUL
+        cur = r.deposit_ccy or ""             # tushgan hisob valyutasi (asosan so'm)
+        base_total += flt(r.base_paid_amount)
+        b = byc[cur]
+        b["total"] += amt
+        b["count"] += 1
+        b["students"].add(r.party)
+        all_students.add(r.party)
+        key = (r.party, cur)
+        s = stud[key]
+        s["total"] += amt
+        s["count"] += 1
+        s["name"] = r.party_name or r.party
+        s["currency"] = cur
+        if s["last_date"] is None or str(r.posting_date) > str(s["last_date"]):
+            s["last_date"] = str(r.posting_date)
+
+    res["by_currency"] = sorted(
+        [{"currency": c, "total": v["total"], "count": v["count"],
+          "students": len(v["students"])} for c, v in byc.items()],
+        key=lambda x: -x["total"])
+    res["students"] = sorted(
+        [{"name": v["name"], "party": k[0], "currency": v["currency"],
+          "total": v["total"], "count": v["count"], "last_date": v["last_date"]}
+         for k, v in stud.items()], key=lambda x: -x["total"])
+    def _clean(s):
+        # Kassa izohi: tab bilan ajratilgan (ism<TAB>izoh) + oxiridagi qator — tozalaymiz
+        return " ".join((s or "").replace("\t", " ").replace("\r", " ").split()).strip()
+    res["recent"] = [{"name": r.name, "date": str(r.posting_date),
+                      "student": r.party_name or r.party,
+                      "amount": flt(r.received_amount), "currency": r.deposit_ccy or "",
+                      "orig_amount": flt(r.paid_amount), "orig_currency": r.ccy or "",
+                      "mode": r.mode_of_payment or "", "ref": r.reference_no or "",
+                      "remarks": _clean(r.kassa_remarks) or _clean(r.pe_remarks)} for r in rows[:400]]
+    res["total_count"] = len(rows)
+    res["total_students"] = len(all_students)
+    res["period_total_base"] = base_total
+    return res
+
+
+def _tuition_section(company, from_date=None, to_date=None):
     res = {"available": False, "active": 0, "with_fees": 0,
            "billed": 0.0, "collected": 0.0, "outstanding": 0.0, "rate": None,
            "status": {"paid": 0, "partial": 0, "debtor": 0},
-           "by_class": [], "top_debtors": []}
+           "by_class": [], "top_debtors": [],
+           "payments": _student_payments(company, from_date, to_date)}
     if _has("Student"):
         try:
             res["active"] = frappe.db.count("Student", {"enabled": 1})
@@ -846,7 +926,7 @@ def get_dashboard_data(from_date=None, to_date=None):
     emp = _employee_advances()
 
     # ---- O'quvchilar ----
-    tuition = _tuition_section(company)
+    tuition = _tuition_section(company, f0, t0)
 
     if not main_accounts:
         warnings.append("Kassa hisoblari topilmadi (Mode of Payment Account sozlanmagan).")
