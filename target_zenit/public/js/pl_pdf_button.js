@@ -87,9 +87,7 @@
         var _origRefresh = reportConfig.refresh;
         var _origAfterRender = reportConfig.after_datatable_render;
 
-        reportConfig.formatter = function (value, row, column, data, df) {
-            return frappe.tz.currency_formatter(value, row, column, data, df, 0);
-        };
+        reportConfig.formatter = frappe.tz.make_report_formatter(reportConfig, 0);
 
         reportConfig.onload = function (report) {
             if (_origOnload) _origOnload.call(this, report);

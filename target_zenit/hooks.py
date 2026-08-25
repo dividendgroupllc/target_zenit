@@ -26,11 +26,12 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/target_zenit/css/target_zenit.css"
+# ?v= — brauzer keshini yangilash uchun (fayl o'zgarganda raqamni oshiring)
 app_include_js = [
-	"/assets/target_zenit/js/instagram.js",
-	"/assets/target_zenit/js/report_formatter.js",
-	"/assets/target_zenit/js/pl_pdf_button.js",
-	"/assets/target_zenit/js/balance_sheet_pdf.js",
+	"/assets/target_zenit/js/instagram.js?v=20260825",
+	"/assets/target_zenit/js/report_formatter.js?v=20260825",
+	"/assets/target_zenit/js/pl_pdf_button.js?v=20260825",
+	"/assets/target_zenit/js/balance_sheet_pdf.js?v=20260825",
 ]
 
 # include js, css files in header of web template
