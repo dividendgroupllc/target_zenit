@@ -150,7 +150,11 @@ doc_events = {
 		"after_insert": "target_zenit.setup.kassa_party_types.on_account_change",
 		"on_update": "target_zenit.setup.kassa_party_types.on_account_change",
 		"on_trash": "target_zenit.setup.kassa_party_types.on_account_change",
-	}
+	},
+	# Yangi Customer (jumladan Student'dan avto-yaratilgani) — default UZS
+	"Customer": {
+		"before_insert": "target_zenit.customer.set_default_currency",
+	},
 }
 
 after_migrate = ["target_zenit.setup.kassa_party_types.after_migrate"]

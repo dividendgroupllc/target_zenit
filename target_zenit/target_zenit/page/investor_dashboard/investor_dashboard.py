@@ -782,7 +782,7 @@ def _student_payments(company, from_date, to_date):
 
 
 def _tuition_section(company, from_date=None, to_date=None):
-    res = {"available": False, "active": 0, "with_fees": 0,
+    res = {"available": False, "active": 0, "contracted": 0, "with_fees": 0,
            "billed": 0.0, "collected": 0.0, "outstanding": 0.0, "rate": None,
            "status": {"paid": 0, "partial": 0, "debtor": 0},
            "by_class": [], "top_debtors": [],
@@ -795,6 +795,13 @@ def _tuition_section(company, from_date=None, to_date=None):
                 res["active"] = frappe.db.count("Student")
             except Exception:
                 pass
+        # Shartnoma qilingan faol o'quvchilar (custom_shartnoma_qilindi — Student custom field);
+        # maydon bo'lmagan saytda xato bermasligi uchun himoyalangan
+        try:
+            res["contracted"] = frappe.db.count(
+                "Student", {"enabled": 1, "custom_shartnoma_qilindi": 1})
+        except Exception:
+            pass
     if not _has("Fees"):
         return res
     res["available"] = True
@@ -952,6 +959,7 @@ def get_dashboard_data(from_date=None, to_date=None):
             "expense": _cmp(pnl_cur["expense"], pnl_prev["expense"]),
             "receivable": _cmp(rec_now, rec_prev), "payable": _cmp(pay_now, pay_prev),
             "active_students": tuition["active"],
+            "contracted_students": tuition["contracted"],
             "collection_rate": tuition["rate"],
         },
         "cashflow": {

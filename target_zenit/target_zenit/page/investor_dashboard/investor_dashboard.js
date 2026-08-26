@@ -302,10 +302,11 @@ class TZInvestorDashboard {
 	renderOverview() {
 		const o = this.data.overview, ccy = this.ccyLabel(this.data.meta.currency);
 		let h = this.sec("Asosiy ko'rsatkichlar", "Bir xil rangda — kassa qoldiqlaridan farqli");
-		h += `<div class="grid cols-4 mb">
+		h += `<div class="grid cols-5 mb">
 			${this.moneyKpi({ label: "Debitorka (bizga qarz)", raw: o.receivable.value, cmp: o.receivable, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
 			${this.moneyKpi({ label: "Kreditorka (biz qarz)", raw: o.payable.value, cmp: o.payable, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
 			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(o.active_students), pin: "var(--brand)", valColor: "var(--brand-ink)", noBadge: true, sub: o.collection_rate != null ? `To'lov yig'imi ${o.collection_rate}%` : "To'lov ma'lumoti cheklangan" })}
+			${this.kpi({ label: "Shartnoma qilinganlar", value: this.fmt(o.contracted_students), pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: `faol o'quvchilar ichida${o.active_students ? ` · ${Math.round((o.contracted_students || 0) / o.active_students * 100)}%` : ""}` })}
 			${this.moneyKpi({ label: "Davr xarajati", raw: o.expense.value, cmp: o.expense, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
 		</div>`;
 
@@ -792,8 +793,9 @@ class TZInvestorDashboard {
 		let h = this.sec("O'quvchilar to'lovi", `To'lovlar (Payment Entry) asosida · kassaga tushgan real pul · ${this.esc(this.data.meta.period.label)}`);
 
 		// ---- To'lov KPI'lari ----
-		h += `<div class="grid cols-4 mb">
+		h += `<div class="grid cols-5 mb">
 			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(t.active), pin: "var(--c2)", noBadge: true, sub: "jami ro'yxatda" })}
+			${this.kpi({ label: "Shartnoma qilinganlar", value: this.fmt(t.contracted), pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: `faol ichida${t.active ? ` · ${Math.round((t.contracted || 0) / t.active * 100)}%` : ""}` })}
 			${this.kpi({ label: "Davr to'lovlari", value: this.fmt(p.total_count), pin: "var(--brand)", valColor: "var(--brand-ink)", noBadge: true, sub: "ta to'lov yozuvi" })}
 			${this.kpi({ label: "To'lagan o'quvchilar", value: this.fmt(p.total_students), pin: "var(--c1)", noBadge: true, sub: "shu davrda" })}
 			${this.kpi({ label: "Davr yig'imi", value: (main ? mAmt(main.total, main.currency) : "0"), unit: main ? " " + this.esc(main.currency) : "", pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: (p.by_currency || []).length > 1 ? "boshqa valyuta pastda" : "kassaga tushgan" })}
