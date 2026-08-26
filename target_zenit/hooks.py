@@ -265,7 +265,13 @@ fixtures = [
     {
         "dt": "Custom Field",
         "filters": [
-            ["name", "in", ["Contact-is_billing_contact", "Student-custom_hikvision_id", "Student-custom_eduvisit_id", "Guardian-custom_eduvisit_id"]]
+            ["name", "in", ["Contact-is_billing_contact", "Student-custom_hikvision_id", "Student-custom_eduvisit_id", "Guardian-custom_eduvisit_id", "Student-custom_shartnoma_qilindi"]]
+        ]
+    },
+    {
+        "dt": "Property Setter",
+        "filters": [
+            ["name", "in", ["Student-student_email_id-reqd"]]
         ]
     }
 ]
