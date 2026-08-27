@@ -149,9 +149,12 @@ def get_data(filters):
             "voucher_no": kassa_names.get(row.voucher_no) or row.voucher_no,
             "kirim": kirim,
             "chiqim": chiqim,
+            "account_currency": row.account_currency,
         })
 
-    final_data = list(data)
+    # Oxirgi kiritilganlar tepada: sana (va bir kun ichida creation) bo'yicha teskari.
+    # Balans hisobi yuqorida eski tartibda bajarildi — bu faqat ko'rsatish tartibi.
+    final_data = list(reversed(data))
 
     # opening_balance va closing balance ni summary HTML uchun saqlash
     if final_data:
@@ -200,7 +203,7 @@ def get_transactions(cash_accounts, filters):
             posting_date, voucher_type, voucher_no,
             party_type, party, against,
             debit_in_account_currency, credit_in_account_currency,
-            account
+            account, account_currency
         FROM `tabGL Entry`
         WHERE account IN ({placeholders})
           AND posting_date BETWEEN %s AND %s

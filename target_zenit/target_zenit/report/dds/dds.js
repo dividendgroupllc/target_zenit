@@ -63,6 +63,11 @@ frappe.query_reports["DDS"] = {
             value = `<span style="color: #b71c1c; font-weight: 600;">${value}</span>`;
         }
 
+        // USD kassa qatorlari — yumshoq fon bilan ajratish (UZS/USD ni tez farqlash uchun)
+        if (data && data.account_currency === "USD") {
+            value = `<div style="background-color: #fff3d6; margin: -8px -10px; padding: 8px 10px; min-height: 100%;">${value}</div>`;
+        }
+
         return value;
     }
 }
