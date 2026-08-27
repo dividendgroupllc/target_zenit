@@ -551,9 +551,10 @@ class TZInvestorDashboard {
 	renderDebts() {
 		const d = this.data.debts;
 		let h = this.sec("Qarzdorlik holati", `${this.data.meta.period.label} oxiriga`);
-		h += `<div class="grid mb" style="grid-template-columns:1fr 1fr">
+		h += `<div class="grid cols-4 mb tz-debts-top">
 			${this.moneyKpi({ label: "Jami debitorka (bizga qarz)", raw: d.receivable_total, cmp: d.receivable_cmp, invert: true, pin: "var(--warn)", valColor: "var(--warn-ink)" })}
 			${this.moneyKpi({ label: "Jami kreditorka (biz qarz)", raw: d.payable_total, cmp: d.payable_cmp, invert: true, pin: "var(--c5)" })}
+			${this.ktTotPlaceholder()}
 		</div>`;
 
 		// kontragent otchot jadvali (filtr + jadval)
@@ -622,7 +623,47 @@ class TZInvestorDashboard {
 			this.kontragent = r.message || { rows: [], totals: [] };
 			this.page.main.find(".tz-kt-body").html(this.renderKontragentTable(this.kontragent));
 			this.page.main.find(".tz-kt-body [data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+			this.renderKtTotals(this.kontragent.totals || []);
 		}).catch(() => body.html(`<div class="empty-hint">Kontragent ma'lumotini yuklab bo'lmadi.</div>`));
+	}
+
+	// Kontragent JAMI kartalari — tepadagi KPI qatorida, filtrga mos yangilanadi
+	ktTotPlaceholder() {
+		return `<div class="card kpi tz-kt-tot"><div class="lab"><span class="pin" style="background:var(--brand)"></span> Kontragent jami</div><div class="empty-hint" style="padding:10px 0">Yuklanyapti…</div></div>`;
+	}
+
+	ktBal(cr, dr, big) {
+		const cls = "num" + (big ? " ktt-big" : "");
+		const kt = `<span class="${cls}" style="color:var(--c5)">${this.fmt(cr)} <small>Kт</small></span>`;
+		const dt = `<span class="${cls}" style="color:var(--warn-ink)">${this.fmt(dr)} <small>Дт</small></span>`;
+		if (cr > 0.5 && dr > 0.5) return `<span class="ktt-two">${kt}${dt}</span>`;
+		if (cr > 0.5) return kt;
+		if (dr > 0.5) return dt;
+		return `<span class="${cls} muted-s">0</span>`;
+	}
+
+	ktTotCard(t) {
+		return `<div class="card kpi tz-kt-tot">
+			<div class="lab"><span class="pin" style="background:var(--brand)"></span> Kontragent jami <span class="ktt-ccy">${this.esc(t.currency)}</span></div>
+			<div class="ktt-rows">
+				<div class="ktt-row"><span>Boshi (qoldiq)</span>${this.ktBal(t.opening_credit, t.opening_debit)}</div>
+				<div class="ktt-row"><span>Davr Kт (kirim)</span><span class="num" style="color:var(--c5)">${this.fmt(t.period_credit)}</span></div>
+				<div class="ktt-row"><span>Davr Дт (chiqim)</span><span class="num" style="color:var(--warn-ink)">${this.fmt(t.period_debit)}</span></div>
+				<div class="ktt-row ktt-final"><span>Oxiri (qoldiq)</span>${this.ktBal(t.final_credit, t.final_debit, true)}</div>
+			</div>
+		</div>`;
+	}
+
+	renderKtTotals(totals) {
+		const top = this.page.main.find(".tz-debts-top");
+		if (!top.length) return;
+		// UZS birinchi, keyin qolgan valyutalar
+		const sorted = (totals || []).slice().sort((a, b) => (a.currency === "UZS" ? -1 : b.currency === "UZS" ? 1 : a.currency.localeCompare(b.currency)));
+		const html = sorted.length
+			? sorted.map((t) => this.ktTotCard(t)).join("")
+			: `<div class="card kpi tz-kt-tot"><div class="lab"><span class="pin" style="background:var(--brand)"></span> Kontragent jami</div><div class="empty-hint" style="padding:10px 0">Filtr bo'yicha harakat yo'q.</div></div>`;
+		top.find(".tz-kt-tot").remove();
+		top.append(html);
 	}
 
 	renderKontragentTable(k) {
@@ -646,10 +687,10 @@ class TZInvestorDashboard {
 		const tot = (k.totals || []).map((t) => `
 			<tr class="b">
 				<td>JAMI</td><td></td><td>${this.esc(t.currency)}</td>
-				<td class="r">${bal(t.opening_credit, t.opening_debit)}</td>
+				<td class="r">${this.ktBal(t.opening_credit, t.opening_debit)}</td>
 				<td class="r num" style="color:var(--c5)">${this.fmt(t.period_credit)}</td>
 				<td class="r num" style="color:var(--warn-ink)">${this.fmt(t.period_debit)}</td>
-				<td class="r">${bal(t.final_credit, t.final_debit)}</td>
+				<td class="r">${this.ktBal(t.final_credit, t.final_debit)}</td>
 			</tr>`).join("");
 		return `
 			<div class="kt-legend"><b>Kт</b> — biz qarzmiz (kreditor) · <b>Дт</b> — bizga qarzdor (debitor)</div>
