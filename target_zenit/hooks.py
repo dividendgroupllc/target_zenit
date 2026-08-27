@@ -151,9 +151,14 @@ doc_events = {
 		"on_update": "target_zenit.setup.kassa_party_types.on_account_change",
 		"on_trash": "target_zenit.setup.kassa_party_types.on_account_change",
 	},
-	# Yangi Customer (jumladan Student'dan avto-yaratilgani) — default UZS
+	# Yangi Customer (jumladan Student'dan avto-yaratilgani) —
+	# default UZS valyuta + UZS debitor schyoti (Kassa USD tanlamasligi uchun)
 	"Customer": {
-		"before_insert": "target_zenit.customer.set_default_currency",
+		"before_insert": "target_zenit.customer.set_customer_defaults",
+	},
+	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish
+	"Student": {
+		"on_update": "target_zenit.student_group_sync.on_student_update",
 	},
 }
 
@@ -169,6 +174,12 @@ scheduler_events = {
 	"daily": [
 		"target_zenit.integrations.eduvisit.daily_sync"
 	],
+	"cron": {
+		# Har yili 1-sentabr 06:00 — hamma faol o'quvchi bir sinf yuqoriga (G4A -> G5A)
+		"0 6 1 9 *": [
+			"target_zenit.student_group_sync.yearly_promotion"
+		],
+	},
 }
 
 # scheduler_events = {
@@ -269,7 +280,7 @@ fixtures = [
     {
         "dt": "Custom Field",
         "filters": [
-            ["name", "in", ["Contact-is_billing_contact", "Student-custom_hikvision_id", "Student-custom_eduvisit_id", "Guardian-custom_eduvisit_id", "Student-custom_shartnoma_qilindi"]]
+            ["name", "in", ["Contact-is_billing_contact", "Student-custom_hikvision_id", "Student-custom_eduvisit_id", "Guardian-custom_eduvisit_id", "Student-custom_shartnoma_qilindi", "Student-custom_sinf_guruh"]]
         ]
     },
     {

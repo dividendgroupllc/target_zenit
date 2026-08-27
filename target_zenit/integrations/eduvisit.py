@@ -241,8 +241,13 @@ def upsert_student(item, academic_year, create_guardians):
 		doc.save(ignore_permissions=True)
 
 	# Sinf -> Student Group
-	group = _get_or_create_group(item.get("group_name"), academic_year)
-	_ensure_group_membership(group, doc.name, doc.student_name, active)
+	# Qo'lda tayinlangan guruh (custom_sinf_guruh) ustuvor — sync unga tegmaydi,
+	# faqat guruhi hali yo'q (yangi) o'quvchiga eduvisit'dagi guruhni qo'yadi.
+	if not doc.get("custom_sinf_guruh"):
+		group = _get_or_create_group(item.get("group_name"), academic_year)
+		if group:
+			_ensure_group_membership(group, doc.name, doc.student_name, active)
+			doc.db_set("custom_sinf_guruh", group, update_modified=False)
 
 	# Ota-onalar (v7'da o'quvchi ichida keladi — alohida so'rov shart emas)
 	if create_guardians and item.get("parents"):
