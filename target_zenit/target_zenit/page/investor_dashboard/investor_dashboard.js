@@ -300,15 +300,17 @@ class TZInvestorDashboard {
 
 	// ================= TAB: Overview =================
 	renderOverview() {
-		const o = this.data.overview, ccy = this.ccyLabel(this.data.meta.currency);
-		let h = this.sec("Asosiy ko'rsatkichlar", "Bir xil rangda — kassa qoldiqlaridan farqli");
+		const o = this.data.overview;
+		const c = o.cards || {};
+		let h = this.sec("Asosiy ko'rsatkichlar", `${this.dmy(c.as_of || this.state.to_date)} holatiga · debitorka/kreditorka — qisqa muddatli`);
 		h += `<div class="grid cols-5 mb">
-			${this.moneyKpi({ label: "Debitorka (bizga qarz)", raw: o.receivable.value, cmp: o.receivable, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
-			${this.moneyKpi({ label: "Kreditorka (biz qarz)", raw: o.payable.value, cmp: o.payable, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
-			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(o.active_students), pin: "var(--brand)", valColor: "var(--brand-ink)", noBadge: true, sub: o.collection_rate != null ? `To'lov yig'imi ${o.collection_rate}%` : "To'lov ma'lumoti cheklangan" })}
-			${this.kpi({ label: "Shartnoma qilinganlar", value: this.fmt(o.contracted_students), pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: `faol o'quvchilar ichida${o.active_students ? ` · ${Math.round((o.contracted_students || 0) / o.active_students * 100)}%` : ""}` })}
-			${this.moneyKpi({ label: "Davr xarajati", raw: o.expense.value, cmp: o.expense, invert: true, pin: "var(--brand)", valColor: "var(--brand-ink)" })}
+			${this.ovStudentsCard(o, c.students_by_group || [])}
+			${this.ovDebtCard("Debitorka (bizga qarz)", c.debitorka, "var(--good)", "var(--good-ink)")}
+			${this.ovDebtCard("Kreditorka (biz qarz)", c.kreditorka, "var(--bad)", "var(--bad-ink)")}
+			${this.ovCashCard(c.cash || [])}
+			${this.ovBalanceCard(c.balance)}
 		</div>`;
+		h += this.ovBalanceDetail(c.balance, c.as_of);
 
 		h += this.sec("Kassa hisoblari (shotlar)", `${this.data.meta.period.label} oxiriga qoldiq · har shot alohida`);
 		const accs = o.cash_accounts || [];
@@ -316,6 +318,106 @@ class TZInvestorDashboard {
 			? `<div class="grid cols-4 mb">` + accs.map((a, i) => this.cashAccCard(a, i)).join("") + `</div>`
 			: this.card(`<div class="empty-hint">Kassa hisoblari topilmadi.</div>`, "mb");
 		return h + this.note();
+	}
+
+	// ---- Umumiy tab: taqsimotli kartalar (mockup dizayni) ----
+	ovAmount(v, cur, color) {
+		return `<span class="num" style="color:${color}" data-tt="${this.fmt(v)} ${this.esc(cur)}">${this.kc(v)} <small>${this.esc(cur)}</small></span>`;
+	}
+
+	ovRow(label, right) {
+		return `<div class="ov-row"><span class="ov-lab ell" data-tt="${label}">${label}</span>${right}</div>`;
+	}
+
+	ovTotals(list, ink) {
+		return (list || []).length
+			? list.map((cc) => `<div class="ov-total num" style="color:${ink}" data-tt="${this.fmt(cc.total)} ${this.esc(cc.currency)}">${this.kc(cc.total)} <span class="cur">${this.ccyLabel(cc.currency)}</span></div>`).join("")
+			: `<div class="ov-total num muted-s">0</div>`;
+	}
+
+	ovDebtCard(title, list, pin, ink) {
+		list = list || [];
+		const rows = list.map((cc) => (cc.items || []).map((it) =>
+			this.ovRow(this.esc(it.label), this.ovAmount(it.amount, cc.currency, ink))).join("")).join("");
+		return `<div class="card kpi ov-card" style="border-top:3px solid ${pin}">
+			<div class="lab"><span class="pin" style="background:${pin}"></span> ${title}</div>
+			<div class="ov-totals">${this.ovTotals(list, ink)}</div>
+			<div class="ov-cap">Toifalar kesimida</div>
+			<div class="ov-list">${rows || `<div class="empty-hint">Qarzdorlik yo'q.</div>`}</div>
+		</div>`;
+	}
+
+	ovStudentsCard(o, groups) {
+		const act = o.active_students || 0, con = o.contracted_students || 0;
+		const pct = act ? Math.round(con / act * 100) : 0;
+		const rows = groups.map((g) => this.ovRow(this.esc(g.label), `<span class="num">${g.students}</span>`)).join("");
+		return `<div class="card kpi ov-card" style="border-top:3px solid var(--c2)">
+			<div class="lab"><span class="pin" style="background:var(--c2)"></span> O'quvchilar</div>
+			<div class="ov-totals">
+				<div class="ov-total num">${this.fmt(act)} <span class="cur">faol</span></div>
+				<div class="ov-sub num">Shartnoma qilingan: <b style="color:var(--good-ink)">${this.fmt(con)}</b> · ${pct}%</div>
+			</div>
+			<div class="ov-cap">Sinflar kesimida</div>
+			<div class="ov-list ov-2col">${rows || `<div class="empty-hint">Sinf (Student Group) ma'lumoti yo'q.</div>`}</div>
+		</div>`;
+	}
+
+	ovCashCard(list) {
+		list = list || [];
+		const rows = list.map((cc) => (cc.items || []).map((it) =>
+			this.ovRow(this.esc(this.acctName(it.label)),
+				this.ovAmount(it.amount, cc.currency, it.amount < 0 ? "var(--bad-ink)" : "var(--ink)"))).join("")).join("");
+		return `<div class="card kpi ov-card" style="border-top:3px solid var(--brand)">
+			<div class="lab"><span class="pin" style="background:var(--brand)"></span> Xisobdagi pullar</div>
+			<div class="ov-totals">${this.ovTotals(list, "var(--brand-ink)")}</div>
+			<div class="ov-cap">Hisoblar kesimida</div>
+			<div class="ov-list">${rows || `<div class="empty-hint">Qoldiq yo'q.</div>`}</div>
+		</div>`;
+	}
+
+	ovBalanceCard(b) {
+		if (!b) return `<div class="card kpi ov-card" style="border-top:3px solid var(--c5)"><div class="lab"><span class="pin" style="background:var(--c5)"></span> Balance</div><div class="empty-hint">Balans ma'lumoti yo'q.</div></div>`;
+		const cur = b.currency, wc = b.working_capital;
+		const de = b.debt_to_equity;
+		return `<div class="card kpi ov-card" style="border-top:3px solid var(--c5)">
+			<div class="lab"><span class="pin" style="background:var(--c5)"></span> Balance</div>
+			<div class="ov-totals">
+				<div class="ov-sub">Working Capital (aylanma kapital)</div>
+				<div class="ov-total num" style="color:${(wc || 0) < 0 ? "var(--bad-ink)" : "var(--good-ink)"}" data-tt="${wc == null ? "" : this.fmt(wc) + " " + this.esc(cur)}">${wc == null ? "—" : this.kc(wc)} <span class="cur">${this.ccyLabel(cur)}</span></div>
+				<div class="ov-sub num">Debt-to-Equity: <b>${de == null ? "—" : String(de).replace(".", ",")}</b></div>
+			</div>
+			<div class="ov-cap">Jami (uzoq muddatli ham kiradi)</div>
+			<div class="ov-list">
+				${this.ovRow("Total Assets", this.ovAmount(b.assets, cur, "var(--good-ink)"))}
+				${this.ovRow("Total Liabilities", this.ovAmount(-b.liabilities, cur, "var(--bad-ink)"))}
+				${this.ovRow("Total Equity", this.ovAmount(b.equity, cur, b.equity < 0 ? "var(--bad-ink)" : "var(--good-ink)"))}
+			</div>
+		</div>`;
+	}
+
+	ovBalanceDetail(b, asOf) {
+		if (!b) return "";
+		const cur = b.currency;
+		const row = (it) => `<div class="ov-bs-row"><span class="ell" data-tt="${this.esc(it.label)}">${this.esc(it.label)}</span><span class="num" style="color:${it.amount < 0 ? "var(--bad-ink)" : "var(--ink)"}">${this.fmt(it.amount)}</span></div>`;
+		const totalRow = (label, v, color) => `<div class="ov-bs-row ov-bs-total"><span>${label}</span><span class="num" style="color:${color}">${this.fmt(v)}</span></div>`;
+		return this.card(`
+			<div class="hd"><div><h3>Balans — batafsil</h3><div class="meta">${this.dmy(asOf || this.state.to_date)} holatiga · ${this.ccyLabel(cur)} (kompaniya valyutasi) · uzoq muddatli qarzdorliklar ham qo'shiladi</div></div></div>
+			<div class="ov-bs-grid">
+				<div class="ov-bs-col">
+					<h4>Asset — Aktivlar</h4>
+					${(b.asset_items || []).map(row).join("") || `<div class="empty-hint">Ma'lumot yo'q.</div>`}
+					${totalRow("Total Asset", b.assets, "var(--good-ink)")}
+				</div>
+				<div class="ov-bs-col">
+					<h4>Liabilities — Majburiyatlar</h4>
+					${(b.liability_items || []).map(row).join("") || `<div class="empty-hint">Ma'lumot yo'q.</div>`}
+					${totalRow("Total Liabilities", b.liabilities, "var(--bad-ink)")}
+					<h4 style="margin-top:16px">Equity — Kapital</h4>
+					${(b.equity_items || []).map(row).join("") || `<div class="empty-hint">Ma'lumot yo'q.</div>`}
+					${totalRow("Total Equity", b.equity, b.equity < 0 ? "var(--bad-ink)" : "var(--good-ink)")}
+					${totalRow("Passiv jami (majburiyat + kapital)", b.liabilities + b.equity, "var(--ink)")}
+				</div>
+			</div>`, "mb ov-bs");
 	}
 
 	cashAccCard(a, i) {

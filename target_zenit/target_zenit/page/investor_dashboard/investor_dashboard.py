@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import calendar
+import re
 from collections import defaultdict
 
 import frappe
@@ -854,6 +855,208 @@ def _tuition_section(company, from_date=None, to_date=None):
 
 
 # ===========================================================================
+# Umumiy tab kartalari — debitorka/kreditorka toifa kesimi, o'quvchilar sinf
+# kesimi (Student Group), pul qoldiqlari va balans (mockup dizayni uchun)
+# ===========================================================================
+PARTY_CAT_LABELS = {
+    "customer": "O'quvchilar",
+    "employee": "Xodimlar (o'qituvchilar)",
+    "supplier": "Ta'minotchilar",
+    "shareholder": "Investorlar",
+    "kredit": "Kredit",
+    "other": "Boshqa",
+}
+
+
+def _party_balance_cards(company, date):
+    """Debitorka/kreditorka — sana holatiga, valyuta + kontragent toifasi kesimida.
+    Har kontragentning sof qoldig'i: musbat (Дт) → debitorka, manfiy (Кт) → kreditorka.
+    'Kredit qarzdorlik' hisobidagi harakat alohida 'Kredit' toifasiga chiqariladi.
+    Kontragentli hisoblar hozircha barchasi qisqa muddatli (Current) guruhlarda."""
+    res = {"debitorka": [], "kreditorka": []}
+    try:
+        rows = frappe.db.sql(
+            f"""SELECT ge.party_type, ge.party, ge.account_currency cur,
+                       CASE WHEN a.account_name LIKE 'Kredit qarzdorlik%%' THEN 1 ELSE 0 END is_kredit,
+                       IFNULL(SUM(ge.debit_in_account_currency - ge.credit_in_account_currency),0) bal
+                FROM `tabGL Entry` ge JOIN `tabAccount` a ON a.name = ge.account
+                WHERE ge.is_cancelled=0 AND ge.posting_date<=%(d)s
+                  AND ge.party IS NOT NULL AND ge.party!='' {_co(company,'ge')}
+                GROUP BY ge.party_type, ge.party, ge.account_currency, is_kredit""",
+            {"d": date, "company": company}, as_dict=True)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: party_balance_cards")
+        return res
+    ptmap = {"Customer": "customer", "Student": "customer", "Employee": "employee",
+             "Supplier": "supplier", "Shareholder": "shareholder"}
+    deb = defaultdict(lambda: defaultdict(float))    # valyuta -> toifa -> summa
+    cred = defaultdict(lambda: defaultdict(float))
+    for r in rows:
+        bal = flt(r.bal)
+        if abs(bal) < 0.5:
+            continue
+        cat = "kredit" if r.is_kredit else ptmap.get(r.party_type, "other")
+        cur = r.cur or "UZS"
+        if bal > 0:
+            deb[cur][cat] += bal
+        else:
+            cred[cur][cat] += -bal
+
+    def pack(dd):
+        out = []
+        for cur, cats in dd.items():
+            items = [{"key": k, "label": PARTY_CAT_LABELS.get(k, k), "amount": v}
+                     for k, v in cats.items() if v > 0.5]
+            items.sort(key=lambda x: -x["amount"])
+            if items:
+                out.append({"currency": cur, "total": sum(x["amount"] for x in items), "items": items})
+        out.sort(key=lambda x: (x["currency"] != "UZS", x["currency"]))
+        return out
+
+    res["debitorka"] = pack(deb)
+    res["kreditorka"] = pack(cred)
+    return res
+
+
+def _nat_key(s):
+    """Tabiiy tartib: G1A, G2A, ..., G10B (alifboda G10 G1'dan oldin kelib qolmasligi uchun)."""
+    return [int(p) if p.isdigit() else p.lower() for p in re.split(r"(\d+)", s or "")]
+
+
+def _students_by_group():
+    """Sinflar kesimida faol o'quvchilar soni — Student Group (active=1) asosida."""
+    out = []
+    if not _has("Student Group"):
+        return out
+    try:
+        rows = frappe.db.sql(
+            """SELECT sg.student_group_name label, COUNT(sgs.name) students
+               FROM `tabStudent Group` sg
+               JOIN `tabStudent Group Student` sgs ON sgs.parent = sg.name AND sgs.active = 1
+               WHERE IFNULL(sg.disabled, 0) = 0
+               GROUP BY sg.name, sg.student_group_name
+               HAVING students > 0""", as_dict=True)
+        out = [{"label": r.label, "students": int(r.students or 0)} for r in rows]
+        out.sort(key=lambda x: _nat_key(x["label"]))
+    except Exception:
+        pass
+    return out
+
+
+def _cash_balance_card(company, date):
+    """Xisobdagi pullar — sana holatiga, valyuta jami + har hisob kesimida."""
+    accs = _cash_accounts(company)
+    bals = _balance_upto(list(accs.keys()), date, company)
+    by = defaultdict(lambda: {"total": 0.0, "items": []})
+    for account in accs:
+        bal = flt(bals.get(account, 0.0))
+        cur = _acc_currency(account)
+        b = by[cur]
+        b["total"] += bal
+        if abs(bal) > 0.5:
+            b["items"].append({"label": account, "amount": bal})
+    out = []
+    for cur, v in by.items():
+        v["items"].sort(key=lambda x: -x["amount"])
+        out.append({"currency": cur, "total": v["total"], "items": v["items"]})
+    out.sort(key=lambda x: (x["currency"] != "UZS", x["currency"]))
+    return out
+
+
+def _balance_card(company, date, ccy):
+    """Balans — sana holatiga, kompaniya valyutasida. Aktiv/majburiyat/kapital jami,
+    Working Capital (aylanma kapital), Debt-to-Equity va guruh kesimida taqsimot.
+    Kapitalga to'plangan foyda (Income − Expense, boshidan) ham qo'shiladi —
+    shunda Aktiv = Majburiyat + Kapital tengligi saqlanadi. Majburiyatga uzoq
+    muddatlilar ham kiradi (hozircha hammasi Current guruhida)."""
+    res = {"currency": ccy, "assets": 0.0, "liabilities": 0.0, "equity": 0.0,
+           "current_assets": 0.0, "current_liabilities": 0.0, "long_term_liabilities": 0.0,
+           "working_capital": None, "debt_to_equity": None,
+           "asset_items": [], "liability_items": [], "equity_items": []}
+    try:
+        afilt = {"company": company} if company else {}
+        accs = frappe.get_all("Account", filters=afilt,
+                              fields=["name", "account_name", "root_type", "parent_account",
+                                      "is_group", "lft", "rgt"])
+        rows = frappe.db.sql(
+            f"""SELECT account, IFNULL(SUM(debit - credit),0) bal
+                FROM `tabGL Entry`
+                WHERE is_cancelled=0 AND posting_date<=%(d)s {_co(company)}
+                GROUP BY account""",
+            {"d": date, "company": company}, as_dict=True)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: balance_card")
+        return res
+
+    amap = {a.name: a for a in accs}
+    cur_asset_rng = [(g.lft, g.rgt) for g in accs
+                     if g.is_group and "current assets" in (g.account_name or "").lower()]
+    cur_liab_rng = [(g.lft, g.rgt) for g in accs
+                    if g.is_group and "current liabilities" in (g.account_name or "").lower()]
+
+    def in_rng(a, rng):
+        return any(lo <= (a.lft or 0) <= hi for lo, hi in rng)
+
+    profit = 0.0
+    agg = {"Asset": defaultdict(float), "Liability": defaultdict(float), "Equity": defaultdict(float)}
+    for r in rows:
+        a = amap.get(r.account)
+        if not a:
+            continue
+        bal = flt(r.bal)          # debet − kredit (kompaniya valyutasida)
+        if a.root_type == "Asset":
+            res["assets"] += bal
+            if in_rng(a, cur_asset_rng):
+                res["current_assets"] += bal
+            parent = amap.get(a.parent_account)
+            label = (parent.account_name if parent else "") or a.account_name or r.account
+            agg["Asset"][label] += bal
+        elif a.root_type == "Liability":
+            res["liabilities"] += -bal
+            if in_rng(a, cur_liab_rng):
+                res["current_liabilities"] += -bal
+            parent = amap.get(a.parent_account)
+            label = (parent.account_name if parent else "") or a.account_name or r.account
+            agg["Liability"][label] += -bal
+        elif a.root_type == "Equity":
+            res["equity"] += -bal
+            agg["Equity"][a.account_name or r.account] += -bal
+        else:  # Income/Expense — to'plangan foyda: Income kredit (+), Expense debet (−)
+            profit -= bal
+
+    res["equity"] += profit
+    if abs(profit) > 0.5:
+        agg["Equity"]["To'plangan foyda (P&L)"] = profit
+    if cur_asset_rng and cur_liab_rng:
+        res["working_capital"] = res["current_assets"] - res["current_liabilities"]
+    res["long_term_liabilities"] = res["liabilities"] - res["current_liabilities"] if cur_liab_rng else 0.0
+    if abs(res["equity"]) > 0.5:
+        res["debt_to_equity"] = round(res["liabilities"] / res["equity"], 2)
+
+    def pack(dd):
+        items = [{"label": k, "amount": v} for k, v in dd.items() if abs(v) > 0.5]
+        items.sort(key=lambda x: -abs(x["amount"]))
+        return items
+
+    res["asset_items"] = pack(agg["Asset"])
+    res["liability_items"] = pack(agg["Liability"])
+    res["equity_items"] = pack(agg["Equity"])
+    return res
+
+
+def _overview_cards(company, to_date, ccy):
+    pb = _party_balance_cards(company, to_date)
+    return {
+        "as_of": str(to_date),
+        "debitorka": pb["debitorka"],
+        "kreditorka": pb["kreditorka"],
+        "students_by_group": _students_by_group(),
+        "cash": _cash_balance_card(company, to_date),
+        "balance": _balance_card(company, to_date, ccy),
+    }
+
+
+# ===========================================================================
 # Asosiy API
 # ===========================================================================
 ALLOWED_ROLES = ["System Manager", "Accounts Manager", "Accounts User", "investor", "Xojakbar_Operator"]
@@ -935,6 +1138,13 @@ def get_dashboard_data(from_date=None, to_date=None):
     # ---- O'quvchilar ----
     tuition = _tuition_section(company, f0, t0)
 
+    # ---- Umumiy tab kartalari (mockup: taqsimotli 5 karta + balans) ----
+    try:
+        cards = _overview_cards(company, t0, ccy)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: overview_cards")
+        cards = {}
+
     if not main_accounts:
         warnings.append("Kassa hisoblari topilmadi (Mode of Payment Account sozlanmagan).")
     if not flags["has_fees"]:
@@ -961,6 +1171,7 @@ def get_dashboard_data(from_date=None, to_date=None):
             "active_students": tuition["active"],
             "contracted_students": tuition["contracted"],
             "collection_rate": tuition["rate"],
+            "cards": cards,
         },
         "cashflow": {
             "accounts": cash["accounts"], "total": cash["total"], "other": cash["other"],
