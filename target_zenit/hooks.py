@@ -280,7 +280,27 @@ fixtures = [
     {
         "dt": "Custom Field",
         "filters": [
-            ["name", "in", ["Contact-is_billing_contact", "Student-custom_hikvision_id", "Student-custom_eduvisit_id", "Guardian-custom_eduvisit_id", "Student-custom_shartnoma_qilindi", "Student-custom_sinf_guruh"]]
+            ["name", "in", [
+                "Contact-is_billing_contact",
+                "Student-custom_hikvision_id",
+                "Student-custom_eduvisit_id",
+                "Guardian-custom_eduvisit_id",
+                "Student-custom_shartnoma_qilindi",
+                "Student-custom_sinf_guruh",
+                # Shartnoma ma'lumotlari — Details bo'limida (Google Sheets registr asosida)
+                "Student-custom_contract_no",
+                "Student-custom_contract_date",
+                "Student-custom_shartnoma_file",
+                "Student-custom_payer_name",
+                "Student-custom_payer_phone",
+                "Student-custom_tariff",
+                "Student-custom_tariff_amount",
+                "Student-custom_discount_amount",
+                "Student-custom_final_amount",
+                "Student-custom_edu_language",
+                "Student-custom_student_holat",
+                "Student-custom_izoh",
+            ]]
         ]
     },
     {
