@@ -25,6 +25,20 @@ class TZInvestorDashboard {
 		this.bs = null;
 		this.bsOpen = new Set();                 // ochilgan daraxt tugunlari
 		this.bsOpt = { acc: 1, fb: 1, per: "" }; // yig'ilgan qiymat / default finance book / davr ustunlari
+		// Umumiy tab — karta batafsili: null | 'students' | 'debitorka' | 'kreditorka' | 'cash'
+		this.ovDetail = null;
+		this.ovStudents = null;     // o'quvchilar to'liq ro'yxati (kesh)
+		this.ovStudOpen = new Set(); // ochilgan sinflar (o'quvchilar paneli)
+		this.ovStudQ = "";           // o'quvchi qidiruv matni
+		// o'quvchilar paneli ko'rinish rejimi (tepadagi chiplar bilan almashadi):
+		// 'all' — hammasi | 'contracted' — faqat shartnomalilar | 'classes' — faqat sinflar
+		// ro'yxati (yig'ilgan) | 'nogroup' — faqat sinfga biriktirilmaganlar
+		this.ovStudMode = "all";
+		// O'quvchilar to'lovi tab — karta batafsili: null|'active'|'contracted'|'payments'|'payers'
+		this.tuitionDetail = null;
+		this.tuitionCcy = null;      // to'lovlar ro'yxatida valyuta filtri (UZS/USD chipi)
+		this.ovCash = null;         // kassa batafsil (kesh)
+		this.ovCashAcc = "";        // kassa batafsilda tanlangan hisob
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
 			{ key: "overview", label: "Umumiy" },
@@ -67,6 +81,13 @@ class TZInvestorDashboard {
 		if (v >= 1e3) return Math.round(v / 1e3) + "k";
 		return Math.round(v);
 	}
+	m2(n) { // 2 kasrli to'liq son (USD kabi valyutalar uchun): 1 733,33
+		n = Number(n) || 0;
+		const neg = n < 0 ? "−" : "";
+		const a = Math.abs(n).toFixed(2).split(".");
+		return neg + a[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ") + "," + a[1];
+	}
+	mAmt(n, c) { return c === "UZS" ? this.fmt(n) : this.m2(n); } // so'm butun, boshqa valyuta 2 kasr
 
 	badge(cmp, opt) {
 		opt = opt || {};
@@ -141,6 +162,46 @@ class TZInvestorDashboard {
 			this.cfCcy = null; this.cfFlow = null;
 			this.renderTab();
 		});
+		// Umumiy tab — asosiy ko'rsatkich kartalari: bosilganda to'liq ma'lumot pastda ochiladi.
+		// "Balance" kartasi esa to'g'ridan-to'g'ri Balans bo'limini ochadi.
+		body.on("click", "[data-ov]", (e) => {
+			const k = String($(e.currentTarget).data("ov"));
+			if (k === "balance") { this.gotoTab("balance"); return; }
+			this.ovDetail = (this.ovDetail === k) ? null : k;
+			this.renderTab();
+			if (this.ovDetail) {
+				const el = this.page.main.find(".tz-ov-detail")[0];
+				if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+			}
+		});
+		// Umumiy tab — kassa batafsil: hisob chipini bosib faqat o'sha hisob harakatini ko'rish
+		body.on("click", "[data-ovcash-acc]", (e) => {
+			const a = String($(e.currentTarget).attr("data-ovcash-acc"));
+			this.ovCashAcc = (this.ovCashAcc === a) ? "" : a;
+			this.loadOvCash(true);
+		});
+		// Umumiy tab — o'quvchilar paneli: sinfni bosib ochish/yopish, qidiruv
+		body.on("click", "[data-ovsg]", (e) => {
+			const g = String($(e.currentTarget).attr("data-ovsg"));
+			if (this.ovStudMode === "classes") {
+				// sinflar ro'yxati rejimida sinf bosilsa — to'liq rejimga o'tib, shu sinf ochiladi
+				this.ovStudMode = "all";
+				this.ovStudOpen = new Set([g]);
+			} else if (this.ovStudOpen.has(g)) this.ovStudOpen.delete(g);
+			else this.ovStudOpen.add(g);
+			this.paintOvStudents();
+		});
+		body.on("input", ".tz-ovstud-filter", (e) => {
+			this.ovStudQ = String(e.target.value || "").trim().toLowerCase();
+			this.paintOvStudents();
+		});
+		// o'quvchilar paneli — tepadagi chiplar (faol/shartnoma/sinf/sinfsiz) rejimni almashtiradi
+		body.on("click", "[data-ovsm]", (e) => {
+			const m = String($(e.currentTarget).attr("data-ovsm"));
+			this.ovStudMode = (this.ovStudMode === m) ? "all" : m;   // qayta bosilsa — hammasi
+			if (this.ovStudMode === "classes") this.ovStudOpen.clear();
+			this.paintOvStudents();
+		});
 		// kontragent filtrlari
 		body.on("change", ".tz-kt-type", (e) => {
 			this.ktFilter.party_type = e.target.value; this.ktFilter.party = ""; this.ktFilter.party_group = "";
@@ -172,14 +233,33 @@ class TZInvestorDashboard {
 		body.on("click", "[data-bs-k]", (e) => {
 			const k = String($(e.currentTarget).attr("data-bs-k"));
 			if (this.bsOpen.has(k)) this.bsOpen.delete(k); else this.bsOpen.add(k);
-			this.paintBs();
+			// daraxt Umumiy tabdagi debitorka/kreditorka panelida ham ishlatiladi
+			if (this.active === "overview") this.paintOvBs(); else this.paintBs();
 		});
-		// o'quvchilar to'lovi jadvali — ko'rinishni almashtirish (segment toggle)
-		body.on("click", "[data-tv]", (e) => {
-			const v = String($(e.currentTarget).data("tv"));
-			if (this.tuitionView === v) return;
-			this.tuitionView = v;
+		// O'quvchilar to'lovi tab — 5 ta KPI karta: bosilganda batafsil pastda ochiladi
+		body.on("click", "[data-td]", (e) => {
+			const k = String($(e.currentTarget).data("td"));
+			this.tuitionCcy = null;
+			this.tuitionDetail = (this.tuitionDetail === k) ? null : k;
 			this.renderTab();
+			if (this.tuitionDetail) {
+				const el = this.page.main.find(".tz-tuition-detail")[0];
+				if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+			}
+		});
+		// O'quvchilar to'lovi — valyuta chipi: shu valyutadagi to'lovlar ro'yxati ochiladi
+		body.on("click", "[data-tccy]", (e) => {
+			const c = String($(e.currentTarget).attr("data-tccy"));
+			if (this.tuitionDetail === "payments" && this.tuitionCcy === c) {
+				this.tuitionCcy = null; this.tuitionDetail = null;
+			} else {
+				this.tuitionDetail = "payments"; this.tuitionCcy = c;
+			}
+			this.renderTab();
+			if (this.tuitionDetail) {
+				const el = this.page.main.find(".tz-tuition-detail")[0];
+				if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+			}
 		});
 		// o'quvchi bo'yicha qidiruv — HAR IKKALA ko'rinishda ham ishlaydi (tr[data-sname])
 		body.on("input", ".tz-stud-filter", (e) => {
@@ -192,6 +272,14 @@ class TZInvestorDashboard {
 			});
 			this.page.main.find(".tz-stud-count").text(shown);
 		});
+	}
+
+	gotoTab(key) {
+		this.active = key;
+		const nav = this.page.main.find(".tz-tabs");
+		nav.find("button").removeClass("on");
+		nav.find(`button[data-k="${key}"]`).addClass("on");
+		this.renderTab();
 	}
 
 	applyPreset(p) {
@@ -214,6 +302,9 @@ class TZInvestorDashboard {
 		this.kontragent = null;
 		this.dds = null;
 		this.bs = null;
+		this.ovStudents = null;
+		this.ovCash = null;
+		this._ovBsAuto = null;
 		this.page.main.find(".tz-body").html(`<div class="tz-loader">Ma'lumot yuklanyapti…</div>`);
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_dashboard_data",
@@ -317,21 +408,15 @@ class TZInvestorDashboard {
 	renderOverview() {
 		const o = this.data.overview;
 		const c = o.cards || {};
-		let h = this.sec("Asosiy ko'rsatkichlar", `${this.dmy(c.as_of || this.state.to_date)} holatiga · debitorka/kreditorka — qisqa muddatli`);
+		let h = this.sec("Asosiy ko'rsatkichlar", `${this.dmy(c.as_of || this.state.to_date)} holatiga · kartani bosing — to'liq ma'lumot pastda ochiladi`);
 		h += `<div class="grid cols-5 mb">
 			${this.ovStudentsCard(o, c.students_by_group || [])}
-			${this.ovDebtCard("Debitorka (bizga qarz)", c.debitorka, "var(--good)", "var(--good-ink)")}
-			${this.ovDebtCard("Kreditorka (biz qarz)", c.kreditorka, "var(--bad)", "var(--bad-ink)")}
+			${this.ovDebtCard("Debitorka (bizga qarz)", c.debitorka, "var(--good)", "var(--good-ink)", "debitorka")}
+			${this.ovDebtCard("Kreditorka (biz qarz)", c.kreditorka, "var(--bad)", "var(--bad-ink)", "kreditorka")}
 			${this.ovCashCard(c.cash || [])}
 			${this.ovBalanceCard(c.balance)}
 		</div>`;
-		h += this.ovBalanceDetail(c.balance, c.as_of);
-
-		h += this.sec("Kassa hisoblari (shotlar)", `${this.data.meta.period.label} oxiriga qoldiq · har shot alohida`);
-		const accs = o.cash_accounts || [];
-		h += accs.length
-			? `<div class="grid cols-4 mb">` + accs.map((a, i) => this.cashAccCard(a, i)).join("") + `</div>`
-			: this.card(`<div class="empty-hint">Kassa hisoblari topilmadi.</div>`, "mb");
+		h += `<div class="tz-ov-detail">${this.ovDetailPanel()}</div>`;
 		return h + this.note();
 	}
 
@@ -350,15 +435,21 @@ class TZInvestorDashboard {
 			: `<div class="ov-total num muted-s">0</div>`;
 	}
 
-	ovDebtCard(title, list, pin, ink) {
+	ovOpenHint(key, label) {
+		const on = this.ovDetail === key;
+		return `<div class="ov-open">${on ? "▴ Yopish" : `▾ ${label || "Batafsil"}`}</div>`;
+	}
+
+	ovDebtCard(title, list, pin, ink, key) {
 		list = list || [];
 		const rows = list.map((cc) => (cc.items || []).map((it) =>
 			this.ovRow(this.esc(it.label), this.ovAmount(it.amount, cc.currency, ink))).join("")).join("");
-		return `<div class="card kpi ov-card" style="border-top:3px solid ${pin}">
+		return `<div class="card kpi ov-card clickable${this.ovDetail === key ? " active" : ""}" data-ov="${key}" style="border-top:3px solid ${pin}">
 			<div class="lab"><span class="pin" style="background:${pin}"></span> ${title}</div>
 			<div class="ov-totals">${this.ovTotals(list, ink)}</div>
 			<div class="ov-cap">Toifalar kesimida</div>
 			<div class="ov-list">${rows || `<div class="empty-hint">Qarzdorlik yo'q.</div>`}</div>
+			${this.ovOpenHint(key, "Kontragentlar kesimida to'liq")}
 		</div>`;
 	}
 
@@ -366,7 +457,7 @@ class TZInvestorDashboard {
 		const act = o.active_students || 0, con = o.contracted_students || 0;
 		const pct = act ? Math.round(con / act * 100) : 0;
 		const rows = groups.map((g) => this.ovRow(this.esc(g.label), `<span class="num">${g.students}</span>`)).join("");
-		return `<div class="card kpi ov-card" style="border-top:3px solid var(--c2)">
+		return `<div class="card kpi ov-card clickable${this.ovDetail === "students" ? " active" : ""}" data-ov="students" style="border-top:3px solid var(--c2)">
 			<div class="lab"><span class="pin" style="background:var(--c2)"></span> O'quvchilar</div>
 			<div class="ov-totals">
 				<div class="ov-total num">${this.fmt(act)} <span class="cur">faol</span></div>
@@ -374,6 +465,7 @@ class TZInvestorDashboard {
 			</div>
 			<div class="ov-cap">Sinflar kesimida</div>
 			<div class="ov-list ov-2col">${rows || `<div class="empty-hint">Sinf (Student Group) ma'lumoti yo'q.</div>`}</div>
+			${this.ovOpenHint("students", "To'liq ro'yxat (kim qaysi sinfda)")}
 		</div>`;
 	}
 
@@ -382,19 +474,20 @@ class TZInvestorDashboard {
 		const rows = list.map((cc) => (cc.items || []).map((it) =>
 			this.ovRow(this.esc(this.acctName(it.label)),
 				this.ovAmount(it.amount, cc.currency, it.amount < 0 ? "var(--bad-ink)" : "var(--ink)"))).join("")).join("");
-		return `<div class="card kpi ov-card" style="border-top:3px solid var(--brand)">
+		return `<div class="card kpi ov-card clickable${this.ovDetail === "cash" ? " active" : ""}" data-ov="cash" style="border-top:3px solid var(--brand)">
 			<div class="lab"><span class="pin" style="background:var(--brand)"></span> Xisobdagi pullar</div>
 			<div class="ov-totals">${this.ovTotals(list, "var(--brand-ink)")}</div>
 			<div class="ov-cap">Hisoblar kesimida</div>
 			<div class="ov-list">${rows || `<div class="empty-hint">Qoldiq yo'q.</div>`}</div>
+			${this.ovOpenHint("cash", "Oxirgi harakatlar (tranzaksiyalar)")}
 		</div>`;
 	}
 
 	ovBalanceCard(b) {
-		if (!b) return `<div class="card kpi ov-card" style="border-top:3px solid var(--c5)"><div class="lab"><span class="pin" style="background:var(--c5)"></span> Balance</div><div class="empty-hint">Balans ma'lumoti yo'q.</div></div>`;
+		if (!b) return `<div class="card kpi ov-card clickable" data-ov="balance" style="border-top:3px solid var(--c5)"><div class="lab"><span class="pin" style="background:var(--c5)"></span> Balance</div><div class="empty-hint">Balans ma'lumoti yo'q.</div>${this.ovOpenHint("balance", "Balans bo'limini ochish")}</div>`;
 		const cur = b.currency, wc = b.working_capital;
 		const de = b.debt_to_equity;
-		return `<div class="card kpi ov-card" style="border-top:3px solid var(--c5)">
+		return `<div class="card kpi ov-card clickable" data-ov="balance" style="border-top:3px solid var(--c5)">
 			<div class="lab"><span class="pin" style="background:var(--c5)"></span> Balance</div>
 			<div class="ov-totals">
 				<div class="ov-sub">Working Capital (aylanma kapital)</div>
@@ -407,43 +500,230 @@ class TZInvestorDashboard {
 				${this.ovRow("Total Liabilities", this.ovAmount(-b.liabilities, cur, "var(--bad-ink)"))}
 				${this.ovRow("Total Equity", this.ovAmount(b.equity, cur, b.equity < 0 ? "var(--bad-ink)" : "var(--good-ink)"))}
 			</div>
+			${this.ovOpenHint("balance", "Balans bo'limini ochish (to'liq)")}
 		</div>`;
 	}
 
-	ovBalanceDetail(b, asOf) {
-		if (!b) return "";
-		const cur = b.currency;
-		const row = (it) => `<div class="ov-bs-row"><span class="ell" data-tt="${this.esc(it.label)}">${this.esc(it.label)}</span><span class="num" style="color:${it.amount < 0 ? "var(--bad-ink)" : "var(--ink)"}">${this.fmt(it.amount)}</span></div>`;
-		const totalRow = (label, v, color) => `<div class="ov-bs-row ov-bs-total"><span>${label}</span><span class="num" style="color:${color}">${this.fmt(v)}</span></div>`;
-		return this.card(`
-			<div class="hd"><div><h3>Balans — batafsil</h3><div class="meta">${this.dmy(asOf || this.state.to_date)} holatiga · ${this.ccyLabel(cur)} (kompaniya valyutasi) · uzoq muddatli qarzdorliklar ham qo'shiladi</div></div></div>
-			<div class="ov-bs-grid">
-				<div class="ov-bs-col">
-					<h4>Asset — Aktivlar</h4>
-					${(b.asset_items || []).map(row).join("") || `<div class="empty-hint">Ma'lumot yo'q.</div>`}
-					${totalRow("Total Asset", b.assets, "var(--good-ink)")}
-				</div>
-				<div class="ov-bs-col">
-					<h4>Liabilities — Majburiyatlar</h4>
-					${(b.liability_items || []).map(row).join("") || `<div class="empty-hint">Ma'lumot yo'q.</div>`}
-					${totalRow("Total Liabilities", b.liabilities, "var(--bad-ink)")}
-					<h4 style="margin-top:16px">Equity — Kapital</h4>
-					${(b.equity_items || []).map(row).join("") || `<div class="empty-hint">Ma'lumot yo'q.</div>`}
-					${totalRow("Total Equity", b.equity, b.equity < 0 ? "var(--bad-ink)" : "var(--good-ink)")}
-					${totalRow("Passiv jami (majburiyat + kapital)", b.liabilities + b.equity, "var(--ink)")}
-				</div>
-			</div>`, "mb ov-bs");
+	// ---- Umumiy tab: karta bosilganda ochiladigan batafsil panel ----
+	ovDetailPanel() {
+		const k = this.ovDetail;
+		if (!k) return "";
+		const c = (this.data.overview || {}).cards || {};
+		const asOf = this.dmy(c.as_of || this.state.to_date);
+		if (k === "students") {
+			setTimeout(() => { this.ovStudMode = "all"; this.loadOvStudents(); }, 0);
+			return this.card(`
+				<div class="hd tz-tuition-hd"><div><h3>O'quvchilar — sinflar kesimida</h3><div class="meta">sinfni bosing — ichidagi o'quvchilar ochiladi · shartnoma holati bilan</div></div>
+					<div class="tz-tuition-tools"><input type="text" class="tz-ovstud-filter" placeholder="O'quvchi yoki sinf qidirish…" autocomplete="off"></div></div>
+				<div class="tz-ovstud-body"><div class="tz-loader">O'quvchilar yuklanyapti…</div></div>`, "mb ov-detail-card");
+		}
+		if (k === "debitorka" || k === "kreditorka") {
+			setTimeout(() => this.loadOvBs(), 0);
+			const isDeb = k === "debitorka";
+			return this.card(`
+				<div class="hd"><div><h3>${isDeb ? "Debitorka — bizga qarzdorlar (to'liq)" : "Kreditorka — biz qarzdormiz (to'liq)"}</h3>
+					<div class="meta">${asOf} holatiga · ${this.ccyLabel(this.data.meta.currency)} (kompaniya valyutasi) · qatorni bosib ichini oching: hisob → tur → guruh → kontragent</div></div>
+					<button class="tz-mini-btn" data-ov="balance">To'liq balans →</button></div>
+				<div class="tz-ovbs-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb ov-detail-card");
+		}
+		if (k === "cash") {
+			setTimeout(() => this.loadOvCash(), 0);
+			return this.card(`
+				<div class="hd"><div><h3>Xisobdagi pullar — oxirgi harakatlar</h3>
+					<div class="meta">${asOf} holatiga · eng yangi harakat tepada · hisobni bosib faqat uning harakatini (yurish qoldig'i bilan) ko'ring</div></div></div>
+				<div class="tz-ovcash-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb ov-detail-card");
+		}
+		return "";
 	}
 
-	cashAccCard(a, i) {
-		const col = this.acctColors[i % this.acctColors.length];
-		const isForeign = a.currency !== this.data.meta.currency;
-		const neg = a.closing < 0;
-		return `<div class="card kpi acct" style="border-top:3px solid ${col}">
-			<div class="lab"><span class="pin" style="background:${col}"></span> ${this.esc(this.acctName(a.account))}</div>
-			<div class="val num" style="color:${neg ? "var(--bad-ink)" : col}" data-tt="${this.fmt(a.closing)} ${this.esc(a.currency)}">${this.kc(a.closing)} <span class="cur">${this.ccyLabel(a.currency)}</span></div>
-			<div class="sub">${this.esc(a.mode || "—")}${isForeign ? ` · <b>${this.esc(a.currency)}</b>` : ""}</div>
+	// -- o'quvchilar batafsil: sinf kesimida yig'ma-ochilma ro'yxat --
+	loadOvStudents() {
+		const body = this.page.main.find(".tz-ovstud-body");
+		if (!body.length) return;
+		if (this.ovStudents) { this.paintOvStudents(); return; }
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_students_detail",
+		}).then((r) => { this.ovStudents = r.message || {}; this.paintOvStudents(); })
+			.catch(() => body.html(`<div class="empty-hint">O'quvchilar ro'yxatini yuklab bo'lmadi.</div>`));
+	}
+
+	paintOvStudents() {
+		const body = this.page.main.find(".tz-ovstud-body");
+		if (!body.length) return;
+		body.html(this.renderOvStudents(this.ovStudents || {}));
+		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+	}
+
+	renderOvStudents(d) {
+		const q = this.ovStudQ || "";
+		const mode = this.ovStudMode || "all";
+		const onlyC = mode === "contracted";         // faqat shartnoma qilinganlar
+		const onlyNG = mode === "nogroup";           // faqat sinfga biriktirilmaganlar
+		const classesOnly = mode === "classes";      // faqat sinflar ro'yxati (yig'ilgan)
+		const groups = d.groups || [];
+		// tepadagi chiplar — BOSILADIGAN rejim filtrlari (qayta bosilsa hammasiga qaytadi)
+		const chip = (m, v, cap, color) => `<span class="ccy-chip tz-ovsm${mode === m ? " active" : ""}" data-ovsm="${m}"><b class="num"${color ? ` style="color:${color}"` : ""}>${this.fmt(v)}</b> <span class="muted-s">${cap}</span></span>`;
+		const chips = `<div class="ov-chips">
+			${chip("all", d.total || 0, "faol o'quvchi")}
+			${chip("contracted", d.contracted || 0, "shartnoma qilingan", "var(--good-ink)")}
+			${chip("classes", d.group_count || 0, "sinf")}
+			${d.no_group ? chip("nogroup", d.no_group, "sinfga biriktirilmagan", "var(--warn-ink)") : ""}
 		</div>`;
+		// to'lov summasi katakchasi: valyuta kesimida, to'liq raqam tooltip'da
+		const paidCell = (paid, bold) => {
+			if (!paid || !paid.length) return `<span class="muted-s">to'lov yo'q</span>`;
+			return paid.map((p) =>
+				`<div class="num" style="color:var(--good-ink);${bold ? "font-weight:750" : "font-weight:600"};white-space:nowrap" data-tt="${this.fmt(p.total)} ${this.esc(p.currency)}">${this.fmt(p.total)} <small>${this.esc(this.ccyLabel(p.currency))}</small></div>`).join("");
+		};
+		// sinf jami to'lovi — ko'rsatilayotgan (filtrlangan) o'quvchilardan yig'iladi
+		const aggPaid = (list) => {
+			const a = {};
+			list.forEach((s) => (s.paid || []).forEach((p) => { a[p.currency] = (a[p.currency] || 0) + p.total; }));
+			return Object.keys(a).map((c) => ({ currency: c, total: a[c] })).sort((x, y) => y.total - x.total);
+		};
+		let rows = "", shown = 0;
+		groups.forEach((g) => {
+			const glab = String(g.label || "").toLowerCase();
+			if (onlyNG && !g.no_group) return;                    // "sinfsiz" rejimi — faqat o'sha guruh
+			let all = g.students || [];
+			if (onlyC) all = all.filter((s) => s.contracted);
+			if (onlyC && !all.length) return;                     // shartnomasiz sinf — ko'rsatilmaydi
+			// qidiruvda: o'quvchi ismi YOKI sinf nomi mos kelsa ko'rsatamiz
+			const studs = q
+				? all.filter((s) => (String(s.name || "").toLowerCase() + " " + glab).indexOf(q) !== -1)
+				: all;
+			if (q && !studs.length) return;                       // qidiruvga mos emas — sinf yashirinadi
+			// sinflar rejimida hammasi yig'iq; sinfsiz rejimida ochiq; qidiruvda ochiq
+			const open = classesOnly ? false : (onlyNG || q) ? true : this.ovStudOpen.has(g.label);
+			shown += studs.length;
+			const gpaid = aggPaid(studs);
+			const payers = studs.filter((s) => s.pay_count).length;
+			rows += `<tr class="ovsg-h" data-ovsg="${this.esc(g.label)}">
+				<td><span class="dds-arrow">${open ? "▼" : "▶"}</span> <b>${this.esc(g.label)}</b>${g.no_group ? ` <span class="muted-s">(Student Group biriktirilmagan)</span>` : ""}</td>
+				<td class="r num"><b>${studs.length}</b> <span class="muted-s">o'quvchi</span></td>
+				<td class="num">${g.contracted ? `<span class="tz-yes">${g.contracted}/${g.count} shartnoma</span>` : `<span class="muted-s">—</span>`}</td>
+				<td class="r">${paidCell(gpaid, true)}${payers ? `<div class="muted-s">${payers}/${studs.length} o'quvchi to'lagan</div>` : ""}</td>
+				<td></td>
+			</tr>`;
+			if (open) rows += studs.map((s, i) => `
+				<tr class="ovsg-s">
+					<td class="ovsg-name ell" data-tt="${this.esc(s.name)}">${i + 1}. ${this.esc(s.name)}</td>
+					<td></td>
+					<td>${s.contracted ? `<span class="tz-yes">✓ shartnoma</span>` : `<span class="muted-s">—</span>`}</td>
+					<td class="r">${paidCell(s.paid)}${s.pay_count ? `<div class="muted-s">${s.pay_count} marta</div>` : ""}</td>
+					<td class="r num" style="white-space:nowrap">${s.last_pay ? this.dmy(s.last_pay) : `<span class="muted-s">—</span>`}</td>
+				</tr>`).join("");
+		});
+		if (!rows) rows = `<tr><td colspan="5" class="empty-hint">${q ? "Qidiruvga mos o'quvchi topilmadi."
+			: onlyC ? "Shartnoma qilingan o'quvchi topilmadi."
+			: onlyNG ? "Sinfga biriktirilmagan o'quvchi yo'q."
+			: "O'quvchi topilmadi."}</td></tr>`;
+		const cnt = q ? `Qidiruv: <b>${shown}</b> ta o'quvchi topildi.`
+			: onlyC ? `${this.fmt(d.contracted || 0)} ta shartnoma qilingan o'quvchi ko'rsatilmoqda.`
+			: onlyNG ? `${this.fmt(d.no_group || 0)} ta sinfga biriktirilmagan o'quvchi — ularni Student Group'ga qo'shish kerak.`
+			: classesOnly ? `${this.fmt(d.group_count || 0)} ta sinf — sinfni bosib ichini oching.`
+			: `${this.fmt(d.total || 0)} ta faol o'quvchi · ${this.fmt(d.group_count || 0)} ta sinf.`;
+		return `${chips}
+			<div class="tbl-wrap"><table>
+				<thead><tr><th>Sinf / O'quvchi</th><th class="r">O'quvchilar</th><th>Shartnoma</th><th class="r">Jami to'lagan</th><th class="r">Oxirgi to'lov</th></tr></thead>
+				<tbody>${rows}</tbody>
+			</table></div>
+			<div class="kt-count">${cnt} To'lovlar — butun tarix bo'yicha, kassaga tushgan real pul.</div>`;
+	}
+
+	// -- debitorka/kreditorka batafsil (balans daraxtining o'sha bo'lagi) --
+	ovBsNode() {
+		if (!this.bs) return null;
+		return this.ovDetail === "debitorka"
+			? ((this.bs.assets || []).find((n) => n.key === "deb") || null)
+			: ((this.bs.liabilities || []).find((n) => n.key === "cred") || null);
+	}
+
+	loadOvBs() {
+		const body = this.page.main.find(".tz-ovbs-body");
+		if (!body.length) return;
+		const paint = () => {
+			const node = this.ovBsNode();
+			// birinchi ochilishda daraxtning yuqori qatlamlarini avtomatik ochamiz
+			if (node && this._ovBsAuto !== this.ovDetail) {
+				this._ovBsAuto = this.ovDetail;
+				this.bsOpen.add(node.key);
+				(node.children || []).forEach((ch) => this.bsOpen.add(ch.key));
+			}
+			this.paintOvBs();
+		};
+		if (this.bs) { paint(); return; }
+		body.html(`<div class="tz-loader">Yuklanyapti…</div>`);
+		this.fetchBs((err) => {
+			if (err) this.page.main.find(".tz-ovbs-body").html(`<div class="empty-hint">Ma'lumotni yuklab bo'lmadi.</div>`);
+			else paint();
+		});
+	}
+
+	paintOvBs() {
+		const body = this.page.main.find(".tz-ovbs-body");
+		if (!body.length) return;
+		const node = this.ovBsNode();
+		if (!node) { body.html(`<div class="empty-hint">Ma'lumot topilmadi.</div>`); return; }
+		const multi = this.bsMulti();
+		const head = multi
+			? `<div class="bs-row bs-head"><span class="bs-lab"></span>${(this.bs.periods || []).map((p) => `<span class="bs-amt" data-tt="${this.esc(p.end)}">${this.esc(p.label)}</span>`).join("")}</div>`
+			: "";
+		body.html(`<div class="bs-scroll"><div class="bs-wrap${multi ? " bs-multi" : ""}">${head}${this.bsNode(node, 0)}</div></div>`);
+		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+	}
+
+	// -- kassa batafsil (hisoblar + oxirgi harakatlar) --
+	loadOvCash(force) {
+		const body = this.page.main.find(".tz-ovcash-body");
+		if (!body.length) return;
+		const paint = () => {
+			const b = this.page.main.find(".tz-ovcash-body");
+			if (!b.length) return;
+			b.html(this.renderOvCash(this.ovCash || {}));
+			b.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+		};
+		if (this.ovCash && !force) { paint(); return; }
+		body.html(`<div class="tz-loader">Harakatlar yuklanyapti…</div>`);
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_cash_detail",
+			args: { to_date: this.state.to_date, account: this.ovCashAcc || null },
+		}).then((r) => { this.ovCash = r.message || {}; paint(); })
+			.catch(() => body.html(`<div class="empty-hint">Kassa harakatlarini yuklab bo'lmadi.</div>`));
+	}
+
+	renderOvCash(d) {
+		const accounts = d.accounts || [];
+		const chips = accounts.map((a) => `
+			<button class="tz-acc-chip${this.ovCashAcc === a.account ? " active" : ""}" data-ovcash-acc="${this.esc(a.account)}" title="${this.fmt(a.balance)} ${this.esc(a.currency)} · ${this.esc(a.mode || "")}">
+				<span class="t">${this.esc(this.acctName(a.account))}</span>
+				<b class="num" style="color:${a.balance < 0 ? "var(--bad-ink)" : "var(--ink)"}">${this.kc(a.balance)} <small>${this.ccyLabel(a.currency)}</small></b>
+			</button>`).join("");
+		const single = !!d.account;
+		const tx = d.transactions || [];
+		const cols = single ? 7 : 7;
+		const body = tx.length ? tx.map((x) => {
+			const slug = String(x.voucher_type || "").toLowerCase().replace(/ /g, "-");
+			const who = this.acctName(x.who || "");
+			return `<tr>
+				<td class="num" style="white-space:nowrap">${this.dmy(x.date)}</td>
+				${single ? "" : `<td class="ell" data-tt="${this.esc(x.account)}">${this.esc(this.acctName(x.account))}</td>`}
+				<td class="ell" data-tt="${this.esc(who)}">${who ? this.esc(who) : `<span class="muted-s">—</span>`}</td>
+				<td class="r num" style="color:var(--good-ink)">${x.kirim ? this.fmt(x.kirim) : ""}</td>
+				<td class="r num" style="color:var(--bad-ink)">${x.chiqim ? this.fmt(x.chiqim) : ""}</td>
+				${single ? `<td class="r num" style="font-weight:700">${this.fmt(x.balance)}</td>` : ""}
+				<td class="ell" style="max-width:260px;color:var(--muted);font-size:12px" data-tt="${this.esc(x.remarks)}">${x.remarks ? this.esc(x.remarks) : `<span class="muted-s">—</span>`}</td>
+				<td>${x.voucher_no ? `<a class="tz-kassa-link" href="/app/${slug}/${encodeURIComponent(x.voucher_no)}" target="_blank" rel="noopener">${this.esc(x.voucher_no)}</a>` : "—"}</td>
+			</tr>`;
+		}).join("") : `<tr><td colspan="${cols}" class="empty-hint">Harakat topilmadi.</td></tr>`;
+		const cur = d.currency;
+		const thead = `<tr><th>Sana</th>${single ? "" : "<th>Hisob</th>"}<th>Kimdan / kimga</th><th class="r">Kirim</th><th class="r">Chiqim</th>${single ? `<th class="r">Qoldiq${cur ? " (" + this.esc(cur) + ")" : ""}</th>` : ""}<th>Izoh</th><th>Hujjat</th></tr>`;
+		return `<div class="ov-chips">${chips}</div>
+			<div class="kt-legend">${single
+				? `<b>${this.esc(this.acctName(d.account))}</b> — oxirgi harakatlar, har qatorda o'sha kundan keyingi qoldiq. Yana bosib filtrni olib tashlang.`
+				: `Barcha kassa/bank hisoblari birga — hisob chipini bosib faqat bittasini ko'ring.`}</div>
+			<div class="tbl-wrap"><table><thead>${thead}</thead><tbody>${body}</tbody></table></div>
+			<div class="kt-count">Oxirgi ${tx.length} ta harakat ko'rsatildi${tx.length >= (d.limit || 300) ? " (limitga yetdi — oraliqni qisqartiring)" : ""}.</div>`;
 	}
 
 	// ================= TAB: Cashflow =================
@@ -942,113 +1222,114 @@ class TZInvestorDashboard {
 
 	// ================= TAB: Tuition =================
 	renderTuition() {
-		const t = this.data.tuition, ccy = this.ccyLabel(this.data.meta.currency);
+		const t = this.data.tuition;
 		const p = (t && t.payments) || { by_currency: [], students: [], recent: [], total_count: 0, total_students: 0 };
-		// summa: so'm butun (kasrsiz), boshqa valyuta 2 kasr bilan
-		const m2 = (n) => { n = Number(n) || 0; const neg = n < 0 ? "−" : ""; const a = Math.abs(n).toFixed(2).split("."); return neg + a[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ") + "," + a[1]; };
-		const mAmt = (n, c) => (c === "UZS" ? this.fmt(n) : m2(n));
 		const main = (p.by_currency || [])[0] || null;   // eng katta valyuta buketi (asosan so'm)
-		let h = this.sec("O'quvchilar to'lovi", `To'lovlar (Payment Entry) asosida · kassaga tushgan real pul · ${this.esc(this.data.meta.period.label)}`);
+		const td = this.tuitionDetail;
+		let h = this.sec("O'quvchilar to'lovi", `To'lovlar (Payment Entry) asosida · kassaga tushgan real pul · ${this.esc(this.data.meta.period.label)} · kartani bosing — batafsil pastda ochiladi`);
 
-		// ---- To'lov KPI'lari ----
+		// ---- To'lov KPI'lari — har biri BOSILADIGAN, batafsili pastda ochiladi ----
+		const kcls = (k) => "clickable" + (td === k ? " active" : "");
 		h += `<div class="grid cols-5 mb">
-			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(t.active), pin: "var(--c2)", noBadge: true, sub: "jami ro'yxatda" })}
-			${this.kpi({ label: "Shartnoma qilinganlar", value: this.fmt(t.contracted), pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: `faol ichida${t.active ? ` · ${Math.round((t.contracted || 0) / t.active * 100)}%` : ""}` })}
-			${this.kpi({ label: "Davr to'lovlari", value: this.fmt(p.total_count), pin: "var(--brand)", valColor: "var(--brand-ink)", noBadge: true, sub: "ta to'lov yozuvi" })}
-			${this.kpi({ label: "To'lagan o'quvchilar", value: this.fmt(p.total_students), pin: "var(--c1)", noBadge: true, sub: "shu davrda" })}
-			${this.kpi({ label: "Davr yig'imi", value: (main ? mAmt(main.total, main.currency) : "0"), unit: main ? " " + this.esc(main.currency) : "", pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: (p.by_currency || []).length > 1 ? "boshqa valyuta pastda" : "kassaga tushgan" })}
+			${this.kpi({ label: "Faol o'quvchilar", value: this.fmt(t.active), pin: "var(--c2)", noBadge: true, sub: "bosing: sinflar kesimida ro'yxat", cls: kcls("active"), click: `data-td="active"` })}
+			${this.kpi({ label: "Shartnoma qilinganlar", value: this.fmt(t.contracted), pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: `faol ichida${t.active ? ` · ${Math.round((t.contracted || 0) / t.active * 100)}%` : ""} · bosing: ro'yxati`, cls: kcls("contracted"), click: `data-td="contracted"` })}
+			${this.kpi({ label: "Davr to'lovlari", value: this.fmt(p.total_count), pin: "var(--brand)", valColor: "var(--brand-ink)", noBadge: true, sub: "ta to'lov · bosing: har biri kimdan-qachon", cls: kcls("payments"), click: `data-td="payments"` })}
+			${this.kpi({ label: "To'lagan o'quvchilar", value: this.fmt(p.total_students), pin: "var(--c1)", noBadge: true, sub: "shu davrda · bosing: kim qancha to'lagan", cls: kcls("payers"), click: `data-td="payers"` })}
+			${this.kpi({ label: "Davr yig'imi", value: (main ? this.mAmt(main.total, main.currency) : "0"), unit: main ? " " + this.esc(main.currency) : "", pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: "kassaga tushgan · bosing: to'lovlar ro'yxati", cls: kcls("payments"), click: `data-td="payments"` })}
 		</div>`;
 
-		// ---- Valyuta kesimi (KICHIK — chip ko'rinishida, cardga sig'adi) ----
+		// ---- Valyuta kesimi — chiplar BOSILADIGAN: shu valyutadagi to'lovlar ro'yxati ochiladi ----
 		const ccyChips = (p.by_currency || []).length
-			? p.by_currency.map((b) => `<span class="ccy-chip"><b>${this.esc(b.currency)}</b> <b style="color:var(--good-ink)">${mAmt(b.total, b.currency)}</b> <span style="color:var(--muted);font-size:12px">· ${b.count} to'lov · ${b.students} o'quvchi</span></span>`).join("")
+			? p.by_currency.map((b) => `<span class="ccy-chip tz-tccy${td === "payments" && this.tuitionCcy === b.currency ? " active" : ""}" data-tccy="${this.esc(b.currency)}"><b>${this.esc(b.currency)}</b> <b style="color:var(--good-ink)">${this.mAmt(b.total, b.currency)}</b> <span style="color:var(--muted);font-size:12px">· ${b.count} to'lov · ${b.students} o'quvchi · bosing ▾</span></span>`).join("")
 			: `<span class="empty-hint">Davrda to'lov yo'q.</span>`;
-		h += this.card(`<div class="hd"><div><h3>Davr yig'imi — valyuta kesimida</h3><div class="meta">kassaga tushgan real pul, konvertatsiyasiz</div></div></div>
+		h += this.card(`<div class="hd"><div><h3>Davr yig'imi — valyuta kesimida</h3><div class="meta">kassaga tushgan real pul, konvertatsiyasiz · valyutani bosing — bu pul qanday yig'ilgani (to'lovma-to'lov) ochiladi</div></div></div>
 			<div style="display:flex;flex-wrap:wrap;gap:10px;padding:2px">${ccyChips}</div>`, "mb");
 
-		// ---- BITTA jadval + toggle: o'quvchilar kesimi (default) ⇄ har bir to'lov ----
-		const view = this.tuitionView === "payments" ? "payments" : "students";
-		let title, meta, thead, tbodyRows;
-		if (view === "students") {
-			title = "O'quvchilar kesimi — har biri qancha to'lagan";
-			meta = `ko'pdan kamga · <span class="tz-stud-count">${(p.students || []).length}</span> ta o'quvchi`;
-			thead = `<tr><th class="r">#</th><th>O'quvchi</th><th class="r">To'lovlar</th><th class="r">Jami</th><th class="r">Oxirgi</th></tr>`;
-			tbodyRows = (p.students || []).length
-				? p.students.map((s, i) => `<tr data-sname="${this.esc(String(s.name || "").toLowerCase())}">
-					<td class="r num" style="color:var(--muted)">${i + 1}</td>
-					<td class="ell" data-tt="${this.esc(s.name)}">${this.esc(s.name)}</td>
-					<td class="r num">${s.count}</td>
-					<td class="r num" style="font-weight:700">${mAmt(s.total, s.currency)} ${this.esc(s.currency)}</td>
-					<td class="r">${this.esc(s.last_date || "")}</td></tr>`).join("")
-				: `<tr><td colspan="5" class="empty-hint">Ma'lumot yo'q.</td></tr>`;
-		} else {
-			title = "Har bir to'lov — izohlari bilan";
-			meta = `har bir to'lov · <span class="tz-stud-count">${(p.recent || []).length}</span> ta · kassir izohi (Kassa)`;
-			thead = `<tr><th>Sana</th><th>O'quvchi</th><th class="r">Summa</th><th>Usul</th><th>Izoh</th><th>Kassa</th></tr>`;
-			tbodyRows = (p.recent || []).length
-				? p.recent.map((r) => `<tr data-sname="${this.esc(String(r.student || "").toLowerCase())}">
-					<td>${this.esc(r.date)}</td>
-					<td class="ell" data-tt="${this.esc(r.student)}">${this.esc(r.student)}</td>
-					<td class="r num" style="color:var(--good-ink);font-weight:700">${mAmt(r.amount, r.currency)} ${this.esc(r.currency)}${r.orig_currency && r.orig_currency !== r.currency ? `<div style="font-size:11px;color:var(--muted);font-weight:400">o'quvchi: ${mAmt(r.orig_amount, r.orig_currency)} ${this.esc(r.orig_currency)}</div>` : ""}</td>
-					<td class="ell">${this.esc(r.mode)}</td>
-					<td style="max-width:340px;white-space:normal;color:var(--muted);font-size:12px" data-tt="${this.esc(r.remarks)}">${this.esc(r.remarks).replace(/\n/g, " · ")}</td>
-					<td>${r.ref ? `<a class="tz-kassa-link" href="/app/kassa/${encodeURIComponent(r.ref)}" target="_blank" rel="noopener">${this.esc(r.ref)}</a>` : "—"}</td>
-				</tr>`).join("")
-				: `<tr><td colspan="6" class="empty-hint">To'lov topilmadi.</td></tr>`;
-		}
-		const seg = `<div class="tz-seg" role="tablist">
-				<button class="tz-seg-opt${view === "students" ? " on" : ""}" data-tv="students">O'quvchilar kesimi</button>
-				<button class="tz-seg-opt${view === "payments" ? " on" : ""}" data-tv="payments">Har bir to'lov</button>
-			</div>`;
-		h += this.card(`<div class="hd tz-tuition-hd">
-				<div><h3>${title}</h3><div class="meta">${meta}</div></div>
-				<div class="tz-tuition-tools">
-					<input type="text" class="tz-stud-filter" placeholder="O'quvchi qidirish…" autocomplete="off">
-					${seg}
-				</div>
-			</div>
-			<div class="tbl-wrap"><table><thead>${thead}</thead><tbody>${tbodyRows}</tbody></table></div>`, "mb");
-
-		// ---- Agar Education Fees ham ishlatilsa — billing bloklari qo'shiladi ----
-		if (t.available) {
-			h += `<div class="grid cols-4 mb">
-				${this.moneyKpi({ label: "Hisoblangan (billed)", raw: t.billed, pin: "var(--c1)", noBadge: true })}
-				${this.moneyKpi({ label: "Yig'ilgan (collected)", raw: t.collected, pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true })}
-				${this.kpi({ label: "Yig'im foizi", value: (t.rate != null ? t.rate : "—"), unit: t.rate != null ? "%" : "", pin: "var(--warn)", noBadge: true, sub: `Qoldiq qarz ${this.kc(t.outstanding)} ${ccy}` })}
-				${this.kpi({ label: "Fees yozuvi", value: this.fmt(t.with_fees), pin: "var(--c2)", noBadge: true, sub: "ta o'quvchida" })}
-			</div>`;
-			const st = t.status, tot = st.paid + st.partial + st.debtor;
-			const donut = tot ? `<div class="donut-wrap">
-				${this.donutSvg([{ pct: st.paid / tot * 100 }, { pct: st.partial / tot * 100 }, { pct: st.debtor / tot * 100 }], ["var(--good)", "var(--warn)", "var(--bad)"], `${Math.round(st.paid / tot * 100)}%`, "to'ladi")}
-				<div class="legend" style="flex-direction:column;gap:11px">
-					<div class="it"><span class="sw" style="background:var(--good)"></span> To'liq to'ladi <b>${st.paid} ta</b></div>
-					<div class="it"><span class="sw" style="background:var(--warn)"></span> Qisman <b>${st.partial} ta</b></div>
-					<div class="it"><span class="sw" style="background:var(--bad)"></span> Qarzdor <b>${st.debtor} ta</b></div>
-				</div></div>` : `<div class="empty-hint">To'lov holati ma'lumoti yo'q.</div>`;
-			h += `<div class="grid cols-2 mb">
-				${this.card(`<div class="hd"><div><h3>To'lov holati</h3><div class="meta">${tot} o'quvchi</div></div></div>${donut}`)}
-				${this.classCard(t.by_class)}
-			</div>`;
-			h += this.partyTable("Eng katta qarzdor o'quvchilar", t.top_debtors, "var(--bad-ink)");
-		}
+		// ---- Batafsil panel — tanlangan kartaga qarab ----
+		h += `<div class="tz-tuition-detail">${this.tuitionDetailPanel(t, p)}</div>`;
 		return h + this.note();
 	}
 
-	partyTable(title, top, color) {
-		const rows = (top || []).length ? top.map((t) => `<tr><td class="ell" data-tt="${this.esc(t.name)}">${this.esc(t.name)}</td><td class="r num" style="color:${color}">${this.fmt(t.amount)}</td></tr>`).join("")
-			: `<tr><td colspan="2" class="empty-hint">Ma'lumot yo'q.</td></tr>`;
-		return this.card(`<div class="hd"><div><h3>${this.esc(title)}</h3></div></div><table><tbody>${rows}</tbody></table>`);
+	// O'quvchilar to'lovi — karta bosilganda ochiladigan batafsil panel
+	tuitionDetailPanel(t, p) {
+		const k = this.tuitionDetail;
+		if (!k) return "";
+		if (k === "active" || k === "contracted") {
+			// sinflar kesimidagi yig'ma-ochilma ro'yxat (Umumiy tabdagi bilan bir xil mexanizm)
+			setTimeout(() => { this.ovStudMode = (k === "contracted") ? "contracted" : "all"; this.loadOvStudents(); }, 0);
+			const title = k === "contracted" ? "Shartnoma qilingan o'quvchilar — sinflar kesimida" : "Faol o'quvchilar — sinflar kesimida";
+			return this.card(`
+				<div class="hd tz-tuition-hd"><div><h3>${title}</h3><div class="meta">sinfni bosing — ichidagi o'quvchilar ochiladi · jami to'lagani va oxirgi to'lovi bilan</div></div>
+					<div class="tz-tuition-tools"><input type="text" class="tz-ovstud-filter" placeholder="O'quvchi yoki sinf qidirish…" autocomplete="off"></div></div>
+				<div class="tz-ovstud-body"><div class="tz-loader">O'quvchilar yuklanyapti…</div></div>`, "mb ov-detail-card");
+		}
+		if (k === "payments") return this.tuitionPaymentsTable(p);
+		if (k === "payers") return this.tuitionPayersTable(p);
+		return "";
 	}
 
-	classCard(items) {
-		if (!items || !items.length) return this.card(`<div class="hd"><div><h3>Sinf kesimi</h3></div></div><div class="empty-hint">Sinf bo'yicha ma'lumot yo'q.</div>`);
-		const rows = items.map((c) => `
-			<tr><td class="ell" data-tt="${this.esc(c.label)}">${this.esc(c.label)}</td>
-			<td class="r num">${c.students}</td>
-			<td class="r num">${this.kc(c.collected)} / ${this.kc(c.billed)}</td>
-			<td class="r"><div class="mini-prog"><span style="width:${Math.min(100, c.rate)}%"></span></div><small class="num">${c.rate}%</small></td></tr>`).join("");
-		return this.card(`<div class="hd"><div><h3>Sinf bo'yicha yig'im</h3><div class="meta">yig'ilgan / hisoblangan · foiz</div></div></div>
-			<div class="tbl-wrap"><table><thead><tr><th>Sinf</th><th class="r">O'quvchi</th><th class="r">Yig'ilgan/Hisoblangan</th><th class="r">Foiz</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+	// Davr to'lovlari — har biri: kimdan, qachon, qancha, qaysi usulda, hujjat, izoh.
+	// tuitionCcy berilsa faqat shu valyutadagi to'lovlar (valyuta chipi bosilganda).
+	tuitionPaymentsTable(p) {
+		const cf = this.tuitionCcy;
+		const list = (p.recent || []).filter((r) => !cf || (r.currency || "") === cf);
+		// jami — valyuta kesimida (aralash valyutani bitta raqamga qo'shib bo'lmaydi)
+		const totByCcy = {};
+		list.forEach((r) => { const c = r.currency || "?"; totByCcy[c] = (totByCcy[c] || 0) + (Number(r.amount) || 0); });
+		const totalTxt = Object.keys(totByCcy).sort((a, b) => totByCcy[b] - totByCcy[a])
+			.map((c) => `${this.mAmt(totByCcy[c], c)} ${this.esc(c)}`).join(" · ") || "0";
+		const students = new Set(list.map((r) => r.student)).size;
+		const rows = list.length ? list.map((r) => `
+			<tr data-sname="${this.esc(String(r.student || "").toLowerCase())}">
+				<td class="num" style="white-space:nowrap">${this.dmy(r.date)}</td>
+				<td class="ell" data-tt="${this.esc(r.student)}">${this.esc(r.student)}</td>
+				<td class="r num" style="color:var(--good-ink);font-weight:700">${this.mAmt(r.amount, r.currency)} ${this.esc(r.currency)}${r.orig_currency && r.orig_currency !== r.currency ? `<div style="font-size:11px;color:var(--muted);font-weight:400">o'quvchi to'ladi: ${this.mAmt(r.orig_amount, r.orig_currency)} ${this.esc(r.orig_currency)}</div>` : ""}</td>
+				<td class="ell">${this.esc(r.mode || "—")}</td>
+				<td style="white-space:nowrap">
+					${r.name ? `<a class="tz-kassa-link" href="/app/payment-entry/${encodeURIComponent(r.name)}" target="_blank" rel="noopener" title="Payment Entry">${this.esc(r.name)}</a>` : "—"}
+					${r.ref ? `<div><a class="tz-kassa-link" href="/app/kassa/${encodeURIComponent(r.ref)}" target="_blank" rel="noopener" title="Kassa">${this.esc(r.ref)}</a></div>` : ""}
+				</td>
+				<td style="max-width:340px;white-space:normal;color:var(--muted);font-size:12px" data-tt="${this.esc(r.remarks)}">${r.remarks ? this.esc(r.remarks).replace(/\n/g, " · ") : `<span class="muted-s">—</span>`}</td>
+			</tr>`).join("")
+			: `<tr><td colspan="6" class="empty-hint">Bu davrda${cf ? ` ${this.esc(cf)} da` : ""} to'lov topilmadi.</td></tr>`;
+		return this.card(`
+			<div class="hd tz-tuition-hd"><div><h3>Davr to'lovlari — har biri${cf ? ` · faqat ${this.esc(cf)}` : ""}</h3>
+				<div class="meta">kimdan · qachon · qancha · usul · hujjat · izoh — eng yangisi tepada · ${this.esc(this.data.meta.period.label)}</div></div>
+				<div class="tz-tuition-tools">
+					<div class="focus-total num">Jami: ${totalTxt} · ${list.length} to'lov · ${students} o'quvchi</div>
+					<input type="text" class="tz-stud-filter" placeholder="O'quvchi qidirish…" autocomplete="off">
+				</div></div>
+			<div class="tbl-wrap"><table>
+				<thead><tr><th>Sana</th><th>Kimdan (o'quvchi)</th><th class="r">Summa</th><th>Usul</th><th>Hujjat</th><th>Izoh</th></tr></thead>
+				<tbody>${rows}</tbody>
+			</table></div>
+			<div class="kt-count"><span class="tz-stud-count">${list.length}</span> ta to'lov ko'rsatildi${(p.recent || []).length >= 400 ? " (eng yangi 400 tasi)" : ""}.</div>`, "mb ov-detail-card");
+	}
+
+	// To'lagan o'quvchilar — kim qancha to'lagan, necha marta, oxirgi to'lov qachon
+	tuitionPayersTable(p) {
+		const list = p.students || [];
+		const rows = list.length ? list.map((s, i) => `
+			<tr data-sname="${this.esc(String(s.name || "").toLowerCase())}">
+				<td class="r num" style="color:var(--muted)">${i + 1}</td>
+				<td class="ell" data-tt="${this.esc(s.name)}">${this.esc(s.name)}</td>
+				<td class="r num">${s.count} marta</td>
+				<td class="r num" style="color:var(--good-ink);font-weight:700">${this.mAmt(s.total, s.currency)} ${this.esc(s.currency)}</td>
+				<td class="r num" style="white-space:nowrap">${s.last_date ? this.dmy(s.last_date) : "—"}</td>
+			</tr>`).join("")
+			: `<tr><td colspan="5" class="empty-hint">Bu davrda to'lov qilgan o'quvchi yo'q.</td></tr>`;
+		return this.card(`
+			<div class="hd tz-tuition-hd"><div><h3>To'lagan o'quvchilar — kim qancha</h3>
+				<div class="meta">ko'pdan kamga · ${this.esc(this.data.meta.period.label)} davri ichida</div></div>
+				<div class="tz-tuition-tools">
+					<div class="focus-total num">${list.length} ta o'quvchi</div>
+					<input type="text" class="tz-stud-filter" placeholder="O'quvchi qidirish…" autocomplete="off">
+				</div></div>
+			<div class="tbl-wrap"><table>
+				<thead><tr><th class="r">#</th><th>O'quvchi</th><th class="r">Necha marta</th><th class="r">Jami to'lagan</th><th class="r">Oxirgi to'lov</th></tr></thead>
+				<tbody>${rows}</tbody>
+			</table></div>
+			<div class="kt-count"><span class="tz-stud-count">${list.length}</span> ta o'quvchi ko'rsatildi.</div>`, "mb ov-detail-card");
 	}
 
 	// ================= TAB: P&L =================
@@ -1110,10 +1391,8 @@ class TZInvestorDashboard {
 		return h + this.note();
 	}
 
-	loadBs() {
-		const body = this.page.main.find(".tz-bs-body");
-		if (!body.length) return;
-		body.html(`<div class="tz-loader">Balans yuklanyapti…</div>`);
+	// balansni serverdan olish — Balans tabi va Umumiy tabdagi debitorka/kreditorka paneli uchun umumiy
+	fetchBs(cb) {
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_balance_sheet",
 			args: {
@@ -1121,8 +1400,18 @@ class TZInvestorDashboard {
 				accumulated: this.bsOpt.acc, include_default_fb: this.bsOpt.fb,
 				periodicity: this.bsOpt.per || null,
 			},
-		}).then((r) => { this.bs = r.message || null; this.paintBs(); })
-			.catch(() => this.page.main.find(".tz-bs-body").html(`<div class="empty-hint">Balansni yuklab bo'lmadi.</div>`));
+		}).then((r) => { this.bs = r.message || null; cb && cb(); })
+			.catch(() => { this.bs = null; cb && cb(true); });
+	}
+
+	loadBs() {
+		const body = this.page.main.find(".tz-bs-body");
+		if (!body.length) return;
+		body.html(`<div class="tz-loader">Balans yuklanyapti…</div>`);
+		this.fetchBs((err) => {
+			if (err) this.page.main.find(".tz-bs-body").html(`<div class="empty-hint">Balansni yuklab bo'lmadi.</div>`);
+			else this.paintBs();
+		});
 	}
 
 	paintBs() {

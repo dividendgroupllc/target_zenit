@@ -1452,9 +1452,12 @@ def _bs_node(key, label, amounts, children=None, count=None):
 
 
 def _bs_sig(v):
-    """Vektorning oxirgi ahamiyatli qiymati — tomonni (Дт/Кт) aniqlash va skip uchun."""
+    """Vektorning oxirgi ahamiyatli qiymati — tomonni (Дт/Кт) aniqlash va skip uchun.
+    Chegara 0.005 (yaxlitlashda ko'rinadigan eng kichik qiymat): tiyinlik qoldiq ham
+    o'z tomonida tursin — aks holda manfiy tiyinlar (−0,28 kabi) debitorkada minus
+    bo'lib qolib ketadi (aslida kreditorka tomonga o'tishi kerak)."""
     for x in reversed(v):
-        if abs(x) >= 0.5:
+        if abs(x) > 0.005:
             return x
     return 0.0
 
@@ -1762,6 +1765,201 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
         "total_equity": round(te[-1], 2), "total_passive": round(tp[-1], 2),
         "check": check[-1],
     }
+
+
+# ===========================================================================
+# Umumiy tab — karta batafsillari: o'quvchilar to'liq ro'yxati va kassa harakatlari
+# (kartani bosganda pastda ochiladigan jadvallar uchun)
+# ===========================================================================
+@frappe.whitelist()
+def get_students_detail():
+    """O'quvchilar — sinf (Student Group, active=1) kesimida: har sinf ichida o'quvchilar
+    ro'yxati (shartnoma holati, tug'ilgan sana, qabul sanasi bilan). Faqat faol (enabled=1)
+    o'quvchilar. Sinflar tabiiy tartibda (G1A, G2A, ... G10B), sinfga biriktirilmaganlar
+    "Sinfsiz" guruhida oxirida."""
+    _guard()
+    ccy = _company_currency(_default_company())
+    res = {"groups": [], "total": 0, "contracted": 0, "group_count": 0, "no_group": 0,
+           "currency": ccy}
+    if not _has("Student"):
+        return res
+    students = []
+    try:
+        students = frappe.get_all("Student", filters={"enabled": 1},
+                                  fields=["name", "student_name", "joining_date", "customer"])
+    except Exception:
+        try:
+            students = frappe.get_all("Student", filters={"enabled": 1},
+                                      fields=["name", "student_name"])
+        except Exception:
+            pass
+
+    # To'lovlar — Payment Entry (Receive, Student customer'lari), BUTUN tarix bo'yicha:
+    # har o'quvchi jami qancha to'lagan (kassaga tushgan real pul, valyuta kesimida)
+    # va oxirgi to'lov sanasi. Student → Customer bog'lami orqali.
+    paymap = defaultdict(lambda: {"by_ccy": defaultdict(float), "count": 0, "last": ""})
+    try:
+        for r in frappe.db.sql(
+                """SELECT pe.party, pe.paid_to_account_currency ccy,
+                          IFNULL(SUM(pe.received_amount), 0) total,
+                          COUNT(*) n, MAX(pe.posting_date) last
+                   FROM `tabPayment Entry` pe
+                   JOIN `tabCustomer` c ON c.name = pe.party AND c.customer_group = 'Student'
+                   WHERE pe.docstatus = 1 AND pe.party_type = 'Customer'
+                     AND pe.payment_type = 'Receive'
+                   GROUP BY pe.party, pe.paid_to_account_currency""", as_dict=True):
+            p = paymap[r.party]
+            p["by_ccy"][r.ccy or ccy] += flt(r.total)
+            p["count"] += int(r.n or 0)
+            if str(r.last or "") > p["last"]:
+                p["last"] = str(r.last or "")
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: students_detail payments")
+    # shartnoma bayrog'i — custom field bo'lmagan saytda xato bermasin
+    contracted = set()
+    try:
+        contracted = set(frappe.get_all(
+            "Student", filters={"enabled": 1, "custom_shartnoma_qilindi": 1}, pluck="name"))
+    except Exception:
+        pass
+    gmap = defaultdict(list)
+    if _has("Student Group"):
+        try:
+            for r in frappe.db.sql(
+                    """SELECT sgs.student, sg.student_group_name g
+                       FROM `tabStudent Group Student` sgs
+                       JOIN `tabStudent Group` sg ON sg.name = sgs.parent
+                       WHERE sgs.active = 1 AND IFNULL(sg.disabled, 0) = 0""", as_dict=True):
+                if r.g:
+                    gmap[r.student].append(r.g)
+        except Exception:
+            pass
+
+    NO_GROUP = "\x7f__none__"          # sortda eng oxiriga tushadigan maxsus kalit
+    buckets = defaultdict(list)        # sinf -> [o'quvchi]
+    for s in students:
+        jd = s.get("joining_date")
+        pay = paymap.get(s.get("customer")) if s.get("customer") else None
+        paid = []
+        if pay:
+            paid = [{"currency": c, "total": v} for c, v in pay["by_ccy"].items() if v > 0.5]
+            paid.sort(key=lambda x: -x["total"])   # eng katta summa birinchi (asosan so'm)
+        info = {
+            "student": s.name,
+            "name": s.student_name or s.name,
+            "contracted": 1 if s.name in contracted else 0,
+            "joined": str(jd) if jd else "",
+            "paid": paid,                                  # jami to'lagani (valyuta kesimida)
+            "pay_count": pay["count"] if pay else 0,       # necha marta to'lagan
+            "last_pay": pay["last"] if pay else "",        # oxirgi to'lov sanasi
+        }
+        groups = gmap.get(s.name) or [NO_GROUP]
+        for g in groups:               # bir o'quvchi bir nechta guruhda bo'lsa — har birida ko'rinadi
+            buckets[g].append(info)
+
+    out = []
+    for g in sorted(buckets.keys(), key=_nat_key):
+        studs = sorted(buckets[g], key=lambda x: (x["name"] or "").lower())
+        gp = defaultdict(float)        # sinf jami to'lovi — valyuta kesimida
+        for x in studs:
+            for pp in x["paid"]:
+                gp[pp["currency"]] += pp["total"]
+        gpaid = [{"currency": c, "total": v} for c, v in gp.items() if v > 0.5]
+        gpaid.sort(key=lambda x: -x["total"])
+        out.append({
+            "label": "Sinfsiz" if g == NO_GROUP else g,
+            "no_group": 1 if g == NO_GROUP else 0,
+            "count": len(studs),
+            "contracted": sum(x["contracted"] for x in studs),
+            "paid": gpaid,
+            "payers": sum(1 for x in studs if x["pay_count"]),
+            "students": studs,
+        })
+    res["groups"] = out
+    res["total"] = len(students)                       # distinct o'quvchi
+    res["contracted"] = sum(1 for s in students if s.name in contracted)
+    res["group_count"] = sum(1 for g in out if not g["no_group"])
+    res["no_group"] = len(buckets.get(NO_GROUP, []))
+    return res
+
+
+@frappe.whitelist()
+def get_cash_detail(to_date=None, account=None, limit=300):
+    """Xisobdagi pullar — batafsil: har hisob qoldig'i (sana holatiga) + oxirgi harakatlar
+    (eng yangisidan boshlab, kim bilan / hujjat / izoh). Bitta hisob tanlansa har qator
+    uchun yurish qoldig'i (o'sha harakatdan KEYINGI qoldiq) ham hisoblanadi."""
+    _guard()
+    t0 = getdate(to_date) if to_date else getdate(today())
+    company = _default_company()
+    accs = _cash_accounts(company)
+    bals = _balance_upto(list(accs.keys()), t0, company)
+    accounts = [{"account": a, "mode": mode, "currency": _acc_currency(a),
+                 "balance": flt(bals.get(a, 0.0))} for a, mode in accs.items()]
+    accounts.sort(key=lambda x: -x["balance"])
+
+    single = account if (account and account in accs) else None
+    sel = [single] if single else list(accs.keys())
+    limit = max(20, min(cint(limit) or 300, 500))
+    rows = []
+    if sel:
+        try:
+            rows = frappe.db.sql(
+                f"""SELECT ge.posting_date, ge.account, ge.party_type, ge.party, ge.against,
+                           ge.voucher_type, ge.voucher_no, ge.remarks,
+                           ge.debit_in_account_currency d, ge.credit_in_account_currency c
+                    FROM `tabGL Entry` ge
+                    WHERE ge.account IN %(a)s AND ge.posting_date <= %(t)s
+                      AND ge.is_cancelled = 0 {_co(company, 'ge')}
+                    ORDER BY ge.posting_date DESC, ge.creation DESC
+                    LIMIT %(l)s""",
+                {"a": tuple(sel), "t": str(t0), "company": company, "l": limit}, as_dict=True)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "investor_dashboard: cash_detail")
+
+    # GL qatorida party bo'sh bo'lsa (masalan Payment Entry'ning kassa oyog'i) —
+    # kontragentni voucher'ning o'zidan topamiz, shunda "ACC-SH-..." o'rniga ism chiqadi
+    pe_party = {}
+    pe_names = list({r.voucher_no for r in rows
+                     if r.voucher_type == "Payment Entry" and not r.party and r.voucher_no})
+    if pe_names:
+        try:
+            for pe in frappe.get_all("Payment Entry", filters={"name": ["in", pe_names]},
+                                     fields=["name", "party_type", "party"]):
+                if pe.party:
+                    pe_party[pe.name] = (pe.party_type, pe.party)
+        except Exception:
+            pass
+
+    run = flt(bals.get(single, 0.0)) if single else None
+    name_cache = {}
+
+    def resolved_name(pt, p):
+        key = (pt, p)
+        if key not in name_cache:
+            name_cache[key] = _party_name(pt, p)
+        return name_cache[key]
+
+    tx = []
+    for r in rows:
+        if r.party:
+            who = resolved_name(r.party_type, r.party)
+        elif r.voucher_no in pe_party:
+            who = resolved_name(*pe_party[r.voucher_no])
+        else:
+            who = (r.against or "").split(",")[0].strip()
+        item = {"date": str(r.posting_date), "account": r.account, "who": who,
+                "voucher_type": r.voucher_type or "", "voucher_no": r.voucher_no or "",
+                "kirim": flt(r.d), "chiqim": flt(r.c),
+                "remarks": " ".join(str(r.remarks or "").replace("\t", " ").split())[:200]}
+        if single:
+            item["balance"] = run          # shu harakatdan keyingi qoldiq
+            run -= flt(r.d) - flt(r.c)     # yuqoridan pastga (yangi→eski) orqaga yechamiz
+        tx.append(item)
+
+    return {"as_of": str(t0), "accounts": accounts, "transactions": tx,
+            "account": single or "",
+            "currency": _acc_currency(single) if single else None,
+            "limit": limit}
 
 
 @frappe.whitelist()
