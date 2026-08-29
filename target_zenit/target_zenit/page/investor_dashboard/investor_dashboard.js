@@ -21,6 +21,10 @@ class TZInvestorDashboard {
 		// DDS (pul oqimi hisoboti) holati
 		this.ddsFilter = { mode_of_payment: "", party_type: "", party: "", category: "" };
 		this.dds = null;
+		// Balans (balance sheet) holati
+		this.bs = null;
+		this.bsOpen = new Set();                 // ochilgan daraxt tugunlari
+		this.bsOpt = { acc: 1, fb: 1, per: "" }; // yig'ilgan qiymat / default finance book / davr ustunlari
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
 			{ key: "overview", label: "Umumiy" },
@@ -29,6 +33,7 @@ class TZInvestorDashboard {
 			{ key: "dds", label: "Pul oqimi (DDS)" },
 			{ key: "tuition", label: "O'quvchilar to'lovi" },
 			{ key: "pnl", label: "Foyda (P&L)" },
+			{ key: "balance", label: "Balans" },
 		];
 		// kassa hisob kartalari uchun rang palitrasi (har shot alohida rang)
 		this.acctColors = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c6)", "var(--good)", "var(--warn)", "var(--c5)"];
@@ -160,6 +165,15 @@ class TZInvestorDashboard {
 			rows.css("display", vis ? "none" : "table-row");
 			this.page.main.find(`.dds-arrow[data-arrow="${k}"]`).text(vis ? "▶" : "▼");
 		});
+		// Balans (balance sheet) — davr/checkbox'lar va daraxtni ochish/yopish
+		body.on("change", ".tz-bs-per", (e) => { this.bsOpt.per = e.target.value || ""; this.bs = null; this.loadBs(); });
+		body.on("change", ".tz-bs-acc", (e) => { this.bsOpt.acc = e.target.checked ? 1 : 0; this.bs = null; this.loadBs(); });
+		body.on("change", ".tz-bs-fb", (e) => { this.bsOpt.fb = e.target.checked ? 1 : 0; this.bs = null; this.loadBs(); });
+		body.on("click", "[data-bs-k]", (e) => {
+			const k = String($(e.currentTarget).attr("data-bs-k"));
+			if (this.bsOpen.has(k)) this.bsOpen.delete(k); else this.bsOpen.add(k);
+			this.paintBs();
+		});
 		// o'quvchilar to'lovi jadvali — ko'rinishni almashtirish (segment toggle)
 		body.on("click", "[data-tv]", (e) => {
 			const v = String($(e.currentTarget).data("tv"));
@@ -199,6 +213,7 @@ class TZInvestorDashboard {
 	load_data() {
 		this.kontragent = null;
 		this.dds = null;
+		this.bs = null;
 		this.page.main.find(".tz-body").html(`<div class="tz-loader">Ma'lumot yuklanyapti…</div>`);
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_dashboard_data",
@@ -220,7 +235,7 @@ class TZInvestorDashboard {
 	renderTab() {
 		if (!this.data || !this.data.meta) return;
 		const body = this.page.main.find(".tz-body");
-		const fn = { overview: "renderOverview", cashflow: "renderCashflow", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", pnl: "renderPnl" }[this.active];
+		const fn = { overview: "renderOverview", cashflow: "renderCashflow", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", pnl: "renderPnl", balance: "renderBalance" }[this.active];
 		body.html(this[fn]());
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
 	}
@@ -1072,6 +1087,98 @@ class TZInvestorDashboard {
 			${this.card(`<div class="hd"><div><h3>Sof foyda — 12 oy</h3><div class="meta">mln ${ccy} · yashil foyda, qizil zarar</div></div></div>${this.barChart(p.monthly.months, p.monthly.net, { color: "var(--good)" })}`)}
 		</div>`;
 		return h + this.note();
+	}
+
+	// ================= TAB: Balans (Balance Sheet) =================
+	renderBalance() {
+		const perLabels = { "": "Jami", weekly: "Haftalik", monthly: "Oylik", quarterly: "Choraklik", half: "Yarim yillik", yearly: "Yillik" };
+		const perOpts = Object.keys(perLabels).map((k) =>
+			`<option value="${k}"${this.bsOpt.per === k ? " selected" : ""}>${perLabels[k]}${k ? "" : " (bitta ustun)"}</option>`).join("");
+		const mode = this.bsOpt.acc
+			? `${this.dmy(this.state.to_date)} holatiga (boshidan yig'ilgan)`
+			: `${this.data.meta.period.label} — faqat davr harakati`;
+		let h = this.sec("Balans (Balance Sheet)", `${mode} · ${this.ccyLabel(this.data.meta.currency)} (kompaniya valyutasi)`);
+		h += this.card(`
+			<div class="hd"><div><h3>Aktiv va passiv</h3><div class="meta">Qatorni bosib ichini oching · kontragent sof qoldig'i bo'yicha: bizga qarz — debitorkada, biz qarz — kreditorkada</div></div>
+				<div class="bs-opts">
+					<select class="form-control tz-bs-per" title="Davr ustunlari — solishtirish uchun">${perOpts}</select>
+					<label class="bs-check"><input type="checkbox" class="tz-bs-acc"${this.bsOpt.acc ? " checked" : ""}> Yig'ilgan qiymat (boshidan)</label>
+					<label class="bs-check"><input type="checkbox" class="tz-bs-fb"${this.bsOpt.fb ? " checked" : ""}> Default Finance Book yozuvlari</label>
+				</div></div>
+			<div class="tz-bs-body"><div class="tz-loader">Balans yuklanyapti…</div></div>`, "mb");
+		setTimeout(() => { if (this.bs) this.paintBs(); else this.loadBs(); }, 0);
+		return h + this.note();
+	}
+
+	loadBs() {
+		const body = this.page.main.find(".tz-bs-body");
+		if (!body.length) return;
+		body.html(`<div class="tz-loader">Balans yuklanyapti…</div>`);
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_balance_sheet",
+			args: {
+				from_date: this.state.from_date, to_date: this.state.to_date,
+				accumulated: this.bsOpt.acc, include_default_fb: this.bsOpt.fb,
+				periodicity: this.bsOpt.per || null,
+			},
+		}).then((r) => { this.bs = r.message || null; this.paintBs(); })
+			.catch(() => this.page.main.find(".tz-bs-body").html(`<div class="empty-hint">Balansni yuklab bo'lmadi.</div>`));
+	}
+
+	paintBs() {
+		const body = this.page.main.find(".tz-bs-body");
+		if (!body.length) return;
+		if (!this.bs) { body.html(`<div class="empty-hint">Balans ma'lumoti yo'q.</div>`); return; }
+		body.html(this.bsTree(this.bs));
+		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+	}
+
+	bsMulti() { return ((this.bs && this.bs.periods) || []).length > 1; }
+
+	bsCells(amounts, color) {
+		const multi = this.bsMulti();
+		return (amounts || []).map((v) => {
+			const c = color || (v < 0 ? "var(--bad-ink)" : "var(--ink)");
+			return `<span class="bs-amt num" style="color:${c}" data-tt="${this.fmt(v)} ${this.esc(this.bs.currency)}">${multi ? this.kc(v) : this.fmt(v)}</span>`;
+		}).join("");
+	}
+
+	bsNode(n, depth) {
+		const kids = n.children || [];
+		const open = this.bsOpen.has(n.key);
+		const ar = kids.length ? `<span class="bs-ar">${open ? "▼" : "▶"}</span>` : `<span class="bs-ar bs-ar-e"></span>`;
+		let h = `<div class="bs-row bs-d${Math.min(depth, 4)}${kids.length ? " bs-click" : ""}"${kids.length ? ` data-bs-k="${this.esc(n.key)}"` : ""}>
+			<span class="bs-lab" style="padding-left:${depth * 20}px"><span class="ell" data-tt="${this.esc(n.label)}">${ar}${this.esc(n.label)}</span>${n.count ? `<span class="bs-cnt">${n.count} ta</span>` : ""}</span>
+			${this.bsCells(n.amounts || [n.amount])}</div>`;
+		if (open && kids.length) h += kids.map((c) => this.bsNode(c, depth + 1)).join("");
+		return h;
+	}
+
+	bsTotal(label, amounts, cls, color) {
+		return `<div class="bs-row bs-total ${cls || ""}"><span class="bs-lab">${label}</span>${this.bsCells(amounts, color)}</div>`;
+	}
+
+	bsTree(b) {
+		const t = b.totals || { assets: [b.total_assets], liabilities: [b.total_liabilities], equity: [b.total_equity], passive: [b.total_passive], check: [b.check] };
+		const checkV = t.check || [b.check];
+		const ok = checkV.every((x) => Math.abs(x || 0) < 1);
+		const multi = this.bsMulti();
+		const head = multi
+			? `<div class="bs-row bs-head"><span class="bs-lab"></span>${(b.periods || []).map((p) => `<span class="bs-amt" data-tt="${this.esc(p.end)}">${this.esc(p.label)}</span>`).join("")}</div>`
+			: "";
+		let h = `<div class="bs-side-h">Aktiv</div>${head}`;
+		h += (b.assets || []).map((n) => this.bsNode(n, 0)).join("");
+		h += this.bsTotal("AKTIV JAMI", t.assets, "bs-grand", "var(--good-ink)");
+		h += `<div class="bs-side-h" style="margin-top:22px">Passiv</div>${head}`;
+		h += (b.liabilities || []).map((n) => this.bsNode(n, 0)).join("");
+		h += this.bsTotal("Jami majburiyatlar", t.liabilities, "", "var(--bad-ink)");
+		h += (b.equity || []).map((n) => this.bsNode(n, 0)).join("");
+		h += this.bsTotal("Jami kapital", t.equity, "", null);
+		h += this.bsTotal("PASSIV JAMI (majburiyat + kapital)", t.passive, "bs-grand", "var(--brand-ink)");
+		h += this.bsTotal("BALANS FARQI (Aktiv − Passiv)", checkV, "bs-grand", ok ? "var(--good-ink)" : "var(--bad-ink)");
+		h += `<div class="bs-eq${ok ? "" : " bad"}">${ok ? "✓ Balans to'g'ri: Aktiv = Majburiyat + Kapital (har ustunda)" : `⚠️ Balans farqi bor — yozuvlarni tekshiring`}</div>`;
+		h += b.truncated ? `<div class="bs-trunc">Ustunlar ko'p bo'lgani uchun faqat oxirgi 13 davr ko'rsatildi (oraliqni qisqartiring).</div>` : "";
+		return `<div class="bs-scroll"><div class="bs-wrap${multi ? " bs-multi" : ""}">${h}</div></div>`;
 	}
 
 	// ================= footer note =================

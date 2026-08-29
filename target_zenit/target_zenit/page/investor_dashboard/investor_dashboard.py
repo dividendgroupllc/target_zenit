@@ -10,7 +10,7 @@ import re
 from collections import defaultdict
 
 import frappe
-from frappe.utils import add_days, add_months, flt, get_first_day, get_last_day, getdate, today
+from frappe.utils import add_days, add_months, cint, flt, get_first_day, get_last_day, getdate, today
 
 MONTHS_UZ = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
              "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"]
@@ -1419,6 +1419,348 @@ def get_dds(from_date=None, to_date=None, mode_of_payment=None, party_type=None,
         "modes": modes,
         "period": {"from": str(f0), "to": str(t0),
                    "label": f"{_fmt_date(f0)} — {_fmt_date(t0)}"},
+    }
+
+
+# ===========================================================================
+# Balans (Balance Sheet) tab — kontragent sof qoldig'i bo'yicha qayta tasniflangan
+# balans daraxti. Farqi (standart Frappe Balance Sheet'dan):
+#   * "Current Assets/Liabilities" guruhlashsiz — bevosita: Pul → Debitorka → Sklad → ...
+#   * Receivable/Payable hisoblardagi HAR BIR kontragentning sof qoldig'i alohida baholanadi:
+#     sof DEBET (bizga qarz) → Debitorka (aktiv), sof KREDIT (biz qarz) → Kreditorka (passiv).
+#     Standart hisobot esa hisob jamini bitta tomonga yozadi — prepayment'lar yashirinib qoladi.
+#   * Ochiladigan daraxt: bo'lim → hisob → kontragent turi → guruh → kontragent.
+# Hammasi kompaniya valyutasida (GL debit/credit) — shunda Aktiv = Passiv tengligi saqlanadi.
+# ===========================================================================
+BS_PT_LABELS = {
+    "Customer": "O'quvchilar / mijozlar", "Student": "O'quvchilar / mijozlar",
+    "Supplier": "Ta'minotchilar", "Employee": "Xodimlar", "Shareholder": "Investorlar",
+}
+
+
+def _bs_node(key, label, amounts, children=None, count=None):
+    """Daraxt tuguni. amounts — davr ustunlari bo'yicha qiymatlar ro'yxati;
+    amount — oxirgi ustun (sortlash va bitta-ustun rejim uchun)."""
+    n = {"key": key, "label": label,
+         "amounts": [round(flt(x), 2) for x in amounts],
+         "amount": round(flt(amounts[-1] if amounts else 0), 2)}
+    if children:
+        n["children"] = children
+    if count:
+        n["count"] = count
+    return n
+
+
+def _bs_sig(v):
+    """Vektorning oxirgi ahamiyatli qiymati — tomonni (Дт/Кт) aniqlash va skip uchun."""
+    for x in reversed(v):
+        if abs(x) >= 0.5:
+            return x
+    return 0.0
+
+
+def _vadd(a, b):
+    return [x + y for x, y in zip(a, b)]
+
+
+def _bs_periods(f0, t0, periodicity):
+    """Solishtirish ustunlari: har biri {end, label}. Oxirgi ustun doim t0 bilan tugaydi.
+    weekly — hafta yakshanbasi, monthly — oy oxiri, quarterly — chorak, half — yarim yil,
+    yearly — 31-dekabr. Bo'sh periodicity → bitta 'Jami' ustun."""
+    p = (periodicity or "").lower()
+    f0, t0 = getdate(f0), getdate(t0)
+    ends = []
+    if p == "weekly":
+        d = getdate(add_days(f0, 6 - f0.weekday()))
+        while d < t0:
+            ends.append(d)
+            d = getdate(add_days(d, 7))
+    elif p == "monthly":
+        d = getdate(get_last_day(f0))
+        while d < t0:
+            ends.append(d)
+            d = getdate(get_last_day(add_days(d, 1)))
+    elif p == "quarterly":
+        m = ((f0.month - 1) // 3) * 3 + 3
+        d = getdate(get_last_day(getdate(f"{f0.year}-{m:02d}-01")))
+        while d < t0:
+            ends.append(d)
+            d = getdate(get_last_day(add_months(d, 3)))
+    elif p == "half":
+        m = 6 if f0.month <= 6 else 12
+        d = getdate(get_last_day(getdate(f"{f0.year}-{m:02d}-01")))
+        while d < t0:
+            ends.append(d)
+            d = getdate(get_last_day(add_months(d, 6)))
+    elif p == "yearly":
+        d = getdate(f"{f0.year}-12-31")
+        while d < t0:
+            ends.append(d)
+            d = getdate(f"{d.year + 1}-12-31")
+    ends.append(t0)
+
+    def lab(e):
+        yy = str(e.year)[2:]
+        if p == "weekly":
+            return e.strftime("%d.%m")
+        if p == "monthly":
+            return f"{MONTHS_SHORT_UZ[e.month - 1]} {yy}"
+        if p == "quarterly":
+            return f"Q{(e.month - 1) // 3 + 1} {yy}"
+        if p == "half":
+            return f"{'H1' if e.month <= 6 else 'H2'} {yy}"
+        if p == "yearly":
+            return str(e.year)
+        return "Jami"
+
+    return [{"end": e, "label": lab(e)} for e in ends]
+
+
+@frappe.whitelist()
+def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_default_fb=1, periodicity=None):
+    """Balans daraxti, davr ustunlari bilan (solishtirish uchun).
+    periodicity: '' (bitta ustun) | weekly | monthly | quarterly | half | yearly.
+    accumulated=1 → har ustun o'sha sana holatiga yig'ilgan qoldiq (haqiqiy balans),
+    0 → har ustun faqat o'sha davr ichidagi harakat. include_default_fb — Frappe'dagi
+    'Include Default FB Entries' kabi. HECH QANDAY qoldiq tashlab yuborilmaydi —
+    Aktiv − Passiv farqi har ustunda 0 bo'lishi shart (oxirida tekshiruv qatori)."""
+    _guard()
+    f0, t0, _ = _resolve_range(from_date, to_date)
+    company = _default_company()
+    ccy = _company_currency(company)
+    accumulated = cint(accumulated)
+    include_fb = cint(include_default_fb)
+
+    periods = _bs_periods(f0, t0, periodicity)
+    truncated = False
+    move_from = f0
+    if len(periods) > 13:                      # juda ko'p ustun bo'lsa — oxirgi 13 tasi
+        move_from = getdate(add_days(periods[-14]["end"], 1))
+        periods = periods[-13:]
+        truncated = True
+    n_cols = len(periods)
+
+    dfb = None
+    try:
+        dfb = frappe.db.get_value("Company", company, "default_finance_book") if company else None
+    except Exception:
+        dfb = None
+    fb_cond = "(IFNULL(ge.finance_book,'')='' OR ge.finance_book=%(dfb)s)" if (include_fb and dfb) \
+        else "IFNULL(ge.finance_book,'')=''"
+    date_cond = "ge.posting_date <= %(t)s" if accumulated else "ge.posting_date BETWEEN %(mf)s AND %(t)s"
+    bucket = "CASE " + " ".join(f"WHEN ge.posting_date <= %(pe{i})s THEN {i}" for i in range(n_cols)) + " ELSE -1 END"
+
+    afilt = {"company": company} if company else {}
+    accs = frappe.get_all("Account", filters=afilt,
+                          fields=["name", "account_name", "account_type", "root_type",
+                                  "parent_account", "is_group", "account_currency"])
+    amap = {a.name: a for a in accs}
+
+    vals = {f"pe{i}": str(periods[i]["end"]) for i in range(n_cols)}
+    vals.update({"t": str(t0), "mf": str(max(f0, getdate(move_from))), "dfb": dfb, "company": company})
+    try:
+        rows = frappe.db.sql(
+            f"""SELECT ge.account, ge.party_type, ge.party, {bucket} b,
+                       IFNULL(SUM(ge.debit - ge.credit),0) bal
+                FROM `tabGL Entry` ge
+                WHERE ge.is_cancelled=0 AND {date_cond} AND {fb_cond} {_co(company,'ge')}
+                GROUP BY ge.account, ge.party_type, ge.party, b""",
+            vals, as_dict=True)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: balance_sheet")
+        rows = []
+
+    def zero():
+        return [0.0] * n_cols
+
+    acct_vec = defaultdict(zero)
+    party_vec = defaultdict(zero)      # (account, party_type, party) — faqat Receivable/Payable
+    for r in rows:
+        a = amap.get(r.account)
+        b = int(r.b if r.b is not None else -1)
+        if not a or b < 0:
+            continue
+        bal = flt(r.bal)
+        acct_vec[r.account][b] += bal
+        if a.account_type in ("Receivable", "Payable"):
+            party_vec[(r.account, r.party_type or "", r.party or "")][b] += bal
+
+    def finish(v):
+        """Yig'ilgan rejimda davr harakatlarini kumulyativ qoldiqqa aylantirish."""
+        if not accumulated:
+            return list(v)
+        out, c = [], 0.0
+        for x in v:
+            c += x
+            out.append(c)
+        return out
+
+    for k in list(acct_vec):
+        acct_vec[k] = finish(acct_vec[k])
+    for k in list(party_vec):
+        party_vec[k] = finish(party_vec[k])
+
+    def vsum(vecs):
+        out = zero()
+        for v in vecs:
+            out = _vadd(out, v)
+        return out
+
+    # kontragent guruhlari + nomlari (to'plamli)
+    gmap = _party_groups_map([{"party_type": pt, "party": p} for (_a, pt, p) in party_vec if p])
+    ncache = {}
+
+    def pname(pt, p):
+        if (pt, p) not in ncache:
+            ncache[(pt, p)] = _party_name(pt, p)
+        return ncache[(pt, p)]
+
+    # Har kontragent sof qoldig'i (oxirgi ahamiyatli ustun bo'yicha): Дт → debitorka, Кт → kreditorka.
+    # Hech narsa tashlanmaydi — tomon faqat KO'RSATISH uchun; qiymat boshqa tomonda bo'lgan
+    # davr ustunida manfiy chiqadi (bu tarixiy holatni ko'rsatadi, tenglik buzilmaydi).
+    deb = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))    # acc -> pt -> grp -> [leaf]
+    cred = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    deb_extra = {}                     # kontragentsiz yozuvlar (masalan, opening)
+    cred_extra = {}
+    for (acc, pt, p), v in party_vec.items():
+        s = _bs_sig(v)
+        if s == 0 and not any(abs(x) > 0.005 for x in v):
+            continue                   # butunlay nol — ko'rsatmaymiz (jamiga ham ta'sir qilmaydi)
+        disp = list(v) if s >= 0 else [-x for x in v]
+        if not p:
+            tgt = deb_extra if s >= 0 else cred_extra
+            tgt[acc] = _vadd(tgt.get(acc, zero()), disp)
+            continue
+        side = deb if s >= 0 else cred
+        if pt in ("Customer", "Student", "Supplier"):
+            grp = gmap.get((pt, p), "") or "Guruhsiz"
+        else:
+            grp = ""                   # Employee/Shareholder — guruh tushunchasi yo'q, bevosita ro'yxat
+        side[acc][pt or "—"][grp].append({"name": pname(pt, p), "v": disp})
+
+    def side_tree(side_map, extra_map, prefix):
+        """Hisob → kontragent turi → guruh → kontragent daraxti."""
+        acc_nodes = []
+        for acc, pts in side_map.items():
+            a = amap.get(acc)
+            alabel = (a.account_name if a else acc) or acc
+            pt_nodes = []
+            for pt, groups in pts.items():
+                cnt = sum(len(v) for v in groups.values())
+                tot = vsum([x["v"] for parties in groups.values() for x in parties])
+                if list(groups.keys()) == [""]:
+                    parties = sorted(groups[""], key=lambda x: -x["v"][-1])
+                    kids = [_bs_node(f"{prefix}|{acc}|{pt}|{i}", x["name"], x["v"])
+                            for i, x in enumerate(parties)]
+                else:
+                    kids = []
+                    for grp, parties in sorted(groups.items(),
+                                               key=lambda kv: -vsum([x["v"] for x in kv[1]])[-1]):
+                        parties.sort(key=lambda x: -x["v"][-1])
+                        gkids = [_bs_node(f"{prefix}|{acc}|{pt}|{grp}|{i}", x["name"], x["v"])
+                                 for i, x in enumerate(parties)]
+                        kids.append(_bs_node(f"{prefix}|{acc}|{pt}|{grp}", grp,
+                                             vsum([x["v"] for x in parties]), gkids, count=len(parties)))
+                pt_nodes.append(_bs_node(f"{prefix}|{acc}|{pt}", BS_PT_LABELS.get(pt, pt or "Boshqa"),
+                                         tot, kids, count=cnt))
+            pt_nodes.sort(key=lambda n: -n["amount"])
+            if acc in extra_map:
+                pt_nodes.append(_bs_node(f"{prefix}|{acc}|__", "Kontragentsiz yozuvlar", extra_map[acc]))
+            acc_nodes.append(_bs_node(f"{prefix}|{acc}", alabel,
+                                      vsum([n["amounts"] for n in pt_nodes]), pt_nodes))
+        for acc, v in extra_map.items():
+            if acc not in side_map:
+                a = amap.get(acc)
+                acc_nodes.append(_bs_node(f"{prefix}|{acc}", (a.account_name if a else acc) or acc, v,
+                                          [_bs_node(f"{prefix}|{acc}|__", "Kontragentsiz yozuvlar", v)]))
+        acc_nodes.sort(key=lambda n: -n["amount"])
+        return acc_nodes
+
+    def collect(pred, prefix, negate=False):
+        """Oddiy (kontragentsiz) hisoblar bo'limi: shart bo'yicha hisob ro'yxati + jami."""
+        kids, tot = [], zero()
+        for acc, v in acct_vec.items():
+            a = amap.get(acc)
+            if not a or a.account_type in ("Receivable", "Payable") or not pred(a):
+                continue
+            vv = [-x for x in v] if negate else list(v)
+            if not any(abs(x) > 0.005 for x in vv):
+                continue
+            kids.append(_bs_node(f"{prefix}|{acc}", a.account_name or acc, vv))
+            tot = _vadd(tot, vv)
+        kids.sort(key=lambda n: -abs(n["amount"]))
+        return kids, tot
+
+    FIXED_T = ("Fixed Asset", "Accumulated Depreciation", "Capital Work in Progress", "Depreciation")
+    cash_kids, cash_tot = collect(lambda a: a.root_type == "Asset" and a.account_type in ("Cash", "Bank"), "cash")
+    stock_kids, stock_tot = collect(lambda a: a.root_type == "Asset" and a.account_type == "Stock", "stock")
+    fixed_kids, fixed_tot = collect(lambda a: a.root_type == "Asset" and a.account_type in FIXED_T, "fixed")
+    temp_kids, temp_tot = collect(lambda a: a.root_type == "Asset" and a.account_type == "Temporary", "temp")
+    oa_kids, oa_tot = collect(
+        lambda a: a.root_type == "Asset" and a.account_type not in ("Cash", "Bank", "Stock", "Temporary") + FIXED_T,
+        "oa")
+
+    deb_nodes = side_tree(deb, deb_extra, "deb")
+    cred_nodes = side_tree(cred, cred_extra, "cred")
+
+    oliab_kids, oliab_tot = collect(lambda a: a.root_type == "Liability", "ol", negate=True)
+    eq_kids, eq_tot = collect(lambda a: a.root_type == "Equity", "eq", negate=True)
+
+    inc, exp = zero(), zero()
+    for acc, v in acct_vec.items():
+        a = amap.get(acc)
+        if not a:
+            continue
+        if a.root_type == "Income":
+            inc = _vadd(inc, [-x for x in v])
+        elif a.root_type == "Expense":
+            exp = _vadd(exp, v)
+    profit = [i - e for i, e in zip(inc, exp)]
+
+    # ---- Aktiv: Pul → Debitorka → Sklad → Asosiy vositalar → Boshqa → Vaqtinchalik ----
+    assets = [_bs_node("cash", "Pul (kassa va bank)", cash_tot, cash_kids),
+              _bs_node("deb", "Debitorka (bizga qarzdorlar)", vsum([n["amounts"] for n in deb_nodes]), deb_nodes)]
+    if stock_kids:
+        assets.append(_bs_node("stock", "Sklad (tovar zaxiralari)", stock_tot, stock_kids))
+    if fixed_kids:
+        assets.append(_bs_node("fixed", "Asosiy vositalar", fixed_tot, fixed_kids))
+    if oa_kids:
+        assets.append(_bs_node("oa", "Boshqa aktivlar", oa_tot, oa_kids))
+    if temp_kids:
+        assets.append(_bs_node("temp", "Vaqtinchalik hisoblar", temp_tot, temp_kids))
+    ta = vsum([n["amounts"] for n in assets])
+
+    # ---- Passiv: Kreditorka → boshqa majburiyat → ustav kapitali → foyda-zarar ----
+    liab_nodes = [_bs_node("cred", "Kreditorka (biz qarzdormiz)",
+                           vsum([n["amounts"] for n in cred_nodes]), cred_nodes)]
+    if oliab_kids:
+        liab_nodes.append(_bs_node("ol", "Boshqa majburiyatlar", oliab_tot, oliab_kids))
+    tl = vsum([n["amounts"] for n in liab_nodes])
+
+    pl_kids = []
+    if any(abs(x) > 0.005 for x in inc):
+        pl_kids.append(_bs_node("pl|inc", "Daromad", inc))
+    if any(abs(x) > 0.005 for x in exp):
+        pl_kids.append(_bs_node("pl|exp", "Xarajat", [-x for x in exp]))
+    equity_nodes = [_bs_node("eq", "Ustav kapitali va boshqa kapital", eq_tot, eq_kids),
+                    _bs_node("pl", "Foyda-zarar hisoboti (to'plangan)", profit, pl_kids)]
+    te = _vadd(equity_nodes[0]["amounts"], equity_nodes[1]["amounts"])
+    tp = _vadd(tl, te)
+    check = [round(x - y, 2) for x, y in zip(ta, tp)]
+
+    return {
+        "currency": ccy, "as_of": str(t0), "from": str(f0), "accumulated": accumulated,
+        "periodicity": (periodicity or ""), "truncated": truncated,
+        "periods": [{"label": pp["label"], "end": str(pp["end"])} for pp in periods],
+        "assets": assets, "liabilities": liab_nodes, "equity": equity_nodes,
+        "totals": {"assets": [round(x, 2) for x in ta],
+                   "liabilities": [round(x, 2) for x in tl],
+                   "equity": [round(x, 2) for x in te],
+                   "passive": [round(x, 2) for x in tp],
+                   "check": check},
+        "total_assets": round(ta[-1], 2), "total_liabilities": round(tl[-1], 2),
+        "total_equity": round(te[-1], 2), "total_passive": round(tp[-1], 2),
+        "check": check[-1],
     }
 
 
