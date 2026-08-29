@@ -1460,7 +1460,7 @@ def _bs_sig(v):
 
 
 def _vadd(a, b):
-    return [x + y for x, y in zip(a, b)]
+    return [x + y for x, y in zip(a, b, strict=True)]
 
 
 def _bs_periods(f0, t0, periodicity):
@@ -1697,7 +1697,7 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
     fixed_kids, fixed_tot = collect(lambda a: a.root_type == "Asset" and a.account_type in FIXED_T, "fixed")
     temp_kids, temp_tot = collect(lambda a: a.root_type == "Asset" and a.account_type == "Temporary", "temp")
     oa_kids, oa_tot = collect(
-        lambda a: a.root_type == "Asset" and a.account_type not in ("Cash", "Bank", "Stock", "Temporary") + FIXED_T,
+        lambda a: a.root_type == "Asset" and a.account_type not in ("Cash", "Bank", "Stock", "Temporary", *FIXED_T),
         "oa")
 
     deb_nodes = side_tree(deb, deb_extra, "deb")
@@ -1715,7 +1715,7 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
             inc = _vadd(inc, [-x for x in v])
         elif a.root_type == "Expense":
             exp = _vadd(exp, v)
-    profit = [i - e for i, e in zip(inc, exp)]
+    profit = [i - e for i, e in zip(inc, exp, strict=True)]
 
     # ---- Aktiv: Pul → Debitorka → Sklad → Asosiy vositalar → Boshqa → Vaqtinchalik ----
     assets = [_bs_node("cash", "Pul (kassa va bank)", cash_tot, cash_kids),
@@ -1746,7 +1746,7 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
                     _bs_node("pl", "Foyda-zarar hisoboti (to'plangan)", profit, pl_kids)]
     te = _vadd(equity_nodes[0]["amounts"], equity_nodes[1]["amounts"])
     tp = _vadd(tl, te)
-    check = [round(x - y, 2) for x, y in zip(ta, tp)]
+    check = [round(x - y, 2) for x, y in zip(ta, tp, strict=True)]
 
     return {
         "currency": ccy, "as_of": str(t0), "from": str(f0), "accumulated": accumulated,
