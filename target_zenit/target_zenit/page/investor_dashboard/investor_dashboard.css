@@ -363,7 +363,7 @@
 .tz-inv .bs-multi .bs-lab { flex:0 0 262px; position:sticky; left:0; background:var(--card); z-index:1; }
 .tz-inv .bs-multi .bs-row.bs-click:hover { background:var(--card); }
 .tz-inv .bs-multi .bs-row.bs-click:hover .bs-lab { background:var(--card-2); }
-.tz-inv .bs-multi .bs-amt { flex:0 0 102px; text-align:right; margin-left:6px; }
+.tz-inv .bs-multi .bs-amt { flex:0 0 118px; text-align:right; margin-left:6px; }
 .tz-inv .bs-head { border-bottom:2px solid var(--line-strong); }
 .tz-inv .bs-head .bs-amt { color:var(--muted); font-size:10.5px; font-weight:750; text-transform:uppercase; letter-spacing:.04em; }
 .tz-inv .bs-trunc { margin-top:8px; font-size:11.5px; color:var(--muted); }

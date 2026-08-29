@@ -1135,11 +1135,17 @@ class TZInvestorDashboard {
 
 	bsMulti() { return ((this.bs && this.bs.periods) || []).length > 1; }
 
+	bsFmt(n) { // balans uchun: to'liq son, kasr yaxlitlanmaydi (masalan 158 688,13)
+		const v = Number(n) || 0;
+		const [i, d] = Math.abs(v).toFixed(2).split(".");
+		const s = i.replace(/\B(?=(\d{3})+(?!\d))/g, " ") + (d === "00" ? "" : "," + d);
+		return (v < 0 ? "−" : "") + s;
+	}
+
 	bsCells(amounts, color) {
-		const multi = this.bsMulti();
 		return (amounts || []).map((v) => {
 			const c = color || (v < 0 ? "var(--bad-ink)" : "var(--ink)");
-			return `<span class="bs-amt num" style="color:${c}" data-tt="${this.fmt(v)} ${this.esc(this.bs.currency)}">${multi ? this.kc(v) : this.fmt(v)}</span>`;
+			return `<span class="bs-amt num" style="color:${c}" data-tt="${this.bsFmt(v)} ${this.esc(this.bs.currency)}">${this.bsFmt(v)}</span>`;
 		}).join("");
 	}
 
