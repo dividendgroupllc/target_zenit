@@ -12,13 +12,13 @@ def execute():
 	"""
 	for party_type, name_field in PARTY_NAME_FIELDS.items():
 		frappe.db.sql(
-			"""
+			f"""
 			UPDATE `tabKassa` k
 			INNER JOIN `tab{party_type}` p ON p.name = k.party
 			SET k.party_name = p.`{name_field}`
 			WHERE k.party_type = %s
 				AND IFNULL(p.`{name_field}`, '') != ''
 				AND IFNULL(k.party_name, '') != p.`{name_field}`
-			""".format(party_type=party_type, name_field=name_field),
+			""",
 			party_type,
 		)
