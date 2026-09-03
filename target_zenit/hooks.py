@@ -153,8 +153,10 @@ doc_events = {
 	},
 	# Yangi Customer (jumladan Student'dan avto-yaratilgani) —
 	# default UZS valyuta + UZS debitor schyoti (Kassa USD tanlamasligi uchun)
+	# customer_name tahrirlansa — Kassa'dagi party_name ham yangilanadi
 	"Customer": {
 		"before_insert": "target_zenit.customer.set_customer_defaults",
+		"on_update": "target_zenit.customer.update_kassa_party_name",
 	},
 	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish
 	"Student": {

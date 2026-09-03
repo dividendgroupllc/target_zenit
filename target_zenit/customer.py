@@ -22,6 +22,27 @@ def set_customer_defaults(doc, method=None):
 		set_uzs_receivable_account(doc)
 
 
+def update_kassa_party_name(doc, method=None):
+	"""customer_name tahrirlanganda — shu mijozga bog'langan barcha Kassa
+	hujjatlaridagi party_name'ni yangi nomga moslash.
+
+	Customer'ning docname'i nom tahrirlanganda o'zgarmaydi, shuning uchun Kassa
+	party_name'ni docname'dan emas, customer_name'dan yuritamiz. Submit qilingan
+	hujjatlarni qayta saqlab bo'lmaydi, shu sabab to'g'ridan-to'g'ri db orqali.
+	"""
+	old = doc.get_doc_before_save()
+	if old and old.customer_name == doc.customer_name:
+		return
+
+	frappe.db.set_value(
+		"Kassa",
+		{"party_type": "Customer", "party": doc.name},
+		"party_name",
+		doc.customer_name,
+		update_modified=False,
+	)
+
+
 def set_uzs_receivable_account(doc):
 	company = frappe.defaults.get_global_default("company")
 	if not company:

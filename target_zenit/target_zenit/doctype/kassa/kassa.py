@@ -22,6 +22,15 @@ EXPENSE_PARENT_ACCOUNT_NAME = "Indirect Expenses"
 # uchun meta options ichida qoladi — aks holda eski yozuvni cancel/amend qilib bo'lmaydi.
 LEGACY_PARTY_TYPES = ("Расходы", "Дивиденд", "Дивиденд 1", "Дивиденд 2", "Дивиденд 3")
 
+# party_name shu maydonlardan olinadi — hujjat nomidan (docname) emas.
+# Customer nomi keyin tahrirlansa ham party_name yangi customer_name'ni oladi.
+PARTY_NAME_FIELDS = {
+    "Customer": "customer_name",
+    "Supplier": "supplier_name",
+    "Shareholder": "title",
+    "Employee": "employee_name",
+}
+
 
 def get_account_currency_amount(company_amount, account_currency, company_currency, date):
     """Return amount/rate for a JE row in the row account currency."""
@@ -41,6 +50,7 @@ class Kassa(Document):
         self.set_cash_account()
         self.set_cash_account_currency()
         self.set_party_currency()
+        self.set_party_name()
         self.set_display_currencies()
         self.set_payment_exchange_details()
         self.set_balance()
@@ -437,6 +447,17 @@ class Kassa(Document):
         """Party default valyutasini olish"""
         if self.party and self.party_type in BASE_PARTY_TYPES and self.company:
             self.party_currency = get_party_currency(self.party_type, self.party, self.company)
+
+    def set_party_name(self):
+        """party_name'ni har doim kontragentning nom maydonidan (customer_name va h.k.)
+        yangilash — docname'dan emas. Client to'ldirgan eski qiymat ustidan yoziladi."""
+        if self.party and self.party_type in PARTY_NAME_FIELDS:
+            self.party_name = (
+                frappe.db.get_value(self.party_type, self.party, PARTY_NAME_FIELDS[self.party_type])
+                or self.party
+            )
+        elif not self.party:
+            self.party_name = None
 
     def set_display_currencies(self):
         """Currency fieldlar uchun UI'da ishlatiladigan currency fieldlarni to'ldirish."""
