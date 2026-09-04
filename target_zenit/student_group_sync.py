@@ -1,6 +1,6 @@
 # Student.custom_sinf_guruh (Link -> Student Group) — operator uchun yagona kirish nuqtasi.
 # Student saqlanganda: tanlangan guruhga qo'shadi, boshqa guruhlardan chiqaradi.
-# Bo'sh qoldirilsa — a'zoliklarga tegilmaydi (eduvisit sync yangi o'quvchiga o'zi qo'yadi).
+# Bo'sh qoldirilsa — a'zoliklarga tegilmaydi (guruh tayinlash to'liq operator qo'lida).
 # Har yili 1-sentabrda yearly_promotion() hammani bir sinf yuqoriga ko'chiradi (G4A -> G5A).
 
 import re

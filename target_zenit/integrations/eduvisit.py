@@ -5,7 +5,8 @@
 #   GET /students/?page=N&page_size=200 -> o'quvchilar (ota-onasi ICHIDA: parents[])
 #   GET /parents/                       -> ota-onalar (kerak bo'lsa)
 #   GET /attendance/today/              -> bugungi turniket (keldi/ketdi)
-# Nishon: standart Education doctype'lari (Student, Guardian, Student Group).
+# Nishon: standart Education doctype'lari (Student, Guardian).
+# Student Group SYNC QILINMAYDI — guruhlarni operatorlar qo'lda yuritadi.
 # Custom maydonlar (sync kaliti): Student.custom_eduvisit_id, Guardian.custom_eduvisit_id.
 #
 # Ishga tushirish:
@@ -113,37 +114,6 @@ def ensure_custom_fields():
 	)
 
 
-def _get_or_create_group(group_name, academic_year):
-	if not group_name:
-		return None
-	existing = frappe.db.get_value("Student Group", {"student_group_name": group_name})
-	if existing:
-		return existing
-	grp = frappe.new_doc("Student Group")
-	grp.student_group_name = group_name
-	# "Activity" — Program/Course talab qilmaydi (sinf ro'yxati sifatida).
-	grp.group_based_on = "Activity"
-	if academic_year:
-		grp.academic_year = academic_year
-	grp.flags.ignore_mandatory = True
-	grp.insert(ignore_permissions=True)
-	return grp.name
-
-
-def _ensure_group_membership(group, student_name, student_full, active):
-	if not group:
-		return
-	if frappe.db.exists("Student Group Student", {"parent": group, "student": student_name}):
-		return
-	grp = frappe.get_doc("Student Group", group)
-	grp.append(
-		"students",
-		{"student": student_name, "student_name": student_full, "active": 1 if active else 0},
-	)
-	grp.flags.ignore_mandatory = True
-	grp.save(ignore_permissions=True)
-
-
 # --------------------------------------------------------------- Guardian (ota-ona)
 
 def _upsert_guardian(p):
@@ -196,7 +166,7 @@ def _sync_student_guardians(student_doc, parents):
 
 # ---------------------------------------------------------------- O'quvchi (Student)
 
-def upsert_student(item, academic_year, create_guardians):
+def upsert_student(item, create_guardians):
 	"""eduvisit o'quvchi yozuvini Student'ga upsert qiladi. (name, is_new) qaytaradi."""
 	ext = item.get("external_id")
 	if not ext:
@@ -240,14 +210,8 @@ def upsert_student(item, academic_year, create_guardians):
 	else:
 		doc.save(ignore_permissions=True)
 
-	# Sinf -> Student Group
-	# Qo'lda tayinlangan guruh (custom_sinf_guruh) ustuvor — sync unga tegmaydi,
-	# faqat guruhi hali yo'q (yangi) o'quvchiga eduvisit'dagi guruhni qo'yadi.
-	if not doc.get("custom_sinf_guruh"):
-		group = _get_or_create_group(item.get("group_name"), academic_year)
-		if group:
-			_ensure_group_membership(group, doc.name, doc.student_name, active)
-			doc.db_set("custom_sinf_guruh", group, update_modified=False)
+	# Sinf/guruh sync QILINMAYDI: Student Group'larni operatorlar qo'lda yuritadi
+	# (Student.custom_sinf_guruh orqali), eduvisit'dagi group_name e'tiborga olinmaydi.
 
 	# Ota-onalar (v7'da o'quvchi ichida keladi — alohida so'rov shart emas)
 	if create_guardians and item.get("parents"):
@@ -263,7 +227,6 @@ def run_sync():
 	"""To'liq sinxronizatsiya. Natija lug'atini qaytaradi."""
 	ensure_custom_fields()
 	s = _settings()
-	academic_year = s.default_academic_year
 	create_guardians = bool(s.create_guardians)
 
 	created = updated = total = 0
@@ -272,7 +235,7 @@ def run_sync():
 	for item in _paged("/students/"):
 		total += 1
 		try:
-			name, is_new = upsert_student(item, academic_year, create_guardians)
+			name, is_new = upsert_student(item, create_guardians)
 			if not name:
 				continue
 			created += 1 if is_new else 0
