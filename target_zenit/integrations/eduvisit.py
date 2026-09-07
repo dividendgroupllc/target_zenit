@@ -1,20 +1,23 @@
 # Copyright (c) 2026, Target Zenit
-# eduvisit (yunusobod.eduvisit.uz) API v7 -> Frappe Education sinxronizatsiyasi.
+# eduvisit (yunusobod.eduvisit.uz) API v7 -> Frappe: FAQAT TURNIKET (kirdi/chiqdi).
 #
-# Manba: EduVisit API v7 (read-only, GET, sahifalangan). Auth: X-API-Key.
-#   GET /students/?page=N&page_size=200 -> o'quvchilar (ota-onasi ICHIDA: parents[])
-#   GET /parents/                       -> ota-onalar (kerak bo'lsa)
-#   GET /attendance/today/              -> bugungi turniket (keldi/ketdi)
-# Nishon: standart Education doctype'lari (Student, Guardian).
-# Student Group SYNC QILINMAYDI — guruhlarni operatorlar qo'lda yuritadi.
-# Custom maydonlar (sync kaliti): Student.custom_eduvisit_id, Guardian.custom_eduvisit_id.
+# MUHIM (2026-09-07, foydalanuvchi qarori): API orqali O'QUVCHI MA'LUMOTLARI
+# SINXRONLANMAYDI — yaratilmaydi, yangilanmaydi, o'chirilmaydi. Sabab: operatorlar
+# o'quvchi ismlarini to'liq yozib chiqishgan va guruhlarni qo'lda yuritishadi;
+# eski sync ularni eduvisit'dagi holatiga qaytarib yuborar edi.
+# Ota-ona (Guardian) sync ham o'chirilgan. Student Group sync ham YO'Q.
+#
+# API'dan keladigan YAGONA ma'lumot — turniket hodisalari:
+#   GET /attendance/?date=...&page=N -> Terminal Checkin (dedup: external_event_id)
+#   -> target_zenit.attendance.sync_student_attendance -> Student Attendance (Present)
+# Bular Student hujjatining O'ZIGA tegmaydi (faqat mavjud o'quvchiga bog'lanadi,
+# bog'lash uchun kalit: Student.custom_eduvisit_id — qo'lda saqlanadi).
 #
 # Ishga tushirish:
-#   - Qo'lda: Eduvisit Settings -> "Sync Now" tugmasi -> sync_now()
-#   - Avtomatik: har kuni ertalab scheduler -> daily_sync()
+#   - Qo'lda: Eduvisit Settings -> "Turniketni tortish (bugun)" -> sync_attendance_now()
+#   - Avtomatik: scheduler hourly_attendance() / daily_sync() (faqat 'Yoqilgan' bo'lsa)
 
 import json
-import re
 
 import frappe
 import requests
@@ -22,13 +25,9 @@ from frappe.utils import add_days, get_datetime, now_datetime, today
 
 SETTINGS = "Eduvisit Settings"
 STUDENT_ID_FIELD = "custom_eduvisit_id"
-GUARDIAN_ID_FIELD = "custom_eduvisit_id"
 TIMEOUT = 60
 PAGE_SIZE = 200  # v7 maksimum
 
-# eduvisit relation_code -> Frappe Student Guardian.relation (Select)
-RELATION_MAP = {"father": "Father", "mother": "Mother"}
-GENDER_MAP = {"male": "Male", "female": "Female"}
 # eduvisit direction -> Terminal Checkin.direction
 DIRECTION_MAP = {"in": "Kirdi", "out": "Chiqdi"}
 
@@ -72,199 +71,18 @@ def _paged(path, params=None):
 		page += 1
 
 
-# ------------------------------------------------------------ Yordamchi funksiyalar
-
-def _clean_phone(value):
-	digits = re.sub(r"\D", "", value or "")
-	return ("+" + digits) if digits else ""
-
-
-def ensure_custom_fields():
-	"""Student va Guardian'da eduvisit kalitini (bir martalik) yaratadi. Idempotent."""
-	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
-
-	create_custom_fields(
-		{
-			"Student": [
-				{
-					"fieldname": STUDENT_ID_FIELD,
-					"label": "Eduvisit ID",
-					"fieldtype": "Data",
-					"unique": 1,
-					"read_only": 1,
-					"no_copy": 1,
-					"insert_after": "naming_series",
-					"description": "eduvisit external_id (sync kaliti). Qo'lda o'zgartirilmasin.",
-				}
-			],
-			"Guardian": [
-				{
-					"fieldname": GUARDIAN_ID_FIELD,
-					"label": "Eduvisit ID",
-					"fieldtype": "Data",
-					"unique": 1,
-					"read_only": 1,
-					"no_copy": 1,
-					"insert_after": "guardian_name",
-					"description": "eduvisit parent id (sync kaliti). Qo'lda o'zgartirilmasin.",
-				}
-			],
-		},
-		ignore_validate=True,
-	)
-
-
-# --------------------------------------------------------------- Guardian (ota-ona)
-
-def _upsert_guardian(p):
-	"""eduvisit parent (student ichidagi) -> Guardian. eduvisit id bo'yicha dedup."""
-	if not p or not p.get("id"):
-		return None, None
-	ext = str(p["id"])
-	full = p.get("full_name") or "Ota-ona"
-	phone = _clean_phone(p.get("phone"))
-	email = p.get("email") or ""
-
-	name = frappe.db.get_value("Guardian", {GUARDIAN_ID_FIELD: ext})
-	if not name and phone:
-		name = frappe.db.get_value("Guardian", {"mobile_number": phone})
-
-	guardian = frappe.get_doc("Guardian", name) if name else frappe.new_doc("Guardian")
-	guardian.set(GUARDIAN_ID_FIELD, ext)
-	guardian.guardian_name = full
-	if phone:
-		guardian.mobile_number = phone
-	if email:
-		guardian.email_address = email
-	guardian.flags.ignore_mandatory = True
-	if guardian.is_new():
-		guardian.insert(ignore_permissions=True)
-	else:
-		guardian.save(ignore_permissions=True)
-	return guardian.name, guardian.guardian_name
-
-
-def _sync_student_guardians(student_doc, parents):
-	"""Student.guardians jadvalini eduvisit parents[] bo'yicha to'ldiradi."""
-	existing = {row.guardian for row in (student_doc.guardians or [])}
-	changed = False
-	for p in parents or []:
-		gname, gtitle = _upsert_guardian(p)
-		if not gname or gname in existing:
-			continue
-		relation = RELATION_MAP.get((p.get("relation_code") or "").lower(), "Others")
-		student_doc.append(
-			"guardians",
-			{"guardian": gname, "guardian_name": gtitle, "relation": relation},
-		)
-		existing.add(gname)
-		changed = True
-	if changed:
-		student_doc.flags.ignore_mandatory = True
-		student_doc.save(ignore_permissions=True)
-
-
-# ---------------------------------------------------------------- O'quvchi (Student)
-
-def upsert_student(item, create_guardians):
-	"""eduvisit o'quvchi yozuvini Student'ga upsert qiladi. (name, is_new) qaytaradi."""
-	ext = item.get("external_id")
-	if not ext:
-		return None, False
-
-	name = frappe.db.get_value("Student", {STUDENT_ID_FIELD: ext})
-	is_new = not name
-	doc = frappe.new_doc("Student") if is_new else frappe.get_doc("Student", name)
-
-	doc.set(STUDENT_ID_FIELD, ext)
-	doc.first_name = item.get("first_name") or ""
-	doc.middle_name = item.get("middle_name") or ""
-	doc.last_name = item.get("last_name") or ""
-	doc.student_name = item.get("full_name") or " ".join(
-		x for x in [doc.first_name, doc.last_name] if x
-	)
-
-	if item.get("birth_date"):
-		doc.date_of_birth = item.get("birth_date")
-
-	gender = GENDER_MAP.get((item.get("gender") or "").lower())
-	if gender:
-		doc.gender = gender
-
-	if _settings().sync_photos and item.get("photo_url"):
-		doc.image = item.get("photo_url")
-
-	# Faollik / maktabdan chiqish
-	active = bool(item.get("is_active")) and not item.get("is_archived")
-	doc.enabled = 1 if active else 0
-	if active:
-		doc.date_of_leaving = None
-	elif not doc.date_of_leaving:
-		doc.date_of_leaving = today()
-		if not doc.reason_for_leaving:
-			doc.reason_for_leaving = "eduvisit: nofaol"
-
-	doc.flags.ignore_mandatory = True
-	if is_new:
-		doc.insert(ignore_permissions=True)
-	else:
-		doc.save(ignore_permissions=True)
-
-	# Sinf/guruh sync QILINMAYDI: Student Group'larni operatorlar qo'lda yuritadi
-	# (Student.custom_sinf_guruh orqali), eduvisit'dagi group_name e'tiborga olinmaydi.
-
-	# Ota-onalar (v7'da o'quvchi ichida keladi — alohida so'rov shart emas)
-	if create_guardians and item.get("parents"):
-		doc = frappe.get_doc("Student", doc.name)
-		_sync_student_guardians(doc, item.get("parents"))
-
-	return doc.name, is_new
-
-
-# ------------------------------------------------------------------- Asosiy oqim
-
-def run_sync():
-	"""To'liq sinxronizatsiya. Natija lug'atini qaytaradi."""
-	ensure_custom_fields()
-	s = _settings()
-	create_guardians = bool(s.create_guardians)
-
-	created = updated = total = 0
-	errors = []
-
-	for item in _paged("/students/"):
-		total += 1
-		try:
-			name, is_new = upsert_student(item, create_guardians)
-			if not name:
-				continue
-			created += 1 if is_new else 0
-			updated += 0 if is_new else 1
-			frappe.db.commit()
-		except Exception as exc:
-			frappe.db.rollback()
-			errors.append(f"{item.get('external_id')}: {exc}")
-			frappe.log_error(frappe.get_traceback(), "Eduvisit sync (o'quvchi)")
-
-	result = {"created": created, "updated": updated, "errors": errors, "total": total}
-	summary = f"{now_datetime():%Y-%m-%d %H:%M} — jami {total}, yangi {created}, yangilangan {updated}, xato {len(errors)}"
-	s.db_set("last_sync", now_datetime(), update_modified=False)
-	s.db_set("last_result", summary, update_modified=False)
-	frappe.db.commit()
-	return result
-
-
 # ---------------------------------------------------- Turniket (kirdi/chiqdi)
 
 def _student_name_by_ext(ext):
-	"""eduvisit student external_id -> Frappe Student.name (yoki None)."""
+	"""eduvisit student external_id -> Frappe Student.name (yoki None). Faqat O'QISH."""
 	if not ext:
 		return None
 	return frappe.db.get_value("Student", {STUDENT_ID_FIELD: ext})
 
 
 def _upsert_checkin(ev):
-	"""eduvisit xom turniket hodisasini Terminal Checkin'ga yozadi. event id bo'yicha dedup."""
+	"""eduvisit xom turniket hodisasini Terminal Checkin'ga yozadi. event id bo'yicha dedup.
+	Student hujjatiga TEGMAYDI — faqat checkin'ni mavjud o'quvchiga bog'laydi."""
 	eid = ev.get("id")
 	if eid is None:
 		return False
@@ -337,6 +155,19 @@ def sync_attendance(date=None, date_from=None, date_to=None):
 		att["created"] += r.get("created", 0)
 		att["already"] += r.get("already", 0)
 
+	# Settings'da oxirgi sync holatini ko'rsatib turamiz (faqat turniket)
+	try:
+		s = _settings()
+		summary = (
+			f"{now_datetime():%Y-%m-%d %H:%M} — turniket: yangi {created} ta o'tish, "
+			f"davomat (Present) {att['created']} ta. O'quvchi sync O'CHIRILGAN."
+		)
+		s.db_set("last_sync", now_datetime(), update_modified=False)
+		s.db_set("last_result", summary, update_modified=False)
+		frappe.db.commit()
+	except Exception:
+		pass
+
 	return {"checkins_new": created, "days": sorted(dates), "attendance_created": att["created"]}
 
 
@@ -359,24 +190,30 @@ def hourly_attendance():
 
 @frappe.whitelist()
 def sync_now():
-	"""Eduvisit Settings'dagi 'Sync Now' tugmasi shu funksiyani chaqiradi."""
+	"""ESKI 'Sync Now' tugmasi. O'quvchi sync BUTUNLAY O'CHIRILGAN — ataylab xato beradi,
+	toki eski keshdagi tugma bosilsa ham hech narsa o'zgarmasin."""
 	frappe.only_for("System Manager")
-	return run_sync()
+	frappe.throw(
+		"O'quvchi ma'lumotlari endi eduvisit API'dan SINXRONLANMAYDI "
+		"(ism/guruh/holat operatorlar tomonidan qo'lda yuritiladi). "
+		"API'dan faqat turniket kirdi/chiqdi ma'lumotlari tortiladi — "
+		"buning uchun \"Turniketni tortish\" tugmasidan foydalaning."
+	)
 
 
 @frappe.whitelist()
 def test_connection():
-	"""Ulanishni tekshiradi: API'dan o'quvchilar sonini qaytaradi."""
+	"""Ulanishni tekshiradi: API'dan bugungi turniket hodisalari sonini qaytaradi."""
 	frappe.only_for("System Manager")
-	data = _get("/students/", {"page": 1, "page_size": 1})
+	data = _get("/attendance/", {"page": 1, "page_size": 1, "date": today()})
 	return {"ok": True, "count": data.get("count")}
 
 
 def daily_sync():
 	"""Har kuni ertalab scheduler chaqiradi (faqat 'Yoqilgan' bo'lsa).
-	O'quvchilar + kecha/bugungi turniket (kechagi kech kelgan hodisalarni ham to'ldiradi)."""
+	FAQAT turniket: kecha/bugungi hodisalar (kech kelganlarini ham to'ldiradi).
+	O'quvchi ma'lumotlari ataylab sinxronlanmaydi."""
 	s = _settings()
 	if not s.enabled:
 		return
-	run_sync()
 	sync_attendance(date_from=add_days(today(), -1), date_to=today())

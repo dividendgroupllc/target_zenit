@@ -1786,13 +1786,18 @@ def get_students_detail():
     students = []
     try:
         students = frappe.get_all("Student", filters={"enabled": 1},
-                                  fields=["name", "student_name", "joining_date", "customer"])
+                                  fields=["name", "student_name", "joining_date", "customer",
+                                          "custom_shartnoma_turi"])
     except Exception:
         try:
             students = frappe.get_all("Student", filters={"enabled": 1},
-                                      fields=["name", "student_name"])
+                                      fields=["name", "student_name", "joining_date", "customer"])
         except Exception:
-            pass
+            try:
+                students = frappe.get_all("Student", filters={"enabled": 1},
+                                          fields=["name", "student_name"])
+            except Exception:
+                pass
 
     # To'lovlar — Payment Entry (Receive, Student customer'lari), BUTUN tarix bo'yicha:
     # har o'quvchi jami qancha to'lagan (kassaga tushgan real pul, valyuta kesimida)
@@ -1815,6 +1820,38 @@ def get_students_detail():
                 p["last"] = str(r.last or "")
     except Exception:
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: students_detail payments")
+
+    # Oxirgi to'lov SUMMASI — har o'quvchining eng so'nggi Payment Entry'si
+    # (yangisidan eskisiga tartiblab, birinchi uchraganini olamiz)
+    lastmap = {}
+    try:
+        for r in frappe.db.sql(
+                """SELECT pe.party, pe.received_amount amt, pe.paid_to_account_currency ccy
+                   FROM `tabPayment Entry` pe
+                   JOIN `tabCustomer` c ON c.name = pe.party AND c.customer_group = 'Student'
+                   WHERE pe.docstatus = 1 AND pe.party_type = 'Customer'
+                     AND pe.payment_type = 'Receive'
+                   ORDER BY pe.posting_date DESC, pe.creation DESC""", as_dict=True):
+            if r.party not in lastmap:
+                lastmap[r.party] = {"amount": flt(r.amt), "currency": r.ccy or ccy}
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: students_detail last pay")
+
+    # Qarzdorlik — buxgalteriya (Receivable) qoldig'i: nachisleniya qarzni oshiradi,
+    # to'lov kamaytiradi. Musbat qoldiq = qarz, manfiy = avans (peredoplata).
+    balmap = defaultdict(lambda: defaultdict(float))
+    try:
+        for r in frappe.db.sql(
+                """SELECT gle.party, gle.account_currency ccy,
+                          SUM(gle.debit_in_account_currency - gle.credit_in_account_currency) bal
+                   FROM `tabGL Entry` gle
+                   JOIN `tabAccount` a ON a.name = gle.account AND a.account_type = 'Receivable'
+                   JOIN `tabCustomer` c ON c.name = gle.party AND c.customer_group = 'Student'
+                   WHERE gle.is_cancelled = 0 AND gle.party_type = 'Customer'
+                   GROUP BY gle.party, gle.account_currency""", as_dict=True):
+            balmap[r.party][r.ccy or ccy] += flt(r.bal)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: students_detail receivable")
     # shartnoma bayrog'i — custom field bo'lmagan saytda xato bermasin
     contracted = set()
     try:
@@ -1844,14 +1881,24 @@ def get_students_detail():
         if pay:
             paid = [{"currency": c, "total": v} for c, v in pay["by_ccy"].items() if v > 0.5]
             paid.sort(key=lambda x: -x["total"])   # eng katta summa birinchi (asosan so'm)
+        cust = s.get("customer")
+        bal = balmap.get(cust) or {}
+        debt = [{"currency": c, "total": v} for c, v in bal.items() if v > 0.5]
+        debt.sort(key=lambda x: -x["total"])
+        advance = [{"currency": c, "total": -v} for c, v in bal.items() if v < -0.5]
+        advance.sort(key=lambda x: -x["total"])
         info = {
             "student": s.name,
             "name": s.student_name or s.name,
             "contracted": 1 if s.name in contracted else 0,
+            "ctype": (s.get("custom_shartnoma_turi") or "").strip(),  # Oylik / Yillik
             "joined": str(jd) if jd else "",
             "paid": paid,                                  # jami to'lagani (valyuta kesimida)
             "pay_count": pay["count"] if pay else 0,       # necha marta to'lagan
             "last_pay": pay["last"] if pay else "",        # oxirgi to'lov sanasi
+            "last_amt": lastmap.get(cust) if cust else None,  # oxirgi to'lov summasi
+            "debt": debt,                                  # qarz (Receivable musbat qoldiq)
+            "advance": advance,                            # avans/peredoplata (manfiy qoldiq)
         }
         groups = gmap.get(s.name) or [NO_GROUP]
         for g in groups:               # bir o'quvchi bir nechta guruhda bo'lsa — har birida ko'rinadi
@@ -1980,3 +2027,133 @@ def get_kontragent_groups(party_type=None):
     except Exception:
         pass
     return sorted(groups)
+
+
+# ================================================================ Nachisleniya
+
+# Kontragent turi -> investor tushunadigan yorliq (nachisleniya jadvali uchun)
+NACH_PT_LABELS = {"Customer": "O'quvchi/mijoz", "Supplier": "Ta'minotchi",
+                  "Employee": "Xodim", "Shareholder": "Investor"}
+
+
+def _acct_label(acc):
+    """Hisob nomidan kompaniya suffiksini olib tashlaydi: 'Oylik - TZ' -> 'Oylik'."""
+    return re.sub(r"\s*-\s*[A-Z]{1,4}\s*$", "", str(acc or ""))
+
+
+@frappe.whitelist()
+def get_nachisleniya(from_date=None, to_date=None, limit=500):
+    """Nachisleniyalar — kassaga TEGMAGAN hujjatlarning qarz hisoblari harakati:
+      * KIRIM (debet):  Receivable hisobga debet  — o'quvchi/arenda/elektr va h.k.
+        (kontragent bizga qarz bo'ldi, daromad hisoblandi)
+      * CHIQIM (kredit): Payable hisobga kredit — oylik/arenda/xarajat nachisleniyasi
+        (biz kontragentga qarz bo'ldik, xarajat hisoblandi)
+    To'lovlar (kassa/bank oyog'i bor hujjatlar) avtomatik chiqarib tashlanadi.
+    "Nima uchun" — hujjatning qarshi (Income/Expense) hisob(lar)idan olinadi."""
+    _guard()
+    company = _default_company()
+    ccy = _company_currency(company)
+    f0 = from_date or f"{today()[:4]}-01-01"
+    t0 = to_date or today()
+    limit = min(cint(limit) or 500, 1000)
+    res = {"debit": None, "credit": None, "currency": ccy,
+           "from_date": str(f0), "to_date": str(t0)}
+
+    cash_accounts = set(frappe.get_all(
+        "Account", filters={"account_type": ["in", ["Cash", "Bank"]], "is_group": 0,
+                            "company": company}, pluck="name"))
+
+    def _side(acct_type, col):
+        """Bitta tomon: hujjat kesimida yig'ilgan qatorlar + toifa/valyuta jamlar."""
+        rows = frappe.db.sql(f"""
+            SELECT gle.voucher_type vt, gle.voucher_no vn, gle.posting_date d,
+                   gle.party_type pt, gle.party, gle.account acc,
+                   SUM(gle.{col}) amt, gle.account_currency ccy
+            FROM `tabGL Entry` gle
+            JOIN `tabAccount` a ON a.name = gle.account AND a.account_type = %s
+                 AND a.company = %s
+            WHERE gle.is_cancelled = 0 AND gle.{col} > 0
+              AND gle.posting_date BETWEEN %s AND %s
+            GROUP BY gle.voucher_type, gle.voucher_no, gle.account, gle.party
+            ORDER BY gle.posting_date DESC, gle.creation DESC""",
+            (acct_type, company, f0, t0), as_dict=True)
+        if not rows:
+            return {"rows": [], "total_by_ccy": [], "cats": [], "count": 0, "truncated": 0}
+
+        vnos = list({r.vn for r in rows})
+        # har hujjatning barcha oyoqlari — kassaga tegish + qarshi hisobni aniqlash uchun
+        legs = defaultdict(list)
+        for lg in frappe.db.sql(
+                """SELECT gle.voucher_no vn, gle.account acc, a.root_type rt, a.account_type at
+                   FROM `tabGL Entry` gle
+                   JOIN `tabAccount` a ON a.name = gle.account
+                   WHERE gle.is_cancelled = 0 AND gle.voucher_no IN %s""",
+                (vnos,), as_dict=True):
+            legs[lg.vn].append(lg)
+        # izohlar (Journal Entry.user_remark — operator yozgan tushuntirish)
+        remarks = {}
+        je_nos = [r.vn for r in rows if r.vt == "Journal Entry"]
+        if je_nos:
+            for nm, rem in frappe.db.sql(
+                    "SELECT name, user_remark FROM `tabJournal Entry` WHERE name IN %s",
+                    (je_nos,)):
+                remarks[nm] = (rem or "").strip()
+
+        # qarshi hisob turi: kirim nachisleniyada Income, chiqimda Expense
+        counter_rt = "Income" if col.startswith("debit") else "Expense"
+        out, cats, tot = [], {}, defaultdict(float)
+        skipped_cash = 0
+        for r in rows:
+            vlegs = legs.get(r.vn, [])
+            if any(l.acc in cash_accounts for l in vlegs):
+                skipped_cash += 1
+                continue                     # to'lov/kassali hujjat — nachisleniya emas
+            counter = sorted({l.acc for l in vlegs if l.rt == counter_rt and l.acc != r.acc})
+            if counter:
+                labels = [_acct_label(a) for a in counter]
+                cat = ", ".join(labels[:2]) + (f" +{len(labels) - 2}" if len(labels) > 2 else "")
+            elif any(l.at == "Temporary" for l in vlegs):
+                # 1910 Temporary Opening orqali kiritilgan boshlang'ich qoldiqlar —
+                # joriy davr nachisleniyasi emas, alohida toifada ajralib turadi
+                cat = "Boshlang'ich qoldiq (import)"
+            else:                            # zaxira: o'zidan boshqa oyoqlar
+                labels = sorted({_acct_label(l.acc) for l in vlegs if l.acc != r.acc})
+                cat = (", ".join(labels[:2]) + (f" +{len(labels) - 2}" if len(labels) > 2 else "")) or "Boshqa"
+            amount = flt(r.amt)
+            cur = r.ccy or ccy
+            tot[cur] += amount
+            c = cats.setdefault(cat, {"label": cat, "by_ccy": defaultdict(float), "count": 0})
+            c["by_ccy"][cur] += amount
+            c["count"] += 1
+            out.append({
+                "date": str(r.d), "party_type": r.pt or "",
+                "pt_label": NACH_PT_LABELS.get(r.pt, r.pt or "—"),
+                "party": r.party or "", "party_name": _party_name(r.pt, r.party) if r.party else "—",
+                "category": cat, "amount": amount, "currency": cur,
+                "voucher_type": r.vt, "voucher_no": r.vn,
+                "remark": remarks.get(r.vn, ""),
+            })
+        truncated = max(0, len(out) - limit)
+        out = out[:limit]
+        cat_list = []
+        for c in cats.values():
+            by = [{"currency": k, "total": v} for k, v in c["by_ccy"].items()]
+            by.sort(key=lambda x: -x["total"])
+            cat_list.append({"label": c["label"], "count": c["count"], "by_ccy": by})
+        cat_list.sort(key=lambda x: -(x["by_ccy"][0]["total"] if x["by_ccy"] else 0))
+        total_by = [{"currency": k, "total": v} for k, v in tot.items()]
+        total_by.sort(key=lambda x: -x["total"])
+        return {"rows": out, "total_by_ccy": total_by, "cats": cat_list,
+                "count": len(rows) - skipped_cash, "truncated": truncated}
+
+    try:
+        res["debit"] = _side("Receivable", "debit_in_account_currency")
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: nachisleniya debit")
+        res["debit"] = {"rows": [], "total_by_ccy": [], "cats": [], "count": 0, "truncated": 0}
+    try:
+        res["credit"] = _side("Payable", "credit_in_account_currency")
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: nachisleniya credit")
+        res["credit"] = {"rows": [], "total_by_ccy": [], "cats": [], "count": 0, "truncated": 0}
+    return res

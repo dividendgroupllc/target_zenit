@@ -312,9 +312,9 @@
 .tz-inv tr.ovsg-h:hover td { background:var(--brand-wash); }
 .tz-inv td.ovsg-name { padding-left:30px; max-width:280px; }
 /* bosiladigan chiplar: valyuta (to'lovlar) + o'quvchilar rejim filtrlari */
-.tz-inv .ccy-chip.tz-tccy, .tz-inv .ccy-chip.tz-ovsm { cursor:pointer; transition:border-color .12s, box-shadow .12s; }
-.tz-inv .ccy-chip.tz-tccy:hover, .tz-inv .ccy-chip.tz-ovsm:hover { border-color:var(--brand); }
-.tz-inv .ccy-chip.tz-tccy.active, .tz-inv .ccy-chip.tz-ovsm.active { border-color:var(--brand); box-shadow:0 0 0 2px var(--brand-wash); }
+.tz-inv .ccy-chip.tz-tccy, .tz-inv .ccy-chip.tz-ovsm, .tz-inv .ccy-chip.tz-nachc { cursor:pointer; transition:border-color .12s, box-shadow .12s; }
+.tz-inv .ccy-chip.tz-tccy:hover, .tz-inv .ccy-chip.tz-ovsm:hover, .tz-inv .ccy-chip.tz-nachc:hover { border-color:var(--brand); }
+.tz-inv .ccy-chip.tz-tccy.active, .tz-inv .ccy-chip.tz-ovsm.active, .tz-inv .ccy-chip.tz-nachc.active { border-color:var(--brand); box-shadow:0 0 0 2px var(--brand-wash); }
 /* balans batafsil (ikki ustun: aktiv | passiv) */
 .tz-inv .ov-bs { border-top:3px solid var(--c5); }
 .tz-inv .ov-bs-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 36px; }

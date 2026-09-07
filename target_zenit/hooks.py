@@ -288,6 +288,7 @@ fixtures = [
                 "Student-custom_eduvisit_id",
                 "Guardian-custom_eduvisit_id",
                 "Student-custom_shartnoma_qilindi",
+                "Student-custom_shartnoma_turi",
                 "Student-custom_sinf_guruh",
                 # Shartnoma ma'lumotlari — Details bo'limida (Google Sheets registr asosida)
                 "Student-custom_contract_no",
