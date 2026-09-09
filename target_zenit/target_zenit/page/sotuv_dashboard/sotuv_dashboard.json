@@ -1,0 +1,35 @@
+{
+ "content": null,
+ "creation": "2026-09-09 00:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-09-09 12:00:00",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "sotuv-dashboard",
+ "owner": "Administrator",
+ "page_name": "sotuv-dashboard",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Sales Manager"
+  },
+  {
+   "role": "Sales User"
+  },
+  {
+   "role": "Sotuv meneger"
+  },
+  {
+   "role": "Xojakbar_Operator"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Sotuv paneli"
+}

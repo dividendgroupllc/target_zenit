@@ -1,0 +1,125 @@
+/* Sotuv paneli — target_zenit. Frappe desk, light/dark. */
+.tz-sot {
+  --page:#eef1f6; --card:#ffffff; --card-2:#f7f9fc; --ink:#131a29; --ink-2:#566175;
+  --muted:#8a93a6; --line:#e3e8f0; --line-strong:#d3dae6;
+  --brand:#0e7c86; --brand-ink:#0a5c64; --brand-wash:#e4f2f3;
+  --good:#12a150; --good-ink:#0b7f3f; --good-wash:#e5f5ec;
+  --bad:#d8443c; --bad-ink:#b93129; --bad-wash:#fbeae9;
+  --warn:#dd9a1f; --warn-ink:#a8730b; --warn-wash:#fbf1dc;
+  --blue:#2a78d6;
+  --shadow:0 1px 2px rgba(19,26,41,.05), 0 8px 24px -12px rgba(19,26,41,.14);
+  --radius:14px;
+  color:var(--ink);
+}
+[data-theme="dark"] .tz-sot {
+  --page:#0d131f; --card:#161e2c; --card-2:#111827; --ink:#eef1f7; --ink-2:#9aa6ba;
+  --muted:#6f7c92; --line:#243044; --line-strong:#2e3b52;
+  --brand:#25b3bf; --brand-ink:#7fd8df; --brand-wash:#0e2e33;
+  --good:#31c06d; --good-ink:#6fe0a0; --good-wash:#0e2c1c;
+  --bad:#f0685f; --bad-ink:#ff9c95; --bad-wash:#2e1614;
+  --warn:#efb63f; --warn-ink:#ffd77e; --warn-wash:#2c2210;
+  --blue:#3987e5;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.6);
+}
+.tz-sot * { box-sizing:border-box; }
+.tz-sot .num { font-variant-numeric:tabular-nums; }
+.tz-sot .mut { color:var(--muted); }
+.tz-sot .strong { font-weight:650; }
+.tz-sot .spacer { flex:1 1 auto; }
+.tz-sot .loading { padding:60px 0; text-align:center; color:var(--muted); font-size:14px; }
+.tz-sot .empty { text-align:center; color:var(--muted); padding:36px 16px; }
+
+/* ===== Butun ekranni to'ldirish ===== */
+.tz-fullbleed-wrap { padding:0 !important; }
+.tz-container-fluid { max-width:none !important; width:100% !important; padding-left:0 !important; padding-right:0 !important; }
+.tz-sot { display:block; width:100%; padding:20px clamp(14px,3vw,30px) 48px; min-height:calc(100vh - 62px); }
+
+/* topbar */
+.tz-sot .topbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:4px 0 16px; }
+.tz-sot .topbar h1 { font-size:20px; letter-spacing:-.02em; margin:0; }
+.tz-sot .topbar .sub { font-size:12px; color:var(--muted); margin-top:3px; }
+.tz-sot .refresh { display:inline-flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 13px; cursor:pointer; color:var(--ink); font:inherit; font-size:12.5px; font-weight:600; }
+.tz-sot .refresh:hover { border-color:var(--line-strong); }
+.tz-sot .refresh .dot { width:7px; height:7px; border-radius:50%; background:var(--good); box-shadow:0 0 0 3px var(--good-wash); }
+
+/* grid + card */
+.tz-sot .grid { display:grid; gap:16px; }
+.tz-sot .cols-5 { grid-template-columns:repeat(5,1fr); }
+.tz-sot .mb { margin-bottom:16px; }
+.tz-sot .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 17px; min-width:0; }
+
+/* KPI */
+.tz-sot .kpi .lab { font-size:12px; color:var(--ink-2); font-weight:600; margin-bottom:9px; display:flex; align-items:center; gap:7px; }
+.tz-sot .kpi .pin { width:8px; height:8px; border-radius:3px; background:var(--brand); flex:none; }
+.tz-sot .kpi .pin.g { background:var(--good); }
+.tz-sot .kpi .pin.r { background:var(--bad); }
+.tz-sot .kpi .pin.b { background:var(--blue); }
+.tz-sot .kpi .pin.y { background:var(--warn); }
+.tz-sot .kpi .val { font-size:23px; font-weight:750; letter-spacing:-.02em; line-height:1.05; }
+.tz-sot .kpi .val .cur { font-size:13px; font-weight:600; color:var(--muted); }
+.tz-sot .kpi .sub { font-size:11.5px; color:var(--muted); margin-top:6px; }
+
+/* controls */
+.tz-sot .controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.tz-sot .controls .q { flex:0 1 340px; min-width:220px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; font:inherit; font-size:13px; color:var(--ink); }
+.tz-sot .controls .q:focus { outline:none; border-color:var(--brand); }
+.tz-sot .controls .fgroup { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 10px; font:inherit; font-size:13px; color:var(--ink); max-width:220px; }
+.tz-sot .chips { display:inline-flex; gap:4px; background:var(--card-2); border:1px solid var(--line); border-radius:11px; padding:3px; }
+.tz-sot .chip { border:0; background:transparent; color:var(--ink-2); font:inherit; font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:8px; cursor:pointer; white-space:nowrap; }
+.tz-sot .chip:hover { color:var(--ink); }
+.tz-sot .chip.on { background:var(--card); color:var(--brand-ink); box-shadow:var(--shadow); }
+
+/* pill (shartnoma / holat) */
+.tz-sot .pill { display:inline-block; font-size:11px; font-weight:700; padding:3px 8px; border-radius:8px; white-space:nowrap; }
+.tz-sot .pill.ok { color:var(--good-ink); background:var(--good-wash); }
+.tz-sot .pill.no { color:var(--bad-ink); background:var(--bad-wash); }
+.tz-sot .pill.off { color:var(--warn-ink); background:var(--warn-wash); }
+
+/* guruh kartalari */
+.tz-sot .gcard { padding:0; margin-bottom:12px; overflow:hidden; }
+.tz-sot .ghead { display:flex; align-items:center; gap:12px; padding:13px 16px; cursor:pointer; flex-wrap:wrap; }
+.tz-sot .ghead:hover { background:var(--card-2); }
+.tz-sot .caret { color:var(--muted); font-size:12px; width:14px; flex:none; }
+.tz-sot .gname { font-weight:700; font-size:14px; letter-spacing:-.01em; }
+.tz-sot .gmeta { font-size:12px; color:var(--ink-2); background:var(--card-2); border:1px solid var(--line); border-radius:8px; padding:3px 9px; }
+.tz-sot .gmeta.ok { color:var(--good-ink); background:var(--good-wash); border-color:transparent; }
+.tz-sot .gbar { width:120px; height:6px; border-radius:4px; background:var(--line); overflow:hidden; flex:none; }
+.tz-sot .gbar span { display:block; height:100%; background:var(--good); border-radius:4px; }
+.tz-sot .gbody { border-top:1px solid var(--line); }
+.tz-sot .tcard { padding:0; overflow:hidden; }
+
+/* jadval */
+.tz-sot .twrap { overflow-x:auto; }
+.tz-sot table { width:100%; border-collapse:collapse; font-size:13px; }
+.tz-sot thead th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; padding:10px 14px; border-bottom:1px solid var(--line); background:var(--card-2); white-space:nowrap; }
+.tz-sot tbody td { padding:9px 14px; border-bottom:1px solid var(--line); vertical-align:middle; }
+.tz-sot tbody tr:last-child td { border-bottom:0; }
+.tz-sot tbody tr[data-s] { cursor:pointer; }
+.tz-sot tbody tr[data-s]:hover td { background:var(--card-2); }
+.tz-sot .tel { color:var(--brand-ink); text-decoration:none; font-weight:600; white-space:nowrap; }
+.tz-sot .tel:hover { text-decoration:underline; }
+.tz-sot .slink { color:var(--ink); text-decoration:none; border-bottom:1px dashed var(--line-strong); }
+.tz-sot .slink:hover { color:var(--brand-ink); border-bottom-color:var(--brand); }
+.tz-sot-dialog .dopen { margin-bottom:14px; }
+.tz-sot-dialog .dopen a { font-size:12.5px; font-weight:700; color:var(--brand-ink); text-decoration:none; }
+.tz-sot-dialog .dopen a:hover { text-decoration:underline; }
+
+/* modal ichi */
+.tz-sot-dialog { padding:0; min-height:0; }
+.tz-sot-dialog .dsec { margin-bottom:18px; }
+.tz-sot-dialog .dsec h4 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 8px; }
+.tz-sot-dialog .drow { display:flex; gap:12px; padding:5px 0; border-bottom:1px dashed var(--line); font-size:13px; }
+.tz-sot-dialog .drow:last-child { border-bottom:0; }
+.tz-sot-dialog .dl { flex:0 0 160px; color:var(--ink-2); }
+.tz-sot-dialog .dv { flex:1; font-weight:550; }
+.tz-sot-dialog .dtable { width:100%; border-collapse:collapse; font-size:13px; }
+.tz-sot-dialog .dtable th { text-align:left; font-size:11px; color:var(--muted); padding:6px 8px; border-bottom:1px solid var(--line); }
+.tz-sot-dialog .dtable td { padding:7px 8px; border-bottom:1px solid var(--line); }
+
+/* responsive */
+@media (max-width: 1200px) { .tz-sot .cols-5 { grid-template-columns:repeat(3,1fr); } }
+@media (max-width: 760px) {
+  .tz-sot .cols-5 { grid-template-columns:repeat(2,1fr); }
+  .tz-sot .controls .q { flex:1 1 100%; }
+  .tz-sot .gbar { display:none; }
+}
