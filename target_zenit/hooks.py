@@ -162,6 +162,14 @@ doc_events = {
 	"Student": {
 		"on_update": "target_zenit.student_group_sync.on_student_update",
 	},
+	# Kurs faqat USD→UZS yo'nalishida kiritiladi; teskari yozuv avto-yaratiladi.
+	# Aks holda ikki yo'nalishdagi kurslar mos kelmay, sun'iy gain/loss chiqadi.
+	"Currency Exchange": {
+		"validate": "target_zenit.currency_exchange.validate",
+		"after_insert": "target_zenit.currency_exchange.sync_mirror",
+		"on_update": "target_zenit.currency_exchange.sync_mirror",
+		"on_trash": "target_zenit.currency_exchange.delete_mirror",
+	},
 }
 
 after_migrate = ["target_zenit.setup.kassa_party_types.after_migrate"]
