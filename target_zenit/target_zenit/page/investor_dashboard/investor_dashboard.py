@@ -1962,36 +1962,75 @@ def get_students_detail():
     return res
 
 
+# Kassa operatsiya turlari — "Xisobdagi pullar" filtri uchun (boshqa qiymat qabul qilinmaydi).
+CASH_OP_TYPES = ("Приход", "Расход", "Перемещения", "Конвертация")
+
+
+def _as_list(value):
+    """frappe.call massivni JSON matn qilib yuboradi — ro'yxatga aylantiramiz."""
+    if not value:
+        return []
+    if isinstance(value, str):
+        try:
+            value = frappe.parse_json(value)
+        except Exception:
+            value = [value]
+    if not isinstance(value, (list, tuple, set)):
+        value = [value]
+    return [v for v in value if v]
+
+
 @frappe.whitelist()
-def get_cash_detail(to_date=None, account=None, limit=300):
+def get_cash_detail(to_date=None, account=None, accounts=None, op_types=None, limit=300):
     """Xisobdagi pullar — batafsil: har hisob qoldig'i (sana holatiga) + oxirgi harakatlar
-    (eng yangisidan boshlab, kim bilan / hujjat / izoh). Bitta hisob tanlansa har qator
-    uchun yurish qoldig'i (o'sha harakatdan KEYINGI qoldiq) ham hisoblanadi."""
+    (eng yangisidan boshlab, kim bilan / hujjat / izoh).
+
+    accounts — bir nechta hisob tanlash mumkin (bo'sh bo'lsa hammasi).
+    op_types — Kassa operatsiya turi bo'yicha filtr (Приход/Расход/Перемещения/Конвертация).
+    Yurish qoldig'i faqat AYNAN bitta hisob tanlanganda va operatsiya filtri yo'qligida
+    hisoblanadi — filtrda qatorlar tushib qolsa qoldiq zanjiri noto'g'ri bo'lardi."""
     _guard()
     t0 = getdate(to_date) if to_date else getdate(today())
     company = _default_company()
     accs = _cash_accounts(company)
     bals = _balance_upto(list(accs.keys()), t0, company)
-    accounts = [{"account": a, "mode": mode, "currency": _acc_currency(a),
-                 "balance": flt(bals.get(a, 0.0))} for a, mode in accs.items()]
-    accounts.sort(key=lambda x: -x["balance"])
+    accounts_out = [{"account": a, "mode": mode, "currency": _acc_currency(a),
+                     "balance": flt(bals.get(a, 0.0))} for a, mode in accs.items()]
+    accounts_out.sort(key=lambda x: -x["balance"])
 
-    single = account if (account and account in accs) else None
-    sel = [single] if single else list(accs.keys())
+    # tanlangan hisoblar: yangi `accounts` ro'yxati, eski `account` (bitta) ham qo'llab-quvvatlanadi
+    picked = [a for a in _as_list(accounts) if a in accs]
+    if not picked and account and account in accs:
+        picked = [account]
+    ops = [o for o in _as_list(op_types) if o in CASH_OP_TYPES]
+
+    single = picked[0] if (len(picked) == 1 and not ops) else None
+    sel = picked or list(accs.keys())
     limit = max(20, min(cint(limit) or 300, 500))
     rows = []
     if sel:
+        params = {"a": tuple(sel), "t": str(t0), "company": company, "l": limit}
+        op_cond = ""
+        if ops:
+            op_cond = "AND k.transaction_type IN %(ops)s"
+            params["ops"] = tuple(ops)
         try:
             rows = frappe.db.sql(
                 f"""SELECT ge.posting_date, ge.account, ge.party_type, ge.party, ge.against,
                            ge.voucher_type, ge.voucher_no, ge.remarks,
-                           ge.debit_in_account_currency d, ge.credit_in_account_currency c
+                           ge.debit_in_account_currency d, ge.credit_in_account_currency c,
+                           k.transaction_type op_type
                     FROM `tabGL Entry` ge
+                    LEFT JOIN `tabPayment Entry` pe
+                           ON pe.name = ge.voucher_no AND ge.voucher_type = 'Payment Entry'
+                    LEFT JOIN `tabJournal Entry` je
+                           ON je.name = ge.voucher_no AND ge.voucher_type = 'Journal Entry'
+                    LEFT JOIN `tabKassa` k ON k.name = COALESCE(pe.reference_no, je.cheque_no)
                     WHERE ge.account IN %(a)s AND ge.posting_date <= %(t)s
-                      AND ge.is_cancelled = 0 {_co(company, 'ge')}
+                      AND ge.is_cancelled = 0 {_co(company, 'ge')} {op_cond}
                     ORDER BY ge.posting_date DESC, ge.creation DESC
                     LIMIT %(l)s""",
-                {"a": tuple(sel), "t": str(t0), "company": company, "l": limit}, as_dict=True)
+                params, as_dict=True)
         except Exception:
             frappe.log_error(frappe.get_traceback(), "investor_dashboard: cash_detail")
 
@@ -2028,6 +2067,7 @@ def get_cash_detail(to_date=None, account=None, limit=300):
             who = (r.against or "").split(",")[0].strip()
         item = {"date": str(r.posting_date), "account": r.account, "who": who,
                 "voucher_type": r.voucher_type or "", "voucher_no": r.voucher_no or "",
+                "op_type": r.op_type or "",
                 "kirim": flt(r.d), "chiqim": flt(r.c),
                 "remarks": " ".join(str(r.remarks or "").replace("\t", " ").split())[:200]}
         if single:
@@ -2035,8 +2075,11 @@ def get_cash_detail(to_date=None, account=None, limit=300):
             run -= flt(r.d) - flt(r.c)     # yuqoridan pastga (yangi→eski) orqaga yechamiz
         tx.append(item)
 
-    return {"as_of": str(t0), "accounts": accounts, "transactions": tx,
+    return {"as_of": str(t0), "accounts": accounts_out, "transactions": tx,
             "account": single or "",
+            "selected_accounts": picked,
+            "op_types": ops,
+            "all_op_types": list(CASH_OP_TYPES),
             "currency": _acc_currency(single) if single else None,
             "limit": limit}
 

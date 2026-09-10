@@ -38,7 +38,9 @@ class TZInvestorDashboard {
 		this.tuitionDetail = null;
 		this.tuitionCcy = null;      // to'lovlar ro'yxatida valyuta filtri (UZS/USD chipi)
 		this.ovCash = null;         // kassa batafsil (kesh)
-		this.ovCashAcc = "";        // kassa batafsilda tanlangan hisob
+		this.ovCashAccs = [];       // kassa batafsilda tanlangan hisoblar (bo'sh = hammasi)
+		this.ovCashOps = [];        // Kassa operatsiya turi filtri (bo'sh = hammasi)
+		this.ovCashMenu = null;     // ochiq turgan filtr menyusi: "acc" | "op" | null
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
 			{ key: "overview", label: "Umumiy" },
@@ -183,8 +185,35 @@ class TZInvestorDashboard {
 		// Umumiy tab — kassa batafsil: hisob chipini bosib faqat o'sha hisob harakatini ko'rish
 		body.on("click", "[data-ovcash-acc]", (e) => {
 			const a = String($(e.currentTarget).attr("data-ovcash-acc"));
-			this.ovCashAcc = (this.ovCashAcc === a) ? "" : a;
+			const i = this.ovCashAccs.indexOf(a);
+			if (i === -1) this.ovCashAccs.push(a); else this.ovCashAccs.splice(i, 1);
 			this.loadOvCash(true);
+		});
+		// Kassa filtrlari — ko'p tanlovli menyular (hisoblar / operatsiya turi)
+		body.on("click", "[data-mselbtn]", (e) => {
+			e.stopPropagation();
+			const k = String($(e.currentTarget).attr("data-mselbtn"));
+			this.ovCashMenu = (this.ovCashMenu === k) ? null : k;
+			this.paintCashFilter();
+		});
+		body.on("click", ".tz-msel-menu", (e) => e.stopPropagation());
+		body.on("change", "[data-mselopt]", (e) => {
+			const k = String($(e.currentTarget).attr("data-mselopt"));
+			const v = String($(e.currentTarget).val());
+			const list = (k === "acc") ? this.ovCashAccs : this.ovCashOps;
+			const i = list.indexOf(v);
+			if (i === -1) list.push(v); else list.splice(i, 1);
+			this.loadOvCash(true);
+		});
+		body.on("click", "[data-mselclear]", (e) => {
+			e.stopPropagation();
+			const k = String($(e.currentTarget).attr("data-mselclear"));
+			if (k === "acc") this.ovCashAccs = []; else this.ovCashOps = [];
+			this.loadOvCash(true);
+		});
+		// menyudan tashqariga bosilsa — yopiladi
+		$(document).off("click.tzmsel").on("click.tzmsel", () => {
+			if (this.ovCashMenu) { this.ovCashMenu = null; this.paintCashFilter(); }
 		});
 		// Umumiy tab — o'quvchilar paneli: sinfni bosib ochish/yopish, qidiruv
 		body.on("click", "[data-ovsg]", (e) => {
@@ -559,7 +588,8 @@ class TZInvestorDashboard {
 			setTimeout(() => this.loadOvCash(), 0);
 			return this.card(`
 				<div class="hd"><div><h3>Xisobdagi pullar — oxirgi harakatlar</h3>
-					<div class="meta">${asOf} holatiga · eng yangi harakat tepada · hisobni bosib faqat uning harakatini (yurish qoldig'i bilan) ko'ring</div></div></div>
+					<div class="meta">${asOf} holatiga · eng yangi harakat tepada · hisoblarni va operatsiya turini filtrdan tanlang</div></div>
+					<div class="kt-filter tz-cash-filter">${this.cashFilterHtml()}</div></div>
 				<div class="tz-ovcash-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb ov-detail-card");
 		}
 		return "";
@@ -753,6 +783,40 @@ class TZInvestorDashboard {
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
 	}
 
+	// -- kassa batafsil: ikkita ko'p tanlovli filtr (hisoblar + Kassa operatsiya turi) --
+	// Bo'sh tanlov = "hammasi". Menyu ochiq turganda ham qayta chizilaveradi, shuning uchun
+	// ochiq menyu kaliti (ovCashMenu) alohida saqlanadi va chizishda tiklanadi.
+	cashMselHtml(key, label, options, selected) {
+		const sel = selected || [];
+		const cap = !sel.length ? `${label}: hammasi`
+			: sel.length === 1 ? `${label}: ${this.esc(this.acctName(sel[0]))}`
+			: `${label}: ${sel.length} ta tanlandi`;
+		const items = options.length
+			? options.map((o) => `<label class="tz-msel-item"><input type="checkbox" data-mselopt="${this.esc(key)}" value="${this.esc(o.value)}"${sel.indexOf(o.value) !== -1 ? " checked" : ""}><span>${this.esc(o.label)}</span></label>`).join("")
+			: `<div class="tz-msel-empty">Yuklanyapti…</div>`;
+		return `<div class="tz-msel${this.ovCashMenu === key ? " open" : ""}" data-msel="${this.esc(key)}">
+			<button type="button" class="tz-msel-btn${sel.length ? " on" : ""}" data-mselbtn="${this.esc(key)}">${cap} <span class="tz-msel-car">▾</span></button>
+			<div class="tz-msel-menu">
+				<div class="tz-msel-list">${items}</div>
+				<button type="button" class="tz-msel-clear" data-mselclear="${this.esc(key)}">Tanlovni tozalash</button>
+			</div>
+		</div>`;
+	}
+
+	cashFilterHtml() {
+		const accs = ((this.ovCash || {}).accounts || [])
+			.map((a) => ({ value: a.account, label: this.acctName(a.account) }));
+		const ops = (((this.ovCash || {}).all_op_types) || ["Приход", "Расход", "Перемещения", "Конвертация"])
+			.map((o) => ({ value: o, label: o }));
+		return this.cashMselHtml("acc", "Hisoblar", accs, this.ovCashAccs)
+			+ this.cashMselHtml("op", "Operatsiya", ops, this.ovCashOps);
+	}
+
+	paintCashFilter() {
+		const box = this.page.main.find(".tz-cash-filter");
+		if (box.length) box.html(this.cashFilterHtml());
+	}
+
 	// -- kassa batafsil (hisoblar + oxirgi harakatlar) --
 	loadOvCash(force) {
 		const body = this.page.main.find(".tz-ovcash-body");
@@ -762,20 +826,26 @@ class TZInvestorDashboard {
 			if (!b.length) return;
 			b.html(this.renderOvCash(this.ovCash || {}));
 			b.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+			this.paintCashFilter();
 		};
 		if (this.ovCash && !force) { paint(); return; }
 		body.html(`<div class="tz-loader">Harakatlar yuklanyapti…</div>`);
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_cash_detail",
-			args: { to_date: this.state.to_date, account: this.ovCashAcc || null },
+			args: {
+				to_date: this.state.to_date,
+				accounts: JSON.stringify(this.ovCashAccs || []),
+				op_types: JSON.stringify(this.ovCashOps || []),
+			},
 		}).then((r) => { this.ovCash = r.message || {}; paint(); })
 			.catch(() => body.html(`<div class="empty-hint">Kassa harakatlarini yuklab bo'lmadi.</div>`));
 	}
 
 	renderOvCash(d) {
 		const accounts = d.accounts || [];
+		const picked = this.ovCashAccs || [];
 		const chips = accounts.map((a) => `
-			<button class="tz-acc-chip${this.ovCashAcc === a.account ? " active" : ""}" data-ovcash-acc="${this.esc(a.account)}" title="${this.fmt(a.balance)} ${this.esc(a.currency)} · ${this.esc(a.mode || "")}">
+			<button class="tz-acc-chip${picked.indexOf(a.account) !== -1 ? " active" : ""}" data-ovcash-acc="${this.esc(a.account)}" title="${this.fmt(a.balance)} ${this.esc(a.currency)} · ${this.esc(a.mode || "")}">
 				<span class="t">${this.esc(this.acctName(a.account))}</span>
 				<b class="num" style="color:${a.balance < 0 ? "var(--bad-ink)" : "var(--ink)"}">${this.kc(a.balance)} <small>${this.ccyLabel(a.currency)}</small></b>
 			</button>`).join("");
@@ -798,10 +868,14 @@ class TZInvestorDashboard {
 		}).join("") : `<tr><td colspan="${cols}" class="empty-hint">Harakat topilmadi.</td></tr>`;
 		const cur = d.currency;
 		const thead = `<tr><th>Sana</th>${single ? "" : "<th>Hisob</th>"}<th>Kimdan / kimga</th><th class="r">Kirim</th><th class="r">Chiqim</th>${single ? `<th class="r">Qoldiq${cur ? " (" + this.esc(cur) + ")" : ""}</th>` : ""}<th>Izoh</th><th>Hujjat</th></tr>`;
+		const opsOn = (this.ovCashOps || []);
+		const opTxt = opsOn.length ? ` · operatsiya turi: <b>${opsOn.map((o) => this.esc(o)).join(", ")}</b>` : "";
 		return `<div class="ov-chips">${chips}</div>
 			<div class="kt-legend">${single
-				? `<b>${this.esc(this.acctName(d.account))}</b> — oxirgi harakatlar, har qatorda o'sha kundan keyingi qoldiq. Yana bosib filtrni olib tashlang.`
-				: `Barcha kassa/bank hisoblari birga — hisob chipini bosib faqat bittasini ko'ring.`}</div>
+				? `<b>${this.esc(this.acctName(d.account))}</b> — oxirgi harakatlar, har qatorda o'sha kundan keyingi qoldiq. Chipni yana bosib filtrni olib tashlang.`
+				: picked.length
+					? `Tanlangan <b>${picked.length}</b> ta hisob birga${opTxt}. Yurish qoldig'i faqat bitta hisob tanlanganda (operatsiya filtrisiz) ko'rsatiladi.`
+					: `Barcha kassa/bank hisoblari birga${opTxt} — hisob chipini yoki tepadagi filtrni ishlating.`}</div>
 			<div class="tbl-wrap"><table><thead>${thead}</thead><tbody>${body}</tbody></table></div>
 			<div class="kt-count">Oxirgi ${tx.length} ta harakat ko'rsatildi${tx.length >= (d.limit || 300) ? " (limitga yetdi — oraliqni qisqartiring)" : ""}.</div>`;
 	}
