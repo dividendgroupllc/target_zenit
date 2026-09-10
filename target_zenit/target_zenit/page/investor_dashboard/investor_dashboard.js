@@ -624,6 +624,19 @@ class TZInvestorDashboard {
 		const lastAmtCell = (la) => la && la.amount
 			? `<div class="num" style="font-weight:600;white-space:nowrap" data-tt="${this.fmt(la.amount)} ${this.esc(la.currency)}">${this.mAmt(la.amount, la.currency)} <small>${this.esc(this.ccyLabel(la.currency))}</small></div>`
 			: `<span class="muted-s">—</span>`;
+		// tarif: sinf qatorida — kategoriya kesimida nechtadan, o'quvchida — o'zi
+		const tariffAgg = (list) => {
+			const a = {};
+			list.forEach((s) => { if (s.tariff) a[s.tariff] = (a[s.tariff] || 0) + 1; });
+			const parts = Object.keys(a).sort().map((k) => `${a[k]} ${this.esc(k.toLowerCase())}`);
+			return parts.length ? `<span class="num">${parts.join(" · ")}</span>` : `<span class="muted-s">—</span>`;
+		};
+		// tarif summasi katakchasi (so'm) — sinf qatorida jami, o'quvchida o'ziniki
+		const tariffAmtCell = (v, bold) => (Number(v) > 0
+			? `<div class="num" style="${bold ? "font-weight:750" : "font-weight:600"};white-space:nowrap" data-tt="${this.fmt(v)} so'm">${this.fmt(v)} <small>so'm</small></div>`
+			: `<span class="muted-s">—</span>`);
+		const tariffSum = (list) => list.reduce((n, s) => n + (Number(s.tariff_amount) || 0), 0);
+		const monthlySum = (list) => list.reduce((n, s) => n + (Number(s.monthly) || 0), 0);
 		// shartnoma turi: sinf qatorida — nechta oylik/yillik, o'quvchida — o'zi
 		const ctypeAgg = (list) => {
 			const a = {};
@@ -656,9 +669,11 @@ class TZInvestorDashboard {
 			rows += `<tr class="ovsg-h" data-ovsg="${this.esc(g.label)}">
 				<td><span class="dds-arrow">${open ? "▼" : "▶"}</span> <b>${this.esc(g.label)}</b>${g.no_group ? ` <span class="muted-s">(Student Group biriktirilmagan)</span>` : ""}</td>
 				<td class="r num"><b>${studs.length}</b> <span class="muted-s">o'quvchi</span></td>
-				<td class="num">${contr ? `<span class="tz-yes">${contr}/${studs.length} shartnoma</span>` : `<span class="muted-s">—</span>`}</td>
-				<td class="r">${paidCell(gpaid, true)}${payers ? `<div class="muted-s">${payers}/${studs.length} o'quvchi to'lagan</div>` : ""}</td>
 				<td>${ctypeAgg(studs)}</td>
+				<td>${tariffAgg(studs)}</td>
+				<td class="r">${tariffAmtCell(tariffSum(studs), true)}</td>
+				<td class="r">${tariffAmtCell(monthlySum(studs), true)}</td>
+				<td class="r">${paidCell(gpaid, true)}${payers ? `<div class="muted-s">${payers}/${studs.length} o'quvchi to'lagan</div>` : ""}</td>
 				<td class="r">${glast ? lastAmtCell(glast.last_amt) : `<span class="muted-s">—</span>`}</td>
 				<td class="r num" style="white-space:nowrap">${glast ? this.dmy(glast.last_pay) : `<span class="muted-s">—</span>`}</td>
 				<td class="r">${debtCell(gdebt, gadv, true)}</td>
@@ -668,16 +683,18 @@ class TZInvestorDashboard {
 				<tr class="ovsg-s">
 					<td class="ovsg-name ell" data-tt="${this.esc(s.name)}">${i + 1}. ${this.esc(s.name)}</td>
 					<td></td>
-					<td>${s.contracted ? `<span class="tz-yes">✓ shartnoma</span>` : `<span class="muted-s">—</span>`}</td>
-					<td class="r">${paidCell(s.paid)}${s.pay_count ? `<div class="muted-s">${s.pay_count} marta</div>` : ""}</td>
 					<td>${s.ctype ? `<span class="num">${this.esc(s.ctype)}</span>` : `<span class="muted-s">—</span>`}</td>
+					<td>${s.tariff ? `<span class="num">${this.esc(s.tariff)}</span>` : `<span class="muted-s">—</span>`}</td>
+					<td class="r">${tariffAmtCell(s.tariff_amount)}</td>
+					<td class="r">${tariffAmtCell(s.monthly)}</td>
+					<td class="r">${paidCell(s.paid)}${s.pay_count ? `<div class="muted-s">${s.pay_count} marta</div>` : ""}</td>
 					<td class="r">${lastAmtCell(s.last_amt)}</td>
 					<td class="r num" style="white-space:nowrap">${s.last_pay ? this.dmy(s.last_pay) : `<span class="muted-s">—</span>`}</td>
 					<td class="r">${debtCell(s.debt, s.advance)}</td>
 					<td>${s.contracted ? `<span class="tz-yes">Faol</span>` : `<span style="color:var(--warn-ink);font-weight:650">Nofaol</span>`}</td>
 				</tr>`).join("");
 		});
-		if (!rows) rows = `<tr><td colspan="9" class="empty-hint">${q ? "Qidiruvga mos o'quvchi topilmadi."
+		if (!rows) rows = `<tr><td colspan="11" class="empty-hint">${q ? "Qidiruvga mos o'quvchi topilmadi."
 			: onlyC ? "Shartnoma qilingan o'quvchi topilmadi."
 			: onlyNG ? "Sinfga biriktirilmagan o'quvchi yo'q."
 			: "O'quvchi topilmadi."}</td></tr>`;
@@ -688,7 +705,7 @@ class TZInvestorDashboard {
 			: `${this.fmt(d.total || 0)} ta faol o'quvchi · ${this.fmt(d.group_count || 0)} ta sinf.`;
 		return `${chips}
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>Sinf / O'quvchi</th><th class="r">O'quvchilar</th><th>Shartnoma</th><th class="r">Jami to'lagan</th><th>Sh. turi</th><th class="r">Oxirgi to'lov</th><th class="r">Oxirgi sana</th><th class="r">Qarzdorlik</th><th>Faolligi</th></tr></thead>
+				<thead><tr><th>Sinf / O'quvchi</th><th class="r">O'quvchilar</th><th>Sh. turi</th><th>Tarif</th><th class="r">Shartnoma summasi</th><th class="r">Oylik to'lov</th><th class="r">Jami to'lagan</th><th class="r">Oxirgi to'lov</th><th class="r">Oxirgi sana</th><th class="r">Qarzdorlik</th><th>Faolligi</th></tr></thead>
 				<tbody>${rows}</tbody>
 			</table></div>
 			<div class="kt-count">${cnt} To'lovlar — butun tarix bo'yicha, kassaga tushgan real pul. Qarzdorlik — buxgalteriya qoldig'i (nachisleniya − to'lov); manfiy qoldiq <b>avans</b> (peredoplata) deb ko'rsatiladi.</div>`;
@@ -1301,11 +1318,20 @@ class TZInvestorDashboard {
 			${this.kpi({ label: "Davr yig'imi", value: (main ? this.mAmt(main.total, main.currency) : "0"), unit: main ? " " + this.esc(main.currency) : "", pin: "var(--good)", valColor: "var(--good-ink)", noBadge: true, sub: "kassaga tushgan · bosing: to'lovlar ro'yxati", cls: kcls("payments"), click: `data-td="payments"` })}
 		</div>`;
 
-		// ---- Valyuta kesimi — chiplar BOSILADIGAN: shu valyutadagi to'lovlar ro'yxati ochiladi ----
-		const ccyChips = (p.by_currency || []).length
-			? p.by_currency.map((b) => `<span class="ccy-chip tz-tccy${td === "payments" && this.tuitionCcy === b.currency ? " active" : ""}" data-tccy="${this.esc(b.currency)}"><b>${this.esc(b.currency)}</b> <b style="color:var(--good-ink)">${this.mAmt(b.total, b.currency)}</b> <span style="color:var(--muted);font-size:12px">· ${b.count} to'lov · ${b.students} o'quvchi · bosing ▾</span></span>`).join("")
-			: `<span class="empty-hint">Davrda to'lov yo'q.</span>`;
-		h += this.card(`<div class="hd"><div><h3>Davr yig'imi — valyuta kesimida</h3><div class="meta">kassaga tushgan real pul, konvertatsiyasiz · valyutani bosing — bu pul qanday yig'ilgani (to'lovma-to'lov) ochiladi</div></div></div>
+		// ---- Valyuta kesimi ----
+		// Odatda: hamma o'quvchilar, chiplar BOSILADIGAN (shu valyutadagi to'lovlar ro'yxati ochiladi).
+		// "Shartnoma qilinganlar" kartasi bosilganda: faqat shartnoma qilingan o'quvchilardan
+		// tushgan pul (ma'lumot uchun, bosilmaydi — to'lovlar ro'yxati hammani ko'rsatadi).
+		const onlyContr = td === "contracted";
+		const ccyList = onlyContr ? (p.by_currency_contracted || []) : (p.by_currency || []);
+		const ccyChips = ccyList.length
+			? ccyList.map((b) => onlyContr
+				? `<span class="ccy-chip"><b>${this.esc(b.currency)}</b> <b style="color:var(--good-ink)">${this.mAmt(b.total, b.currency)}</b> <span style="color:var(--muted);font-size:12px">· ${b.count} to'lov · ${b.students} o'quvchi</span></span>`
+				: `<span class="ccy-chip tz-tccy${td === "payments" && this.tuitionCcy === b.currency ? " active" : ""}" data-tccy="${this.esc(b.currency)}"><b>${this.esc(b.currency)}</b> <b style="color:var(--good-ink)">${this.mAmt(b.total, b.currency)}</b> <span style="color:var(--muted);font-size:12px">· ${b.count} to'lov · ${b.students} o'quvchi · bosing ▾</span></span>`).join("")
+			: `<span class="empty-hint">${onlyContr ? "Davrda shartnoma qilingan o'quvchilardan to'lov yo'q." : "Davrda to'lov yo'q."}</span>`;
+		h += this.card(`<div class="hd"><div><h3>Davr yig'imi — valyuta kesimida${onlyContr ? ` <span style="color:var(--good-ink)">· faqat shartnoma qilinganlar</span>` : ""}</h3><div class="meta">${onlyContr
+				? "shartnoma qilingan faol o'quvchilardan kassaga tushgan real pul, konvertatsiyasiz · hammasini ko'rish uchun kartani qayta bosing"
+				: "kassaga tushgan real pul, konvertatsiyasiz · valyutani bosing — bu pul qanday yig'ilgani (to'lovma-to'lov) ochiladi"}</div></div></div>
 			<div style="display:flex;flex-wrap:wrap;gap:10px;padding:2px">${ccyChips}</div>`, "mb");
 
 		// ---- Batafsil panel — tanlangan kartaga qarab ----

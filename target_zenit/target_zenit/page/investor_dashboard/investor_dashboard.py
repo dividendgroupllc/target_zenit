@@ -711,7 +711,7 @@ def _student_payments(company, from_date, to_date):
     Summa = KASSAGA TUSHGAN REAL PUL (received_amount), valyutasi = tushgan hisob valyutasi.
     Kassalar asosan so'm bo'lgani uchun ko'pchiligi so'm da chiqadi (USD $166.66 → 2 000 000 so'm).
     Yon ma'lumot sifatida o'quvchi to'lagan asl summa (paid_amount + paid_from valyutasi) ham beriladi."""
-    res = {"by_currency": [], "students": [], "recent": [],
+    res = {"by_currency": [], "by_currency_contracted": [], "students": [], "recent": [],
            "total_count": 0, "total_students": 0, "period_total_base": 0.0}
     if not from_date or not to_date:
         return res
@@ -736,7 +736,19 @@ def _student_payments(company, from_date, to_date):
     if not rows:
         return res
 
+    # Shartnoma qilingan faol o'quvchilarning Customer'lari — davr yig'imini
+    # shartnoma kesimida ham berish uchun (KPI kartasi bosilganda ko'rsatiladi).
+    contracted_customers = set()
+    try:
+        contracted_customers = {
+            c for c in frappe.get_all(
+                "Student", filters={"enabled": 1, "custom_shartnoma_qilindi": 1},
+                pluck="customer") if c}
+    except Exception:
+        pass
+
     byc = defaultdict(lambda: {"total": 0.0, "count": 0, "students": set()})
+    byc_contr = defaultdict(lambda: {"total": 0.0, "count": 0, "students": set()})
     stud = defaultdict(lambda: {"total": 0.0, "count": 0, "last_date": None,
                                 "currency": None, "name": None})
     all_students = set()
@@ -750,6 +762,11 @@ def _student_payments(company, from_date, to_date):
         b["count"] += 1
         b["students"].add(r.party)
         all_students.add(r.party)
+        if r.party in contracted_customers:
+            cb = byc_contr[cur]
+            cb["total"] += amt
+            cb["count"] += 1
+            cb["students"].add(r.party)
         key = (r.party, cur)
         s = stud[key]
         s["total"] += amt
@@ -762,6 +779,10 @@ def _student_payments(company, from_date, to_date):
     res["by_currency"] = sorted(
         [{"currency": c, "total": v["total"], "count": v["count"],
           "students": len(v["students"])} for c, v in byc.items()],
+        key=lambda x: -x["total"])
+    res["by_currency_contracted"] = sorted(
+        [{"currency": c, "total": v["total"], "count": v["count"],
+          "students": len(v["students"])} for c, v in byc_contr.items()],
         key=lambda x: -x["total"])
     res["students"] = sorted(
         [{"name": v["name"], "party": k[0], "currency": v["currency"],
@@ -1794,7 +1815,8 @@ def get_students_detail():
     try:
         students = frappe.get_all("Student", filters={"enabled": 1},
                                   fields=["name", "student_name", "joining_date", "customer",
-                                          "custom_shartnoma_turi"])
+                                          "custom_shartnoma_turi", "custom_tariff",
+                                          "custom_tariff_amount", "custom_monthly_payment"])
     except Exception:
         try:
             students = frappe.get_all("Student", filters={"enabled": 1},
@@ -1899,6 +1921,9 @@ def get_students_detail():
             "name": s.student_name or s.name,
             "contracted": 1 if s.name in contracted else 0,
             "ctype": (s.get("custom_shartnoma_turi") or "").strip(),  # Oylik / Yillik
+            "tariff": (s.get("custom_tariff") or "").strip(),         # Kontrak/Grand/Investor/Yordam
+            "tariff_amount": flt(s.get("custom_tariff_amount")),      # tarif summasi (so'm)
+            "monthly": flt(s.get("custom_monthly_payment")),          # oyma-oy to'lov (so'm)
             "joined": str(jd) if jd else "",
             "paid": paid,                                  # jami to'lagani (valyuta kesimida)
             "pay_count": pay["count"] if pay else 0,       # necha marta to'lagan

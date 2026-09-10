@@ -306,6 +306,7 @@ fixtures = [
                 "Student-custom_payer_phone",
                 "Student-custom_tariff",
                 "Student-custom_tariff_amount",
+                "Student-custom_monthly_payment",
                 "Student-custom_discount_amount",
                 "Student-custom_final_amount",
                 "Student-custom_edu_language",
