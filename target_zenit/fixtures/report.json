@@ -55,6 +55,13 @@
     "parenttype": "Report",
     "role": "investor"
    }
+    ,
+   {
+    "parent": "Balance Sheet",
+    "parentfield": "roles",
+    "parenttype": "Report",
+    "role": "Operator"
+   }
   ],
   "snapshot_report": 0,
   "timeout": 0
@@ -114,6 +121,13 @@
     "parentfield": "roles",
     "parenttype": "Report",
     "role": "investor"
+   }
+    ,
+   {
+    "parent": "Profit and Loss Statement",
+    "parentfield": "roles",
+    "parenttype": "Report",
+    "role": "Operator"
    }
   ],
   "snapshot_report": 0,

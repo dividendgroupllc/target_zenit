@@ -1059,7 +1059,14 @@ def _overview_cards(company, to_date, ccy):
 # ===========================================================================
 # Asosiy API
 # ===========================================================================
-ALLOWED_ROLES = ["System Manager", "Accounts Manager", "Accounts User", "investor", "Xojakbar_Operator"]
+ALLOWED_ROLES = [
+    "System Manager",
+    "Accounts Manager",
+    "Accounts User",
+    "investor",
+    "Xojakbar_Operator",
+    "Operator",
+]
 
 
 def _guard():
