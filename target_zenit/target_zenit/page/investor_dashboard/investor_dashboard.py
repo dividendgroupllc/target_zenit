@@ -1816,7 +1816,7 @@ def get_students_detail():
         students = frappe.get_all("Student", filters={"enabled": 1},
                                   fields=["name", "student_name", "joining_date", "customer",
                                           "custom_shartnoma_turi", "custom_tariff",
-                                          "custom_tariff_amount", "custom_monthly_payment"])
+                                          "custom_final_amount", "custom_monthly_payment"])
     except Exception:
         try:
             students = frappe.get_all("Student", filters={"enabled": 1},
@@ -1922,7 +1922,7 @@ def get_students_detail():
             "contracted": 1 if s.name in contracted else 0,
             "ctype": (s.get("custom_shartnoma_turi") or "").strip(),  # Oylik / Yillik
             "tariff": (s.get("custom_tariff") or "").strip(),         # Kontrak/Grand/Investor/Yordam
-            "tariff_amount": flt(s.get("custom_tariff_amount")),      # tarif summasi (so'm)
+            "final_amount": flt(s.get("custom_final_amount")),        # yakuniy summa (so'm)
             "monthly": flt(s.get("custom_monthly_payment")),          # oyma-oy to'lov (so'm)
             "joined": str(jd) if jd else "",
             "paid": paid,                                  # jami to'lagani (valyuta kesimida)

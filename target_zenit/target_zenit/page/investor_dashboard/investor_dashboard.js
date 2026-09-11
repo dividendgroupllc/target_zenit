@@ -661,11 +661,11 @@ class TZInvestorDashboard {
 			const parts = Object.keys(a).sort().map((k) => `${a[k]} ${this.esc(k.toLowerCase())}`);
 			return parts.length ? `<span class="num">${parts.join(" · ")}</span>` : `<span class="muted-s">—</span>`;
 		};
-		// tarif summasi katakchasi (so'm) — sinf qatorida jami, o'quvchida o'ziniki
+		// summa katakchasi (so'm) — sinf qatorida jami, o'quvchida o'ziniki
 		const tariffAmtCell = (v, bold) => (Number(v) > 0
 			? `<div class="num" style="${bold ? "font-weight:750" : "font-weight:600"};white-space:nowrap" data-tt="${this.fmt(v)} so'm">${this.fmt(v)} <small>so'm</small></div>`
 			: `<span class="muted-s">—</span>`);
-		const tariffSum = (list) => list.reduce((n, s) => n + (Number(s.tariff_amount) || 0), 0);
+		const finalSum = (list) => list.reduce((n, s) => n + (Number(s.final_amount) || 0), 0);
 		const monthlySum = (list) => list.reduce((n, s) => n + (Number(s.monthly) || 0), 0);
 		// shartnoma turi: sinf qatorida — nechta oylik/yillik, o'quvchida — o'zi
 		const ctypeAgg = (list) => {
@@ -701,7 +701,7 @@ class TZInvestorDashboard {
 				<td class="r num"><b>${studs.length}</b> <span class="muted-s">o'quvchi</span></td>
 				<td>${ctypeAgg(studs)}</td>
 				<td>${tariffAgg(studs)}</td>
-				<td class="r">${tariffAmtCell(tariffSum(studs), true)}</td>
+				<td class="r">${tariffAmtCell(finalSum(studs), true)}</td>
 				<td class="r">${tariffAmtCell(monthlySum(studs), true)}</td>
 				<td class="r">${paidCell(gpaid, true)}${payers ? `<div class="muted-s">${payers}/${studs.length} o'quvchi to'lagan</div>` : ""}</td>
 				<td class="r">${glast ? lastAmtCell(glast.last_amt) : `<span class="muted-s">—</span>`}</td>
@@ -715,7 +715,7 @@ class TZInvestorDashboard {
 					<td></td>
 					<td>${s.ctype ? `<span class="num">${this.esc(s.ctype)}</span>` : `<span class="muted-s">—</span>`}</td>
 					<td>${s.tariff ? `<span class="num">${this.esc(s.tariff)}</span>` : `<span class="muted-s">—</span>`}</td>
-					<td class="r">${tariffAmtCell(s.tariff_amount)}</td>
+					<td class="r">${tariffAmtCell(s.final_amount)}</td>
 					<td class="r">${tariffAmtCell(s.monthly)}</td>
 					<td class="r">${paidCell(s.paid)}${s.pay_count ? `<div class="muted-s">${s.pay_count} marta</div>` : ""}</td>
 					<td class="r">${lastAmtCell(s.last_amt)}</td>
@@ -735,7 +735,7 @@ class TZInvestorDashboard {
 			: `${this.fmt(d.total || 0)} ta faol o'quvchi · ${this.fmt(d.group_count || 0)} ta sinf.`;
 		return `${chips}
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>Sinf / O'quvchi</th><th class="r">O'quvchilar</th><th>Sh. turi</th><th>Tarif</th><th class="r">Shartnoma summasi</th><th class="r">Oylik to'lov</th><th class="r">Jami to'lagan</th><th class="r">Oxirgi to'lov</th><th class="r">Oxirgi sana</th><th class="r">Qarzdorlik</th><th>Faolligi</th></tr></thead>
+				<thead><tr><th>Sinf / O'quvchi</th><th class="r">O'quvchilar</th><th>Sh. turi</th><th>Tarif</th><th class="r">Yakuniy summa</th><th class="r">Oylik to'lov</th><th class="r">Jami to'lagan</th><th class="r">Oxirgi to'lov</th><th class="r">Oxirgi sana</th><th class="r">Qarzdorlik</th><th>Faolligi</th></tr></thead>
 				<tbody>${rows}</tbody>
 			</table></div>
 			<div class="kt-count">${cnt} To'lovlar — butun tarix bo'yicha, kassaga tushgan real pul. Qarzdorlik — buxgalteriya qoldig'i (nachisleniya − to'lov); manfiy qoldiq <b>avans</b> (peredoplata) deb ko'rsatiladi.</div>`;
@@ -1103,8 +1103,8 @@ class TZInvestorDashboard {
 		const d = this.data.debts;
 		let h = this.sec("Qarzdorlik holati", `${this.data.meta.period.label} oxiriga`);
 		h += `<div class="grid cols-4 mb tz-debts-top">
-			${this.moneyKpi({ label: "Jami debitorka (bizga qarz)", raw: d.receivable_total, cmp: d.receivable_cmp, invert: true, pin: "var(--warn)", valColor: "var(--warn-ink)" })}
-			${this.moneyKpi({ label: "Jami kreditorka (biz qarz)", raw: d.payable_total, cmp: d.payable_cmp, invert: true, pin: "var(--c5)" })}
+			${this.moneyKpi({ label: "Jami debitorka (bizga qarz)", raw: d.receivable_total, cmp: d.receivable_cmp, invert: true, pin: "var(--good)", valColor: "var(--good-ink)" })}
+			${this.moneyKpi({ label: "Jami kreditorka (biz qarz)", raw: -d.payable_total, cmp: d.payable_cmp, invert: true, pin: "var(--bad)", valColor: "var(--bad-ink)" })}
 			${this.ktTotPlaceholder()}
 		</div>`;
 
@@ -1184,9 +1184,10 @@ class TZInvestorDashboard {
 	}
 
 	ktBal(cr, dr, big) {
+		// Кт = biz qarzmiz (qarzdorlik) — qizil va MINUS; Дт = bizga qarzdor (haqdorlik) — yashil musbat
 		const cls = "num" + (big ? " ktt-big" : "");
-		const kt = `<span class="${cls}" style="color:var(--c5)">${this.fmt(cr)} <small>Kт</small></span>`;
-		const dt = `<span class="${cls}" style="color:var(--warn-ink)">${this.fmt(dr)} <small>Дт</small></span>`;
+		const kt = `<span class="${cls}" style="color:var(--bad-ink);font-weight:700">${this.fmt(-cr)} <small>Kт</small></span>`;
+		const dt = `<span class="${cls}" style="color:var(--good-ink)">${this.fmt(dr)} <small>Дт</small></span>`;
 		if (cr > 0.5 && dr > 0.5) return `<span class="ktt-two">${kt}${dt}</span>`;
 		if (cr > 0.5) return kt;
 		if (dr > 0.5) return dt;
@@ -1220,9 +1221,10 @@ class TZInvestorDashboard {
 	renderKontragentTable(k) {
 		const rows = k.rows || [];
 		if (!rows.length) return `<div class="empty-hint" style="padding:22px 8px">Tanlangan filtr bo'yicha harakat topilmadi.</div>`;
+		// Кт (biz qarzmiz) — qizil va minus · Дт (bizga qarzdor) — yashil musbat
 		const bal = (cr, dr) => {
-			if (cr > 0.5) return `<span class="num" style="color:var(--c5)">${this.fmt(cr)} <small>Kт</small></span>`;
-			if (dr > 0.5) return `<span class="num" style="color:var(--warn-ink)">${this.fmt(dr)} <small>Дт</small></span>`;
+			if (cr > 0.5) return `<span class="num" style="color:var(--bad-ink);font-weight:700">${this.fmt(-cr)} <small>Kт</small></span>`;
+			if (dr > 0.5) return `<span class="num" style="color:var(--good-ink)">${this.fmt(dr)} <small>Дт</small></span>`;
 			return `<span class="num muted-s">0</span>`;
 		};
 		const body = rows.map((r) => `
@@ -1244,7 +1246,7 @@ class TZInvestorDashboard {
 				<td class="r">${this.ktBal(t.final_credit, t.final_debit)}</td>
 			</tr>`).join("");
 		return `
-			<div class="kt-legend"><b>Kт</b> — biz qarzmiz (kreditor) · <b>Дт</b> — bizga qarzdor (debitor)</div>
+			<div class="kt-legend"><b style="color:var(--bad-ink)">Kт (minus, qizil)</b> — biz qarzmiz (kreditor, bizning qarzdorligimiz) · <b style="color:var(--good-ink)">Дт (musbat)</b> — bizga qarzdor (debitor, haqdorligimiz)</div>
 			<div class="tbl-wrap"><table>
 				<thead><tr><th>Kontragent</th><th>Guruh</th><th>Valyuta</th><th class="r">Boshi (qoldiq)</th><th class="r">Davr Kт (kirim)</th><th class="r">Davr Дт (chiqim)</th><th class="r">Oxiri (qoldiq)</th></tr></thead>
 				<tbody>${body}</tbody>
