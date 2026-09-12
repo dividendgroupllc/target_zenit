@@ -51,6 +51,7 @@ class Kassa(Document):
         self.set_cash_account_currency()
         self.set_party_currency()
         self.set_party_name()
+        self.set_student_group()
         self.set_display_currencies()
         self.set_payment_exchange_details()
         self.set_balance()
@@ -458,6 +459,14 @@ class Kassa(Document):
             )
         elif not self.party:
             self.party_name = None
+
+    def set_student_group(self):
+        """Customer o'quvchining Customer'i bo'lsa — uning sinfi (guruhi) ko'rsatiladi.
+        To'lov qilishdan oldin qaysi sinf ekanini ko'rish uchun (faqat ma'lumot)."""
+        if self.party_type == "Customer" and self.party:
+            self.student_group = get_student_group(self.party) or None
+        else:
+            self.student_group = None
 
     def set_display_currencies(self):
         """Currency fieldlar uchun UI'da ishlatiladigan currency fieldlarni to'ldirish."""
@@ -1000,3 +1009,36 @@ def get_exchange_rate(from_currency, to_currency, date=None):
         return flt(1 / flt(reverse_rate), 9)
 
     return 0
+
+
+@frappe.whitelist()
+def get_student_group(customer):
+    """Customer'ga bog'langan o'quvchining sinfi (Student Group).
+
+    Asosiy manba — faol Student Group a'zoligi (bir nechta bo'lsa vergul bilan);
+    topilmasa Student'dagi "Sinf (guruh)" maydoni ishlatiladi. O'quvchi bo'lmasa
+    bo'sh qaytadi (oddiy Customer uchun maydon ko'rinmaydi)."""
+    if not customer:
+        return None
+
+    students = frappe.get_all("Student", filters={"customer": customer},
+                              fields=["name", "custom_sinf_guruh"], limit=5)
+    if not students:
+        return None
+
+    groups = []
+    for st in students:
+        rows = frappe.db.sql("""
+            SELECT sg.student_group_name
+            FROM `tabStudent Group Student` sgs
+            JOIN `tabStudent Group` sg ON sg.name = sgs.parent
+            WHERE sgs.student = %s AND sgs.active = 1 AND IFNULL(sg.disabled, 0) = 0
+            ORDER BY sg.student_group_name
+        """, st.name)
+        for (g,) in rows:
+            if g and g not in groups:
+                groups.append(g)
+        if not rows and st.custom_sinf_guruh and st.custom_sinf_guruh not in groups:
+            groups.append(st.custom_sinf_guruh)
+
+    return ", ".join(groups) if groups else None

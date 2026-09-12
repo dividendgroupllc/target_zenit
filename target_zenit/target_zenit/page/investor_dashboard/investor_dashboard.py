@@ -1468,15 +1468,29 @@ BS_PT_LABELS = {
 
 def _bs_node(key, label, amounts, children=None, count=None):
     """Daraxt tuguni. amounts — davr ustunlari bo'yicha qiymatlar ro'yxati;
-    amount — oxirgi ustun (sortlash va bitta-ustun rejim uchun)."""
-    n = {"key": key, "label": label,
-         "amounts": [round(flt(x), 2) for x in amounts],
-         "amount": round(flt(amounts[-1] if amounts else 0), 2)}
+    amount — oxirgi ustun (sortlash va bitta-ustun rejim uchun).
+
+    `_v` — YAXLITLANMAGAN qiymatlar: ota-tugun va jamilar faqat shu asosda
+    yig'iladi. Yaxlitlangan bolalarni qo'shish har qavatda xato to'playdi va
+    Aktiv/Passiv tomonlar har xil yaxlitlangani uchun "Разница" da 0,01 chiqaradi.
+    Javobga chiqarishdan oldin `_v` olib tashlanadi (_bs_strip)."""
+    raw = [flt(x) for x in amounts]
+    n = {"key": key, "label": label, "_v": raw,
+         "amounts": [round(x, 2) for x in raw],
+         "amount": round(raw[-1] if raw else 0, 2)}
     if children:
         n["children"] = children
     if count:
         n["count"] = count
     return n
+
+
+def _bs_strip(nodes):
+    """Javobga chiqarishdan oldin ichki xom qiymatlarni (_v) olib tashlash."""
+    for n in nodes or []:
+        n.pop("_v", None)
+        _bs_strip(n.get("children"))
+    return nodes
 
 
 def _bs_sig(v):
@@ -1698,7 +1712,7 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
             if acc in extra_map:
                 pt_nodes.append(_bs_node(f"{prefix}|{acc}|__", "Kontragentsiz yozuvlar", extra_map[acc]))
             acc_nodes.append(_bs_node(f"{prefix}|{acc}", alabel,
-                                      vsum([n["amounts"] for n in pt_nodes]), pt_nodes))
+                                      vsum([n["_v"] for n in pt_nodes]), pt_nodes))
         for acc, v in extra_map.items():
             if acc not in side_map:
                 a = amap.get(acc)
@@ -1750,7 +1764,7 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
 
     # ---- Aktiv: Pul → Debitorka → Sklad → Asosiy vositalar → Boshqa → Vaqtinchalik ----
     assets = [_bs_node("cash", "Pul (kassa va bank)", cash_tot, cash_kids),
-              _bs_node("deb", "Debitorka (bizga qarzdorlar)", vsum([n["amounts"] for n in deb_nodes]), deb_nodes)]
+              _bs_node("deb", "Debitorka (bizga qarzdorlar)", vsum([n["_v"] for n in deb_nodes]), deb_nodes)]
     if stock_kids:
         assets.append(_bs_node("stock", "Sklad (tovar zaxiralari)", stock_tot, stock_kids))
     if fixed_kids:
@@ -1759,14 +1773,14 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
         assets.append(_bs_node("oa", "Boshqa aktivlar", oa_tot, oa_kids))
     if temp_kids:
         assets.append(_bs_node("temp", "Vaqtinchalik hisoblar", temp_tot, temp_kids))
-    ta = vsum([n["amounts"] for n in assets])
+    ta = vsum([n["_v"] for n in assets])
 
     # ---- Passiv: Kreditorka → boshqa majburiyat → ustav kapitali → foyda-zarar ----
     liab_nodes = [_bs_node("cred", "Kreditorka (biz qarzdormiz)",
-                           vsum([n["amounts"] for n in cred_nodes]), cred_nodes)]
+                           vsum([n["_v"] for n in cred_nodes]), cred_nodes)]
     if oliab_kids:
         liab_nodes.append(_bs_node("ol", "Boshqa majburiyatlar", oliab_tot, oliab_kids))
-    tl = vsum([n["amounts"] for n in liab_nodes])
+    tl = vsum([n["_v"] for n in liab_nodes])
 
     pl_kids = []
     if any(abs(x) > 0.005 for x in inc):
@@ -1775,7 +1789,7 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
         pl_kids.append(_bs_node("pl|exp", "Xarajat", [-x for x in exp]))
     equity_nodes = [_bs_node("eq", "Ustav kapitali va boshqa kapital", eq_tot, eq_kids),
                     _bs_node("pl", "Foyda-zarar hisoboti (to'plangan)", profit, pl_kids)]
-    te = _vadd(equity_nodes[0]["amounts"], equity_nodes[1]["amounts"])
+    te = _vadd(equity_nodes[0]["_v"], equity_nodes[1]["_v"])
     tp = _vadd(tl, te)
     check = [round(x - y, 2) for x, y in zip(ta, tp, strict=True)]
 
@@ -1783,7 +1797,8 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
         "currency": ccy, "as_of": str(t0), "from": str(f0), "accumulated": accumulated,
         "periodicity": (periodicity or ""), "truncated": truncated,
         "periods": [{"label": pp["label"], "end": str(pp["end"])} for pp in periods],
-        "assets": assets, "liabilities": liab_nodes, "equity": equity_nodes,
+        "assets": _bs_strip(assets), "liabilities": _bs_strip(liab_nodes),
+        "equity": _bs_strip(equity_nodes),
         "totals": {"assets": [round(x, 2) for x in ta],
                    "liabilities": [round(x, 2) for x in tl],
                    "equity": [round(x, 2) for x in te],

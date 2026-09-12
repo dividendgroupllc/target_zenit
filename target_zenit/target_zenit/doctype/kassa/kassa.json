@@ -25,6 +25,7 @@
   "party_type",
   "party",
   "party_name",
+  "student_group",
   "party_currency",
   "column_break_2",
   "expense_account",
@@ -144,6 +145,7 @@
   {
    "fieldname": "balance_to",
    "fieldtype": "Currency",
+   "precision": "2",
    "label": "Остаток (куда)",
    "options": "cash_account_to_currency",
    "read_only": 1
@@ -171,6 +173,7 @@
    "depends_on": "eval:doc.transaction_type === 'Конвертация' || (in_list(['Приход', 'Расход'], doc.transaction_type) && in_list(['Customer', 'Supplier', 'Employee'], doc.party_type))",
    "fieldname": "debit_amount",
    "fieldtype": "Currency",
+   "precision": "2",
    "label": "Сумма источника",
    "options": "cash_account_currency"
   },
@@ -178,6 +181,7 @@
    "depends_on": "eval:doc.transaction_type === 'Конвертация' || (in_list(['Приход', 'Расход'], doc.transaction_type) && in_list(['Customer', 'Supplier', 'Employee'], doc.party_type))",
    "fieldname": "credit_amount",
    "fieldtype": "Currency",
+   "precision": "2",
    "label": "Сумма назначения",
    "options": "target_amount_currency"
   },
@@ -221,6 +225,14 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:doc.party_type === 'Customer' && doc.student_group",
+   "description": "\u041e\u0301quvchi qaysi sinfga (guruhga) tegishli",
+   "fieldname": "student_group",
+   "fieldtype": "Data",
+   "label": "\u0421\u0438\u043d\u0444 (\u0433\u0440\u0443\u043f\u043f\u0430)",
+   "read_only": 1
+  },
+  {
    "depends_on": "eval:doc.party && in_list(['Customer', 'Supplier'], doc.party_type)",
    "fieldname": "party_currency",
    "fieldtype": "Data",
@@ -255,6 +267,7 @@
    "depends_on": "eval:doc.transaction_type && doc.mode_of_payment",
    "fieldname": "balance",
    "fieldtype": "Currency",
+   "precision": "2",
    "label": "Остаток",
    "options": "cash_account_currency",
    "read_only": 1
@@ -268,6 +281,7 @@
    "depends_on": "eval:doc.transaction_type !== 'Конвертация'",
    "fieldname": "amount",
    "fieldtype": "Currency",
+   "precision": "2",
    "in_list_view": 1,
    "label": "Сумма",
    "options": "cash_account_currency",

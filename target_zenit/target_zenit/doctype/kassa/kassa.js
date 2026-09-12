@@ -168,6 +168,7 @@ frappe.ui.form.on("Kassa", {
         frm.set_value("party", "");
         frm.set_value("expense_account", "");
         frm.set_value("party_name", "");
+        frm.set_value("student_group", "");
         frm.set_value("expense_account_name", "");
 
         // Clear payment and transfer/conversion fields
@@ -543,6 +544,7 @@ frappe.ui.form.on("Kassa", {
         frm.set_value("party", "");
         frm.set_value("expense_account", "");
         frm.set_value("party_name", "");
+        frm.set_value("student_group", "");
         frm.set_value("expense_account_name", "");
 
         if (isExpensePartyType(frm.doc.party_type)) {
@@ -570,6 +572,19 @@ frappe.ui.form.on("Kassa", {
                 });
             }
 
+            // O'quvchining sinfi — to'lovdan OLDIN ko'rinishi uchun darhol yuklanadi
+            if (frm.doc.party_type === "Customer") {
+                frappe.call({
+                    method: "target_zenit.target_zenit.doctype.kassa.kassa.get_student_group",
+                    args: { customer: frm.doc.party },
+                    callback: function(r) {
+                        frm.set_value("student_group", r.message || "");
+                    }
+                });
+            } else {
+                frm.set_value("student_group", "");
+            }
+
             if (in_list(["Customer", "Supplier", "Shareholder"], frm.doc.party_type)) {
                 frappe.call({
                     method: "target_zenit.target_zenit.doctype.kassa.kassa.get_party_currency",
@@ -590,6 +605,7 @@ frappe.ui.form.on("Kassa", {
             }
         } else {
             frm.set_value("party_name", "");
+            frm.set_value("student_group", "");
             frm.set_value("party_currency", "");
             frm.trigger("sync_currency_fields");
             frm.trigger("update_exchange_fields");
