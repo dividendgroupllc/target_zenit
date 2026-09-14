@@ -40,7 +40,7 @@ class TZInvestorDashboard {
 		this.ovCash = null;         // kassa batafsil (kesh)
 		this.ovCashAccs = [];       // kassa batafsilda tanlangan hisoblar (bo'sh = hammasi)
 		this.ovCashOps = [];        // Kassa operatsiya turi filtri (bo'sh = hammasi)
-		this.ovCashMenu = null;     // ochiq turgan filtr menyusi: "acc" | "op" | null
+		this.mselOpen = null;       // ochiq turgan ko'p tanlovli menyu kaliti (sahifada bittasi)
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
 			{ key: "overview", label: "Umumiy" },
@@ -54,7 +54,12 @@ class TZInvestorDashboard {
 		];
 		this.nach = null;           // nachisleniya ma'lumoti (kesh)
 		this.nachSide = "debit";    // "debit" (kirim) | "credit" (chiqim)
-		this.nachCat = null;        // tanlangan toifa (qarshi hisob) filtri
+		this.nachGroups = [];       // tanlangan guruhlar (bo'sh = hammasi)
+		this.nachCats = [];         // tanlangan toifalar (bo'sh = hammasi)
+		this.nachAccts = [];        // qarz hisobi filtri
+		this.nachSinfs = [];        // sinf (o'quvchi guruhi) filtri
+		this.nachPoss = [];         // xodim lavozimi filtri
+		this.nachDkinds = [];       // hujjat turi/holati filtri
 		this.nachCcy = null;        // tanlangan valyuta filtri
 		this.nachQ = "";            // kontragent qidiruvi
 		// kassa hisob kartalari uchun rang palitrasi (har shot alohida rang)
@@ -193,27 +198,27 @@ class TZInvestorDashboard {
 		body.on("click", "[data-mselbtn]", (e) => {
 			e.stopPropagation();
 			const k = String($(e.currentTarget).attr("data-mselbtn"));
-			this.ovCashMenu = (this.ovCashMenu === k) ? null : k;
-			this.paintCashFilter();
+			this.mselOpen = (this.mselOpen === k) ? null : k;
+			if (k === "acc" || k === "op") this.paintCashFilter(); else this.paintNachFilter();
 		});
 		body.on("click", ".tz-msel-menu", (e) => e.stopPropagation());
 		body.on("change", "[data-mselopt]", (e) => {
 			const k = String($(e.currentTarget).attr("data-mselopt"));
 			const v = String($(e.currentTarget).val());
-			const list = (k === "acc") ? this.ovCashAccs : this.ovCashOps;
+			const list = this.mselList(k);
 			const i = list.indexOf(v);
 			if (i === -1) list.push(v); else list.splice(i, 1);
-			this.loadOvCash(true);
+			this.mselApply(k);
 		});
 		body.on("click", "[data-mselclear]", (e) => {
 			e.stopPropagation();
 			const k = String($(e.currentTarget).attr("data-mselclear"));
-			if (k === "acc") this.ovCashAccs = []; else this.ovCashOps = [];
-			this.loadOvCash(true);
+			this[this.MSEL[k]] = [];
+			this.mselApply(k);
 		});
 		// menyudan tashqariga bosilsa — yopiladi
 		$(document).off("click.tzmsel").on("click.tzmsel", () => {
-			if (this.ovCashMenu) { this.ovCashMenu = null; this.paintCashFilter(); }
+			if (this.mselOpen) { this.mselOpen = null; this.repaintMsel(); }
 		});
 		// Umumiy tab — o'quvchilar paneli: sinfni bosib ochish/yopish, qidiruv
 		body.on("click", "[data-ovsg]", (e) => {
@@ -300,12 +305,13 @@ class TZInvestorDashboard {
 		body.on("click", "[data-nach-side]", (e) => {
 			const s2 = String($(e.currentTarget).attr("data-nach-side"));
 			if (this.nachSide === s2) return;
-			this.nachSide = s2; this.nachCat = null; this.nachCcy = null; this.nachQ = "";
+			this.nachSide = s2; this.nachClearFilters(); this.nachCcy = null; this.nachQ = "";
 			this.paintNach();
 		});
 		body.on("click", "[data-nach-cat]", (e) => {
 			const c = String($(e.currentTarget).attr("data-nach-cat"));
-			this.nachCat = (this.nachCat === c) ? null : c;
+			const i = this.nachCats.indexOf(c);
+			if (i === -1) this.nachCats.push(c); else this.nachCats.splice(i, 1);
 			this.paintNach();
 		});
 		body.on("click", "[data-nach-ccy]", (e) => {
@@ -362,7 +368,7 @@ class TZInvestorDashboard {
 		this.ovCash = null;
 		this._ovBsAuto = null;
 		this.nach = null;
-		this.nachCat = null; this.nachCcy = null; this.nachQ = "";
+		this.nachClearFilters(); this.nachCcy = null; this.nachQ = "";
 		this.page.main.find(".tz-body").html(`<div class="tz-loader">Ma'lumot yuklanyapti…</div>`);
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_dashboard_data",
@@ -786,7 +792,56 @@ class TZInvestorDashboard {
 	// -- kassa batafsil: ikkita ko'p tanlovli filtr (hisoblar + Kassa operatsiya turi) --
 	// Bo'sh tanlov = "hammasi". Menyu ochiq turganda ham qayta chizilaveradi, shuning uchun
 	// ochiq menyu kaliti (ovCashMenu) alohida saqlanadi va chizishda tiklanadi.
-	cashMselHtml(key, label, options, selected) {
+	// Ko'p tanlovli filtrlar reestri: kalit -> holat massivi nomi va qayta chizish
+	MSEL = { acc: "ovCashAccs", op: "ovCashOps", nachgrp: "nachGroups", nachcat: "nachCats",
+		nachacct: "nachAccts", nachsinf: "nachSinfs", nachpos: "nachPoss", nachdkind: "nachDkinds" };
+
+	mselList(key) { return this[this.MSEL[key]] || []; }
+
+	mselApply(key) {
+		if (key === "acc" || key === "op") { this.paintCashFilter(); this.loadOvCash(true); }
+		else { this.paintNach(); }
+	}
+
+	repaintMsel() {
+		this.paintCashFilter();
+		this.paintNachFilter();
+	}
+
+	// Nachisleniya filtrlari: Guruh (kontragent turi/guruhi) va Toifa (qarshi hisob)
+	nachFilterHtml() {
+		const side = (this.nach && (this.nachSide === "credit" ? this.nach.credit : this.nach.debit)) || {};
+		const opt = (list) => (list || []).map((x) => ({ value: x.label, label: `${x.label} (${x.count})` }));
+		// Har bir kesim alohida filtr; ma'lumoti yo'q kesim umuman ko'rsatilmaydi
+		// (masalan "Sinf" faqat kirimda, "Lavozim" faqat xodimlar bor tomonda).
+		const dims = [
+			["nachgrp", "Guruh", side.groups, this.nachGroups],
+			["nachacct", "Qarz hisobi", side.accts, this.nachAccts],
+			["nachsinf", "Sinf", side.sinfs, this.nachSinfs],
+			["nachpos", "Lavozim", side.positions, this.nachPoss],
+			["nachdkind", "Hujjat", side.dkinds, this.nachDkinds],
+			["nachcat", "Toifa", side.cats, this.nachCats],
+		];
+		return dims.filter((d) => (d[2] || []).length > 1 || (d[3] || []).length)
+			.map((d) => this.mselHtml(d[0], d[1], opt(d[2]), d[3])).join("");
+	}
+
+	nachAnyFilter() {
+		return !!(this.nachGroups.length || this.nachCats.length || this.nachAccts.length
+			|| this.nachSinfs.length || this.nachPoss.length || this.nachDkinds.length);
+	}
+
+	nachClearFilters() {
+		this.nachGroups = []; this.nachCats = []; this.nachAccts = [];
+		this.nachSinfs = []; this.nachPoss = []; this.nachDkinds = [];
+	}
+
+	paintNachFilter() {
+		const box = this.page.main.find(".tz-nach-filter-box");
+		if (box.length) box.html(this.nachFilterHtml());
+	}
+
+	mselHtml(key, label, options, selected) {
 		const sel = selected || [];
 		const cap = !sel.length ? `${label}: hammasi`
 			: sel.length === 1 ? `${label}: ${this.esc(this.acctName(sel[0]))}`
@@ -794,7 +849,7 @@ class TZInvestorDashboard {
 		const items = options.length
 			? options.map((o) => `<label class="tz-msel-item"><input type="checkbox" data-mselopt="${this.esc(key)}" value="${this.esc(o.value)}"${sel.indexOf(o.value) !== -1 ? " checked" : ""}><span>${this.esc(o.label)}</span></label>`).join("")
 			: `<div class="tz-msel-empty">Yuklanyapti…</div>`;
-		return `<div class="tz-msel${this.ovCashMenu === key ? " open" : ""}" data-msel="${this.esc(key)}">
+		return `<div class="tz-msel${this.mselOpen === key ? " open" : ""}" data-msel="${this.esc(key)}">
 			<button type="button" class="tz-msel-btn${sel.length ? " on" : ""}" data-mselbtn="${this.esc(key)}">${cap} <span class="tz-msel-car">▾</span></button>
 			<div class="tz-msel-menu">
 				<div class="tz-msel-list">${items}</div>
@@ -808,8 +863,8 @@ class TZInvestorDashboard {
 			.map((a) => ({ value: a.account, label: this.acctName(a.account) }));
 		const ops = (((this.ovCash || {}).all_op_types) || ["Приход", "Расход", "Перемещения", "Конвертация"])
 			.map((o) => ({ value: o, label: o }));
-		return this.cashMselHtml("acc", "Hisoblar", accs, this.ovCashAccs)
-			+ this.cashMselHtml("op", "Operatsiya", ops, this.ovCashOps);
+		return this.mselHtml("acc", "Hisoblar", accs, this.ovCashAccs)
+			+ this.mselHtml("op", "Operatsiya", ops, this.ovCashOps);
 	}
 
 	paintCashFilter() {
@@ -1543,9 +1598,12 @@ class TZInvestorDashboard {
 		h += this.card(`
 			<div class="hd"><div><h3>Kirim / chiqim nachisleniyasi</h3>
 				<div class="meta">Kirim — kontragent bizga qarz bo'ldi (o'quvchi, arenda, elektr stansiya...); chiqim — biz qarz bo'ldik (oylik, arenda, xarajatlar). To'lovlar bu yerga kirmaydi.</div></div>
-				<div class="tz-seg">
-					<button class="tz-seg-opt${this.nachSide === "debit" ? " on" : ""}" data-nach-side="debit">Kirim (Debet)</button>
-					<button class="tz-seg-opt${this.nachSide === "credit" ? " on" : ""}" data-nach-side="credit">Chiqim (Kredit)</button>
+				<div class="tz-nach-tools">
+					<div class="kt-filter tz-nach-filter-box">${this.nachFilterHtml()}</div>
+					<div class="tz-seg">
+						<button class="tz-seg-opt${this.nachSide === "debit" ? " on" : ""}" data-nach-side="debit">Kirim (Debet)</button>
+						<button class="tz-seg-opt${this.nachSide === "credit" ? " on" : ""}" data-nach-side="credit">Chiqim (Kredit)</button>
+					</div>
 				</div></div>
 			<div class="tz-nach-body"><div class="tz-loader">Nachisleniyalar yuklanyapti…</div></div>`, "mb");
 		setTimeout(() => { if (this.nach) this.paintNach(); else this.loadNach(); }, 0);
@@ -1570,6 +1628,7 @@ class TZInvestorDashboard {
 			$(el).toggleClass("on", String($(el).attr("data-nach-side")) === this.nachSide);
 		});
 		body.html(this.renderNachSide());
+		this.paintNachFilter();
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
 		if (keepFocus) {
 			const inp = body.find(".tz-nach-filter")[0];
@@ -1597,7 +1656,7 @@ class TZInvestorDashboard {
 			<div class="muted-s">${this.fmt(side.count || 0)} ta nachisleniya · ${isDeb ? "kirim (bizga qarz yozildi)" : "chiqim (biz qarz bo'ldik)"}</div></div>`;
 		// toifa chiplari (qarshi hisob — "nima uchun")
 		const cats = (side.cats || []).map((c) => `
-			<button class="tz-acc-chip${this.nachCat === c.label ? " active" : ""}" data-nach-cat="${this.esc(c.label)}">
+			<button class="tz-acc-chip${this.nachCats.indexOf(c.label) !== -1 ? " active" : ""}" data-nach-cat="${this.esc(c.label)}">
 				<span class="t" data-tt="${this.esc(c.label)}">${this.esc(c.label)}</span>
 				<b class="num" style="color:${ink}">${(c.by_ccy || []).map((x) => `${this.kc(x.total)} <small>${this.ccyLabel(x.currency)}</small>`).join(" · ")}</b>
 				<span class="muted-s">${c.count} ta</span>
@@ -1612,7 +1671,12 @@ class TZInvestorDashboard {
 		let rows = "", shown = 0;
 		const ftot = {};
 		(side.rows || []).forEach((r) => {
-			if (this.nachCat && r.category !== this.nachCat) return;
+			if (this.nachGroups.length && this.nachGroups.indexOf(r.group) === -1) return;
+			if (this.nachAccts.length && this.nachAccts.indexOf(r.acct) === -1) return;
+			if (this.nachSinfs.length && this.nachSinfs.indexOf(r.sinf) === -1) return;
+			if (this.nachPoss.length && this.nachPoss.indexOf(r.pos) === -1) return;
+			if (this.nachDkinds.length && this.nachDkinds.indexOf(r.dkind) === -1) return;
+			if (this.nachCats.length && this.nachCats.indexOf(r.category) === -1) return;
 			if (this.nachCcy && r.currency !== this.nachCcy) return;
 			if (q && (String(r.party_name || "") + " " + String(r.remark || "")).toLowerCase().indexOf(q) === -1) return;
 			shown++;
@@ -1620,14 +1684,14 @@ class TZInvestorDashboard {
 			const slug = String(r.voucher_type || "").toLowerCase().replace(/ /g, "-");
 			rows += `<tr>
 				<td class="num" style="white-space:nowrap">${this.dmy(r.date)}</td>
-				<td class="ell" data-tt="${this.esc(r.party_name)}">${this.esc(r.party_name)}<div class="muted-s">${this.esc(r.pt_label)}</div></td>
+				<td class="ell" data-tt="${this.esc(r.party_name)}">${this.esc(r.party_name)}<div class="muted-s">${this.esc(r.group || r.pt_label)}</div></td>
 				<td class="ell" data-tt="${this.esc(r.category)}">${this.esc(r.category)}</td>
 				<td class="r num" style="color:${ink};font-weight:650;white-space:nowrap">${this.mAmt(r.amount, r.currency)} <small>${this.ccyLabel(r.currency)}</small></td>
 				<td><a href="/app/${slug}/${encodeURIComponent(r.voucher_no)}" target="_blank" class="tz-kassa-link">${this.esc(r.voucher_no)}</a></td>
 				<td class="ell" data-tt="${this.esc(r.remark)}">${r.remark ? this.esc(r.remark) : `<span class="muted-s">—</span>`}</td>
 			</tr>`;
 		});
-		if (!rows) rows = `<tr><td colspan="6" class="empty-hint">${q || this.nachCat || this.nachCcy ? "Filtrga mos nachisleniya topilmadi." : "Nachisleniya yo'q."}</td></tr>`;
+		if (!rows) rows = `<tr><td colspan="6" class="empty-hint">${q || this.nachAnyFilter() || this.nachCcy ? "Filtrga mos nachisleniya topilmadi." : "Nachisleniya yo'q."}</td></tr>`;
 		const ftotTxt = Object.keys(ftot).sort((a, b) => ftot[b] - ftot[a])
 			.map((c) => `${this.mAmt(ftot[c], c)} ${this.ccyLabel(c)}`).join(" · ");
 		return `${totals}

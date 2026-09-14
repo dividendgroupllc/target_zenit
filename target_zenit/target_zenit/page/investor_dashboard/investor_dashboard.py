@@ -2131,6 +2131,74 @@ def _acct_label(acc):
     return re.sub(r"\s*-\s*[A-Z]{1,4}\s*$", "", str(acc or ""))
 
 
+# Hisob-faktura holatlari — nachisleniya "Hujjat" filtrida o'zbekcha ko'rinadi
+NACH_SI_STATUS = {
+    "Overdue": "muddati o'tgan", "Unpaid": "to'lanmagan", "Paid": "to'langan",
+    "Partly Paid": "qisman to'langan", "Credit Note Issued": "kredit-nota",
+    "Return": "qaytarma", "Draft": "qoralama", "Cancelled": "bekor qilingan",
+}
+
+
+def _nach_student_groups(customers):
+    """Customer -> o'quvchining sinfi (faol Student Group a'zoligi bo'yicha)."""
+    if not customers:
+        return {}
+    out = {}
+    rows = frappe.db.sql("""
+        SELECT s.customer, sg.student_group_name grp, s.custom_sinf_guruh fallback
+        FROM `tabStudent` s
+        LEFT JOIN `tabStudent Group Student` sgs ON sgs.student = s.name AND sgs.active = 1
+        LEFT JOIN `tabStudent Group` sg ON sg.name = sgs.parent AND IFNULL(sg.disabled, 0) = 0
+        WHERE s.customer IN %s
+    """, (tuple(customers),), as_dict=True)
+    for r in rows:
+        label = (r.grp or r.fallback or "").strip()
+        if label and r.customer not in out:
+            out[r.customer] = label
+    return out
+
+
+def _nach_designations(employees):
+    """Employee -> lavozim (o'qituvchi / oshxona / tozalik va h.k.)."""
+    if not employees:
+        return {}
+    return {e.name: (e.designation or "").strip() for e in frappe.get_all(
+        "Employee", filters={"name": ["in", list(employees)]}, fields=["name", "designation"])}
+
+
+def _nach_doc_kinds(vnos_by_type):
+    """Hujjat turi va holati: hisob-faktura holati bilan, JE esa qo'lda/boshlang'ich."""
+    out = {}
+    for name, st in frappe.db.sql("""SELECT name, status FROM `tabSales Invoice` WHERE name IN %s""",
+                                  (tuple(vnos_by_type.get("Sales Invoice") or ["__x__"]),)):
+        out[name] = "Hisob-faktura — " + NACH_SI_STATUS.get(st, st or "—")
+    for name, vt in frappe.db.sql("""SELECT name, voucher_type FROM `tabJournal Entry` WHERE name IN %s""",
+                                  (tuple(vnos_by_type.get("Journal Entry") or ["__x__"]),)):
+        out[name] = "Boshlang'ich qoldiq" if vt == "Opening Entry" else "Qo'lda (Journal Entry)"
+    return out
+
+
+def _nach_group(party_type, party, gmap):
+    """Nachisleniya qatorini guruhga ajratish: kontragent turi + kontragent guruhi.
+
+    O'quvchi/Xodim/Ta'minotchi kabi keng guruhlar, Supplier'da esa haqiqiy
+    supplier_group (Qarzdorliklar, Kredit va h.k.) — ro'yxatdan kerakli
+    guruhni ajratib olish uchun. Guruhsizlar umumiy turga tushadi.
+    """
+    if not party_type:
+        return "Kontragentsiz"
+    grp = (gmap.get((party_type, party)) or "").strip() if party else ""
+    if party_type == "Customer":
+        return "O'quvchilar" if grp == "Student" else (grp or "Boshqa mijozlar")
+    if party_type == "Supplier":
+        return grp or "Ta'minotchilar"
+    if party_type == "Employee":
+        return "Xodimlar"
+    if party_type == "Shareholder":
+        return "Investorlar"
+    return NACH_PT_LABELS.get(party_type, party_type)
+
+
 @frappe.whitelist()
 def get_nachisleniya(from_date=None, to_date=None, limit=500):
     """Nachisleniyalar — kassaga TEGMAGAN hujjatlarning qarz hisoblari harakati:
@@ -2168,7 +2236,8 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
             ORDER BY gle.posting_date DESC, gle.creation DESC""",
             (acct_type, company, f0, t0), as_dict=True)
         if not rows:
-            return {"rows": [], "total_by_ccy": [], "cats": [], "count": 0, "truncated": 0}
+            return {"rows": [], "total_by_ccy": [], "cats": [], "groups": [], "accts": [],
+                       "sinfs": [], "positions": [], "dkinds": [], "count": 0, "truncated": 0}
 
         vnos = list({r.vn for r in rows})
         # har hujjatning barcha oyoqlari — kassaga tegish + qarshi hisobni aniqlash uchun
@@ -2189,9 +2258,20 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
                     (je_nos,)):
                 remarks[nm] = (rem or "").strip()
 
+        # kontragent guruhlari (Customer Group / Supplier Group) — "Guruh" filtri uchun
+        gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows if r.party])
+        # qo'shimcha kesimlar: o'quvchi sinfi, xodim lavozimi, hujjat turi/holati
+        sgmap = _nach_student_groups({r.party for r in rows if r.pt == "Customer" and r.party})
+        dgmap = _nach_designations({r.party for r in rows if r.pt == "Employee" and r.party})
+        by_vt = defaultdict(list)
+        for r in rows:
+            by_vt[r.vt].append(r.vn)
+        dkmap = _nach_doc_kinds(by_vt)
+
         # qarshi hisob turi: kirim nachisleniyada Income, chiqimda Expense
         counter_rt = "Income" if col.startswith("debit") else "Expense"
         out, cats, tot = [], {}, defaultdict(float)
+        grps, accts, sinfs, poss, dkinds = {}, {}, {}, {}, {}
         skipped_cash = 0
         for r in rows:
             vlegs = legs.get(r.vn, [])
@@ -2215,7 +2295,20 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
             c = cats.setdefault(cat, {"label": cat, "by_ccy": defaultdict(float), "count": 0})
             c["by_ccy"][cur] += amount
             c["count"] += 1
+            grp = _nach_group(r.pt, r.party, gmap)
+            acct = _acct_label(r.acc)
+            sinf = sgmap.get(r.party) or ("Sinfsiz" if r.pt == "Customer" else "")
+            pos = (dgmap.get(r.party) or "Lavozimsiz") if r.pt == "Employee" else ""
+            dkind = dkmap.get(r.vn) or r.vt
+            for dim, key in ((grps, grp), (accts, acct), (sinfs, sinf),
+                             (poss, pos), (dkinds, dkind)):
+                if not key:
+                    continue
+                e = dim.setdefault(key, {"label": key, "by_ccy": defaultdict(float), "count": 0})
+                e["by_ccy"][cur] += amount
+                e["count"] += 1
             out.append({
+                "group": grp, "acct": acct, "sinf": sinf, "pos": pos, "dkind": dkind,
                 "date": str(r.d), "party_type": r.pt or "",
                 "pt_label": NACH_PT_LABELS.get(r.pt, r.pt or "—"),
                 "party": r.party or "", "party_name": _party_name(r.pt, r.party) if r.party else "—",
@@ -2231,19 +2324,33 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
             by.sort(key=lambda x: -x["total"])
             cat_list.append({"label": c["label"], "count": c["count"], "by_ccy": by})
         cat_list.sort(key=lambda x: -(x["by_ccy"][0]["total"] if x["by_ccy"] else 0))
+        def _dim_list(dim):
+            lst = []
+            for g in dim.values():
+                by = [{"currency": k, "total": v} for k, v in g["by_ccy"].items()]
+                by.sort(key=lambda x: -x["total"])
+                lst.append({"label": g["label"], "count": g["count"], "by_ccy": by})
+            lst.sort(key=lambda x: -x["count"])
+            return lst
+
+        grp_list = _dim_list(grps)
         total_by = [{"currency": k, "total": v} for k, v in tot.items()]
         total_by.sort(key=lambda x: -x["total"])
-        return {"rows": out, "total_by_ccy": total_by, "cats": cat_list,
+        return {"rows": out, "total_by_ccy": total_by, "cats": cat_list, "groups": grp_list,
+                "accts": _dim_list(accts), "sinfs": _dim_list(sinfs),
+                "positions": _dim_list(poss), "dkinds": _dim_list(dkinds),
                 "count": len(rows) - skipped_cash, "truncated": truncated}
 
     try:
         res["debit"] = _side("Receivable", "debit_in_account_currency")
     except Exception:
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: nachisleniya debit")
-        res["debit"] = {"rows": [], "total_by_ccy": [], "cats": [], "count": 0, "truncated": 0}
+        res["debit"] = {"rows": [], "total_by_ccy": [], "cats": [], "groups": [], "accts": [],
+                       "sinfs": [], "positions": [], "dkinds": [], "count": 0, "truncated": 0}
     try:
         res["credit"] = _side("Payable", "credit_in_account_currency")
     except Exception:
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: nachisleniya credit")
-        res["credit"] = {"rows": [], "total_by_ccy": [], "cats": [], "count": 0, "truncated": 0}
+        res["credit"] = {"rows": [], "total_by_ccy": [], "cats": [], "groups": [], "accts": [],
+                       "sinfs": [], "positions": [], "dkinds": [], "count": 0, "truncated": 0}
     return res
