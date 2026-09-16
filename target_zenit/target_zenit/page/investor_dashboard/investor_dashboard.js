@@ -1851,12 +1851,13 @@ class TZInvestorDashboard {
 				<td class="num" style="white-space:nowrap">${this.dmy(r.date)}</td>
 				<td class="ell" data-tt="${this.esc(r.party_name)}">${this.esc(r.party_name)}<div class="muted-s">${this.esc(r.group || r.pt_label)}</div></td>
 				<td class="ell" data-tt="${this.esc(r.category)}">${this.esc(r.category)}</td>
+				<td class="r">${r.monthly ? `<span class="num" style="white-space:nowrap" data-tt="Student kartochkasidagi kelishilgan oylik to'lov">${this.fmt(r.monthly)} <small>so'm</small></span>` : `<span class="muted-s">—</span>`}</td>
 				<td class="r num" style="color:${ink};font-weight:650;white-space:nowrap">${this.mAmt(r.amount, r.currency)} <small>${this.ccyLabel(r.currency)}</small></td>
 				<td><a href="/app/${slug}/${encodeURIComponent(r.voucher_no)}" target="_blank" class="tz-kassa-link">${this.esc(r.voucher_no)}</a></td>
 				<td class="ell" data-tt="${this.esc(r.remark)}">${r.remark ? this.esc(r.remark) : `<span class="muted-s">—</span>`}</td>
 			</tr>`;
 		});
-		if (!rows) rows = `<tr><td colspan="6" class="empty-hint">${q || this.nachAnyFilter() || this.nachCcy ? "Filtrga mos nachisleniya topilmadi." : "Nachisleniya yo'q."}</td></tr>`;
+		if (!rows) rows = `<tr><td colspan="7" class="empty-hint">${q || this.nachAnyFilter() || this.nachCcy ? "Filtrga mos nachisleniya topilmadi." : "Nachisleniya yo'q."}</td></tr>`;
 		const ftotTxt = Object.keys(ftot).sort((a, b) => ftot[b] - ftot[a])
 			.map((c) => `${this.mAmt(ftot[c], c)} ${this.ccyLabel(c)}`).join(" · ");
 		return `${totals}
@@ -1864,7 +1865,7 @@ class TZInvestorDashboard {
 			${ccys}
 			<input type="text" class="tz-ovstud-filter tz-nach-filter" placeholder="Kontragent yoki izoh bo'yicha qidirish…" value="${this.esc(q)}">
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>Sana</th><th>Kontragent</th><th>Nima uchun (hisob)</th><th class="r">Summa</th><th>Hujjat</th><th>Izoh</th></tr></thead>
+				<thead><tr><th>Sana</th><th>Kontragent</th><th>Nima uchun (hisob)</th><th class="r">Oylik to'lov</th><th class="r">Summa</th><th>Hujjat</th><th>Izoh</th></tr></thead>
 				<tbody>${rows}</tbody>
 			</table></div>
 			<div class="kt-count"><b>${this.fmt(shown)}</b> ta yozuv ko'rsatilmoqda${ftotTxt ? ` · jami: <b class="num" style="color:${ink}">${ftotTxt}</b>` : ""}.${side.truncated ? ` Eng so'nggi ${this.fmt((side.rows || []).length)} tasi ko'rsatildi (${this.fmt(side.truncated)} ta eskisi sig'madi — davrni toraytiring).` : ""}</div>`;

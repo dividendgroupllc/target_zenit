@@ -2166,6 +2166,25 @@ def _nach_student_groups(customers):
     return out
 
 
+def _nach_student_monthly(customers):
+    """Customer -> o'quvchining "Oylik to'lov" maydoni (Student.custom_monthly_payment).
+
+    Nachisleniya to'g'ri qilinganini tekshirish uchun: kelishilgan oylik to'lov
+    yozilgan nachisleniya summasi bilan yonma-yon ko'rinadi.
+    """
+    if not customers:
+        return {}
+    out = {}
+    try:
+        for r in frappe.get_all("Student", filters={"customer": ["in", list(customers)]},
+                                fields=["customer", "custom_monthly_payment"]):
+            if r.customer and flt(r.custom_monthly_payment):
+                out.setdefault(r.customer, flt(r.custom_monthly_payment))
+    except Exception:
+        pass
+    return out
+
+
 def _nach_designations(employees):
     """Employee -> lavozim (o'qituvchi / oshxona / tozalik va h.k.)."""
     if not employees:
@@ -2351,7 +2370,9 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
         # kontragent guruhlari (Customer Group / Supplier Group) — "Guruh" filtri uchun
         gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows if r.party])
         # qo'shimcha kesimlar: o'quvchi sinfi, xodim lavozimi, hujjat turi/holati
-        sgmap = _nach_student_groups({r.party for r in rows if r.pt == "Customer" and r.party})
+        cust_ids = {r.party for r in rows if r.pt == "Customer" and r.party}
+        sgmap = _nach_student_groups(cust_ids)
+        smmap = _nach_student_monthly(cust_ids)
         dgmap = _nach_designations({r.party for r in rows if r.pt == "Employee" and r.party})
         by_vt = defaultdict(list)
         for r in rows:
@@ -2399,6 +2420,7 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
                 e["count"] += 1
             out.append({
                 "group": grp, "acct": acct, "sinf": sinf, "pos": pos, "dkind": dkind,
+                "monthly": flt(smmap.get(r.party) or 0) if r.pt == "Customer" else 0,
                 "date": str(r.d), "party_type": r.pt or "",
                 "pt_label": NACH_PT_LABELS.get(r.pt, r.pt or "—"),
                 "party": r.party or "", "party_name": _party_name(r.pt, r.party) if r.party else "—",
