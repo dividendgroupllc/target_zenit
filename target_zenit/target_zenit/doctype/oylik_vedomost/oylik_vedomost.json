@@ -1,0 +1,50 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:OYLIK-{oy}",
+ "creation": "2026-09-16 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "oy", "sana", "company", "column_break_1", "fayl", "varaq", "section_rows",
+  "qatorlar", "section_totals", "jami_oklad", "jami_nachisleniya",
+  "column_break_2", "jami_qoldiq", "xodimlar_soni", "izoh"
+ ],
+ "fields": [
+  {"fieldname": "oy", "fieldtype": "Data", "label": "Oy (YYYY-MM)", "reqd": 1, "in_list_view": 1,
+   "description": "Masalan: 2026-08"},
+  {"fieldname": "sana", "fieldtype": "Date", "label": "Vedomost sanasi", "in_list_view": 1},
+  {"fieldname": "company", "fieldtype": "Link", "label": "Kompaniya", "options": "Company"},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "fayl", "fieldtype": "Attach", "label": "Excel fayl (.xlsx)",
+   "description": "Faylni biriktiring, keyin tepadagi \"Fayldan to'ldirish\" tugmasini bosing"},
+  {"fieldname": "varaq", "fieldtype": "Data", "label": "Varaq nomi",
+   "description": "Bo'sh qoldirsangiz sistema o'zi topadi (Ф.И.О. va Оклад ustunlari bor varaq)"},
+  {"fieldname": "section_rows", "fieldtype": "Section Break", "label": "Xodimlar"},
+  {"fieldname": "qatorlar", "fieldtype": "Table", "label": "Qatorlar", "options": "Oylik Vedomost Qatori"},
+  {"fieldname": "section_totals", "fieldtype": "Section Break", "label": "Jami"},
+  {"fieldname": "jami_oklad", "fieldtype": "Currency", "label": "Jami oklad", "read_only": 1, "precision": "2"},
+  {"fieldname": "jami_nachisleniya", "fieldtype": "Currency", "label": "Jami nachisleniya", "read_only": 1, "precision": "2"},
+  {"fieldname": "column_break_2", "fieldtype": "Column Break"},
+  {"fieldname": "jami_qoldiq", "fieldtype": "Currency", "label": "Jami qoldiq", "read_only": 1, "precision": "2"},
+  {"fieldname": "xodimlar_soni", "fieldtype": "Int", "label": "Xodimlar soni", "read_only": 1},
+  {"fieldname": "izoh", "fieldtype": "Small Text", "label": "Izoh"}
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-16 00:00:00",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Oylik Vedomost",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "System Manager", "share": 1, "write": 1},
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Accounts Manager", "share": 1, "write": 1}
+ ],
+ "sort_field": "oy",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

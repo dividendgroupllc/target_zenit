@@ -413,3 +413,8 @@
 
 /* Nachisleniya — sarlavhadagi filtrlar va rejim almashtirgichi bir qatorda */
 .tz-inv .tz-nach-tools { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-left:auto; }
+
+/* Kassa va pul oqimi — hisoblar kesimi: qator bosiladi, harakatlari pastda ochiladi */
+.tz-inv tr.cf-acc-row { cursor:pointer; }
+.tz-inv tr.cf-acc-row:hover td { background:var(--card-2); }
+.tz-inv tr.cf-acc-row.active td { background:var(--brand-wash); font-weight:650; }

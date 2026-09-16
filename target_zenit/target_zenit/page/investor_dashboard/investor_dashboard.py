@@ -1996,12 +1996,15 @@ def _as_list(value):
 
 
 @frappe.whitelist()
-def get_cash_detail(to_date=None, account=None, accounts=None, op_types=None, limit=300):
+def get_cash_detail(to_date=None, account=None, accounts=None, op_types=None, limit=300,
+                    from_date=None):
     """Xisobdagi pullar — batafsil: har hisob qoldig'i (sana holatiga) + oxirgi harakatlar
     (eng yangisidan boshlab, kim bilan / hujjat / izoh).
 
     accounts — bir nechta hisob tanlash mumkin (bo'sh bo'lsa hammasi).
     op_types — Kassa operatsiya turi bo'yicha filtr (Приход/Расход/Перемещения/Конвертация).
+    from_date — berilsa faqat shu davrdagi harakatlar (kassa/pul oqimi tabida hisob
+    ustiga bosilganda o'sha davr aylanmasini tashkil qilgan yozuvlar ko'rsatiladi).
     Yurish qoldig'i faqat AYNAN bitta hisob tanlanganda va operatsiya filtri yo'qligida
     hisoblanadi — filtrda qatorlar tushib qolsa qoldiq zanjiri noto'g'ri bo'lardi."""
     _guard()
@@ -2025,6 +2028,10 @@ def get_cash_detail(to_date=None, account=None, accounts=None, op_types=None, li
     rows = []
     if sel:
         params = {"a": tuple(sel), "t": str(t0), "company": company, "l": limit}
+        date_cond = "ge.posting_date <= %(t)s"
+        if from_date:
+            params["f"] = str(getdate(from_date))
+            date_cond = "ge.posting_date BETWEEN %(f)s AND %(t)s"
         op_cond = ""
         if ops:
             op_cond = "AND k.transaction_type IN %(ops)s"
@@ -2041,7 +2048,7 @@ def get_cash_detail(to_date=None, account=None, accounts=None, op_types=None, li
                     LEFT JOIN `tabJournal Entry` je
                            ON je.name = ge.voucher_no AND ge.voucher_type = 'Journal Entry'
                     LEFT JOIN `tabKassa` k ON k.name = COALESCE(pe.reference_no, je.cheque_no)
-                    WHERE ge.account IN %(a)s AND ge.posting_date <= %(t)s
+                    WHERE ge.account IN %(a)s AND {date_cond}
                       AND ge.is_cancelled = 0 {_co(company, 'ge')} {op_cond}
                     ORDER BY ge.posting_date DESC, ge.creation DESC
                     LIMIT %(l)s""",
@@ -2090,7 +2097,8 @@ def get_cash_detail(to_date=None, account=None, accounts=None, op_types=None, li
             run -= flt(r.d) - flt(r.c)     # yuqoridan pastga (yangi→eski) orqaga yechamiz
         tx.append(item)
 
-    return {"as_of": str(t0), "accounts": accounts_out, "transactions": tx,
+    return {"as_of": str(t0), "from_date": str(from_date) if from_date else "",
+            "accounts": accounts_out, "transactions": tx,
             "account": single or "",
             "selected_accounts": picked,
             "op_types": ops,
@@ -2197,6 +2205,86 @@ def _nach_group(party_type, party, gmap):
     if party_type == "Shareholder":
         return "Investorlar"
     return NACH_PT_LABELS.get(party_type, party_type)
+
+
+@frappe.whitelist()
+def get_personal(from_date=None, to_date=None, limit=500):
+    """Personal — barcha kontragentlar (xodim, o'quvchi/mijoz, ta'minotchi) kesimida:
+    kategoriya, oylik oklad (oxirgi nachisleniya), davr nachisleniyasi, davrda to'langan
+    va qarzdorlik.
+
+    Yo'nalish hisob turiga bog'liq:
+      Payable (biz qarzmiz — xodim/ta'minotchi):  nachisleniya = kredit, to'lov = debet
+      Receivable (bizga qarz — o'quvchi/mijoz):   nachisleniya = debet,  to'lov = kredit
+    Qarzdorlik — davr oxiriga to'plangan qoldiq (musbat = qarz bor)."""
+    _guard()
+    company = _default_company()
+    ccy = _company_currency(company)
+    f0, t0, _ = _resolve_range(from_date, to_date)
+    limit = min(cint(limit) or 500, 2000)
+
+    # nachisleniya/to'lov tomonini hisob turiga qarab tanlaydigan ifodalar
+    nach_expr = ("CASE WHEN a.account_type='Payable' THEN ge.credit_in_account_currency "
+                 "ELSE ge.debit_in_account_currency END")
+    paid_expr = ("CASE WHEN a.account_type='Payable' THEN ge.debit_in_account_currency "
+                 "ELSE ge.credit_in_account_currency END")
+
+    rows = frappe.db.sql(f"""
+        SELECT ge.party_type pt, ge.party, ge.account_currency cur,
+               SUM(CASE WHEN ge.posting_date BETWEEN %(f)s AND %(t)s THEN {nach_expr} ELSE 0 END) nach,
+               SUM(CASE WHEN ge.posting_date BETWEEN %(f)s AND %(t)s THEN {paid_expr} ELSE 0 END) paid,
+               SUM({nach_expr} - {paid_expr}) debt
+        FROM `tabGL Entry` ge
+        JOIN `tabAccount` a ON a.name = ge.account
+             AND a.account_type IN ('Payable', 'Receivable') AND a.company = %(company)s
+        WHERE ge.is_cancelled = 0 AND ge.posting_date <= %(t)s
+          AND IFNULL(ge.party, '') != '' {_co(company, 'ge')}
+        GROUP BY ge.party_type, ge.party, ge.account_currency
+    """, {"f": str(f0), "t": str(t0), "company": company}, as_dict=True)
+
+    # "Oylik oklad" — buxgalteriyadan emas, buxgalter Excel vedomostidan
+    # (Oylik Vedomost doctype'i, oy bo'yicha; xodim ID yoki F.I.Sh bo'yicha mos keladi).
+    try:
+        from target_zenit.target_zenit.doctype.oylik_vedomost.oylik_vedomost import (
+            _norm_name, get_oklad_map)
+        okmap, ved_name = get_oklad_map(to_date=t0)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: oklad map")
+        okmap, ved_name, _norm_name = {}, None, lambda v: ""
+
+    gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows])
+    out, cats, tot = [], {}, defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "debt": 0.0})
+    for r in rows:
+        nach, paid, debt = flt(r.nach), flt(r.paid), flt(r.debt)
+        if abs(nach) < 0.005 and abs(paid) < 0.005 and abs(debt) < 0.005:
+            continue
+        cur = r.cur or ccy
+        cat = _nach_group(r.pt, r.party, gmap)
+        pname = _party_name(r.pt, r.party)
+        ok = okmap.get(r.party) or okmap.get("name::" + _norm_name(pname)) or {}
+        out.append({
+            "party_type": r.pt, "party": r.party,
+            "name": pname,
+            "category": cat, "pt_label": NACH_PT_LABELS.get(r.pt, r.pt or "—"),
+            "oklad": flt(ok.get("oklad") or 0),
+            "kun": flt(ok.get("kun") or 0), "rejim": flt(ok.get("rejim") or 0),
+            "nach": nach, "paid": paid, "debt": debt, "currency": cur,
+        })
+        c = cats.setdefault(cat, {"label": cat, "count": 0})
+        c["count"] += 1
+        t = tot[cur]
+        t["nach"] += nach
+        t["paid"] += paid
+        t["debt"] += debt
+
+    out.sort(key=lambda x: -abs(x["debt"]))
+    truncated = max(0, len(out) - limit)
+    cat_list = sorted(cats.values(), key=lambda x: -x["count"])
+    totals = [{"currency": k, **v} for k, v in tot.items()]
+    totals.sort(key=lambda x: -abs(x["debt"]))
+    return {"rows": out[:limit], "cats": cat_list, "totals": totals, "currency": ccy,
+            "count": len(out), "truncated": truncated, "vedomost": ved_name,
+            "from_date": str(f0), "to_date": str(t0)}
 
 
 @frappe.whitelist()
