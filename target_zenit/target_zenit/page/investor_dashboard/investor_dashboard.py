@@ -2246,7 +2246,9 @@ def get_personal(from_date=None, to_date=None, limit=500):
     # (Oylik Vedomost doctype'i, oy bo'yicha; xodim ID yoki F.I.Sh bo'yicha mos keladi).
     try:
         from target_zenit.target_zenit.doctype.oylik_vedomost.oylik_vedomost import (
-            _norm_name, get_oklad_map)
+            _norm_name,
+            get_oklad_map,
+        )
         okmap, ved_name = get_oklad_map(to_date=t0)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: oklad map")
