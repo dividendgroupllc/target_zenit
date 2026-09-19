@@ -11,11 +11,17 @@ const LEGACY_DIVIDEND_TYPES = ["Дивиденд", "Дивиденд 1", "Див
 frappe.ui.form.on("Kassa", {
     onload: function(frm) {
         frm.trigger("clear_copied_linked_document");
+        // Yangi hujjatda "За какой месяц" darhol BUGUNGI oyni ko'rsatsin
+        // (saqlashni kutmasdan) — kerak bo'lsa operator ro'yxatdan boshqasini tanlaydi.
+        if (frm.is_new() && !frm.doc.payment_month) {
+            frm.set_value("payment_month", frappe.datetime.get_today().slice(0, 7));
+        }
     },
 
     refresh: function(frm) {
         frm._cash_account_to_currency = frm._cash_account_to_currency || "";
         frm.trigger("clear_copied_linked_document");
+        apply_payment_month_options(frm);
 
         // "Тип контрагента" ro'yxati: standart party'lar + CoA'dagi xarajat papkalari
         frm.trigger("load_party_type_options");
@@ -159,6 +165,13 @@ frappe.ui.form.on("Kassa", {
                     set_derived_value(frm, "balance", r.message || 0);
                 }
             });
+        }
+    },
+
+    date: function(frm) {
+        apply_payment_month_options(frm);
+        if (!frm.doc.payment_month && frm.doc.date) {
+            frm.set_value("payment_month", String(frm.doc.date).slice(0, 7));
         }
     },
 
@@ -820,4 +833,45 @@ function get_party_name_field(party_type) {
         "Employee": "employee_name"
     };
     return name_fields[party_type] || null;
+}
+
+
+// "За какой месяц" — ro'yxat ochilganda faqat UCHTA variant ko'rinadi
+// (o'tgan / shu / kelasi oy), lekin yozib qidirsa boshqa oylar ham topiladi:
+// ro'yxatda 24 oy orqaga va 12 oy oldinga bor, ko'rinadigan qatorlar soni 3 ta.
+// Format: yil oldin — "2026 Avgust".
+const MONTHS_UZ = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
+    "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
+
+function month_entry(offset, tag) {
+    const now = new Date();
+    const dt = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const m = dt.getMonth();
+    const y = dt.getFullYear();
+    return {
+        value: `${y}-${String(m + 1).padStart(2, "0")}`,
+        label: `${y} ${MONTHS_UZ[m]}${tag ? " — " + tag : ""}`,
+    };
+}
+
+function payment_month_options() {
+    // avval uchtasi — ro'yxat ochilganda aynan shular ko'rinadi
+    const head = [month_entry(-1, "o'tgan oy"), month_entry(0, "shu oy"), month_entry(1, "kelasi oy")];
+    const seen = new Set(head.map((o) => o.value));
+    const rest = [];
+    for (let d = -24; d <= 12; d++) {
+        const e = month_entry(d, "");
+        if (!seen.has(e.value)) { seen.add(e.value); rest.push(e); }
+    }
+    return head.concat(rest);
+}
+
+function apply_payment_month_options(frm) {
+    const ctrl = frm.get_field("payment_month");
+    if (!ctrl) return;
+    const opts = payment_month_options();
+    frm.set_df_property("payment_month", "options", opts);
+    frm.set_df_property("payment_month", "max_items", 3);   // ochilganda 3 qator
+    if (ctrl.set_data) ctrl.set_data(opts);
+    if (ctrl.awesomplete) ctrl.awesomplete.maxItems = 3;
 }

@@ -1,6 +1,8 @@
 # Copyright (c) 2025, abdulloh and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
 from erpnext.accounts.party import get_party_account as erpnext_get_party_account
 from frappe import _
@@ -52,6 +54,7 @@ class Kassa(Document):
         self.set_party_currency()
         self.set_party_name()
         self.set_student_group()
+        self.set_payment_month()
         self.set_display_currencies()
         self.set_payment_exchange_details()
         self.set_balance()
@@ -128,6 +131,7 @@ class Kassa(Document):
         # Set reference to Kassa
         pe.reference_no = self.name
         pe.reference_date = self.date
+        pe.custom_payment_month = self.payment_month
         pe.remarks = self.remarks or f"Payment for {self.name}"
 
         pe.flags.ignore_permissions = True
@@ -266,6 +270,7 @@ class Kassa(Document):
         je.company = self.company
         je.cheque_no = self.name
         je.cheque_date = self.date
+        je.custom_payment_month = self.payment_month
         je.user_remark = self.remarks or (
             f"Expense refund from {self.name}" if is_inflow else f"Expense payment from {self.name}"
         )
@@ -459,6 +464,30 @@ class Kassa(Document):
             )
         elif not self.party:
             self.party_name = None
+
+    def set_payment_month(self):
+        """Qaysi oy uchun to'lov ekani (YYYY-MM).
+
+        Xodim o'tgan oyning oyligini yoki kelasi oydan avans olishi mumkin;
+        o'quvchida ham shunday. Shuning uchun operator buni qo'lda o'zgartiradi.
+        Bo'sh qolsa hujjat sanasining oyi qo'yiladi — odatdagi holat shu.
+        """
+        if self.transaction_type not in ("Приход", "Расход"):
+            self.payment_month = None
+            return
+        value = (self.payment_month or "").strip()
+        if value:
+            # faqat YYYY-MM ko'rinishini qabul qilamiz (hisobotlarda birlashtirish uchun)
+            if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", value):
+                frappe.throw(
+                    _("«За какой месяц» YYYY-MM ko'rinishida bo'lishi kerak (masalan 2026-08), kiritilgan: {0}")
+                    .format(value)
+                )
+            self.payment_month = value
+        else:
+            # bo'sh bo'lsa — bugungi oy (hujjat sanasi orqaga surilgan bo'lsa ham
+            # operator odatda joriy oy uchun to'laydi; kerak bo'lsa qo'lda tanlaydi)
+            self.payment_month = frappe.utils.today()[:7]
 
     def set_student_group(self):
         """Customer o'quvchining Customer'i bo'lsa — uning sinfi (guruhi) ko'rsatiladi.

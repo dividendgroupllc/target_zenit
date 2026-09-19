@@ -32,6 +32,7 @@ app_include_js = [
 	"/assets/target_zenit/js/report_formatter.js?v=20260825",
 	"/assets/target_zenit/js/pl_pdf_button.js?v=20260825",
 	"/assets/target_zenit/js/balance_sheet_pdf.js?v=20260825",
+	"/assets/target_zenit/js/payment_month.js?v=20260919",
 ]
 
 # include js, css files in header of web template
@@ -312,6 +313,10 @@ fixtures = [
                 "Student-custom_edu_language",
                 "Student-custom_student_holat",
                 "Student-custom_izoh",
+                # "Qaysi oy uchun" — nachisleniya/to'lov oyi (sana emas) bo'yicha hisobot
+                "Journal Entry-custom_payment_month",
+                "Payment Entry-custom_payment_month",
+                "Sales Invoice-custom_payment_month",
             ]]
         ]
     },

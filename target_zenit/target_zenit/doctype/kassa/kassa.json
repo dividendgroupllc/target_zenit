@@ -28,6 +28,7 @@
   "student_group",
   "party_currency",
   "column_break_2",
+  "payment_month",
   "expense_account",
   "expense_account_name",
   "section_break_amount",
@@ -286,6 +287,14 @@
    "label": "Сумма",
    "options": "cash_account_currency",
    "mandatory_depends_on": "eval:doc.transaction_type !== 'Конвертация'"
+  },
+  {
+   "depends_on": "eval:['\u041f\u0440\u0438\u0445\u043e\u0434','\u0420\u0430\u0441\u0445\u043e\u0434'].includes(doc.transaction_type)",
+   "description": "Bu to'lov qaysi oy uchun ekani (o'tgan/kelasi oy bo'lishi mumkin)",
+   "fieldname": "payment_month",
+   "fieldtype": "Autocomplete",
+   "in_standard_filter": 1,
+   "label": "\u0417\u0430 \u043a\u0430\u043a\u043e\u0439 \u043c\u0435\u0441\u044f\u0446"
   },
   {
    "fieldname": "section_break_details",

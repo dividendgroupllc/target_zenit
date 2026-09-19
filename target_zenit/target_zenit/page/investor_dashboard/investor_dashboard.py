@@ -2166,6 +2166,14 @@ def _nach_student_groups(customers):
     return out
 
 
+# "Qaysi oy uchun": hujjatdagi maydon bo'lsa o'sha, bo'lmasa hujjat sanasining oyi.
+# Journal Entry va Sales Invoice — nachisleniya keladigan yagona ikki hujjat turi.
+NACH_MONTH_EXPR = (
+    "COALESCE(NULLIF(je.custom_payment_month, ''), NULLIF(si.custom_payment_month, ''), "
+    "DATE_FORMAT(gle.posting_date, '%%Y-%%m'))"
+)
+
+
 def _nach_student_monthly(customers):
     """Customer -> o'quvchining "Oylik to'lov" maydoni (Student.custom_monthly_payment).
 
@@ -2226,6 +2234,13 @@ def _nach_group(party_type, party, gmap):
     return NACH_PT_LABELS.get(party_type, party_type)
 
 
+# Personal bo'limi uchun "qaysi oy uchun": hujjatdagi maydon, bo'lmasa sana oyi.
+PERS_MONTH_EXPR = (
+    "COALESCE(NULLIF(je.custom_payment_month, ''), NULLIF(pe.custom_payment_month, ''), "
+    "NULLIF(si.custom_payment_month, ''), DATE_FORMAT(ge.posting_date, '%%Y-%%m'))"
+)
+
+
 @frappe.whitelist()
 def get_personal(from_date=None, to_date=None, limit=500):
     """Personal — barcha kontragentlar (xodim, o'quvchi/mijoz, ta'minotchi) kesimida:
@@ -2248,18 +2263,29 @@ def get_personal(from_date=None, to_date=None, limit=500):
     paid_expr = ("CASE WHEN a.account_type='Payable' THEN ge.debit_in_account_currency "
                  "ELSE ge.credit_in_account_currency END")
 
+    # Davr — "qaysi oy uchun" bo'yicha: sentyabrda qilingan lekin avgust uchun
+    # to'lov/nachisleniya avgust davrida hisoblanadi. Qarzdorlik esa to'plangan
+    # qoldiq bo'lgani uchun sana bo'yicha (davr oxiriga) qoladi.
     rows = frappe.db.sql(f"""
         SELECT ge.party_type pt, ge.party, ge.account_currency cur,
-               SUM(CASE WHEN ge.posting_date BETWEEN %(f)s AND %(t)s THEN {nach_expr} ELSE 0 END) nach,
-               SUM(CASE WHEN ge.posting_date BETWEEN %(f)s AND %(t)s THEN {paid_expr} ELSE 0 END) paid,
+               SUM(CASE WHEN {PERS_MONTH_EXPR} BETWEEN %(fm)s AND %(tm)s
+                        THEN {nach_expr} ELSE 0 END) nach,
+               SUM(CASE WHEN {PERS_MONTH_EXPR} BETWEEN %(fm)s AND %(tm)s
+                        THEN {paid_expr} ELSE 0 END) paid,
                SUM({nach_expr} - {paid_expr}) debt
         FROM `tabGL Entry` ge
         JOIN `tabAccount` a ON a.name = ge.account
              AND a.account_type IN ('Payable', 'Receivable') AND a.company = %(company)s
+        LEFT JOIN `tabJournal Entry` je
+               ON je.name = ge.voucher_no AND ge.voucher_type = 'Journal Entry'
+        LEFT JOIN `tabPayment Entry` pe
+               ON pe.name = ge.voucher_no AND ge.voucher_type = 'Payment Entry'
+        LEFT JOIN `tabSales Invoice` si
+               ON si.name = ge.voucher_no AND ge.voucher_type = 'Sales Invoice'
         WHERE ge.is_cancelled = 0 AND ge.posting_date <= %(t)s
           AND IFNULL(ge.party, '') != '' {_co(company, 'ge')}
         GROUP BY ge.party_type, ge.party, ge.account_currency
-    """, {"f": str(f0), "t": str(t0), "company": company}, as_dict=True)
+    """, {"t": str(t0), "fm": str(f0)[:7], "tm": str(t0)[:7], "company": company}, as_dict=True)
 
     # "Oylik oklad" — buxgalteriyadan emas, buxgalter Excel vedomostidan
     # (Oylik Vedomost doctype'i, oy bo'yicha; xodim ID yoki F.I.Sh bo'yicha mos keladi).
@@ -2332,18 +2358,27 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
 
     def _side(acct_type, col):
         """Bitta tomon: hujjat kesimida yig'ilgan qatorlar + toifa/valyuta jamlar."""
+        # Davr SANA emas, "qaysi oy uchun" bo'yicha: hujjatda oy ko'rsatilgan bo'lsa
+        # o'sha, aks holda hujjat sanasining oyi. Sentyabrda yozilgan lekin avgust
+        # uchun nachisleniya avgust davrida ko'rinadi.
         rows = frappe.db.sql(f"""
             SELECT gle.voucher_type vt, gle.voucher_no vn, gle.posting_date d,
                    gle.party_type pt, gle.party, gle.account acc,
-                   SUM(gle.{col}) amt, gle.account_currency ccy
+                   SUM(gle.{col}) amt, gle.account_currency ccy,
+                   {NACH_MONTH_EXPR} oy
             FROM `tabGL Entry` gle
-            JOIN `tabAccount` a ON a.name = gle.account AND a.account_type = %s
-                 AND a.company = %s
+            JOIN `tabAccount` a ON a.name = gle.account AND a.account_type = %(at)s
+                 AND a.company = %(company)s
+            LEFT JOIN `tabJournal Entry` je
+                   ON je.name = gle.voucher_no AND gle.voucher_type = 'Journal Entry'
+            LEFT JOIN `tabSales Invoice` si
+                   ON si.name = gle.voucher_no AND gle.voucher_type = 'Sales Invoice'
             WHERE gle.is_cancelled = 0 AND gle.{col} > 0
-              AND gle.posting_date BETWEEN %s AND %s
+              AND {NACH_MONTH_EXPR} BETWEEN %(fm)s AND %(tm)s
             GROUP BY gle.voucher_type, gle.voucher_no, gle.account, gle.party
             ORDER BY gle.posting_date DESC, gle.creation DESC""",
-            (acct_type, company, f0, t0), as_dict=True)
+            {"at": acct_type, "company": company,
+             "fm": str(f0)[:7], "tm": str(t0)[:7]}, as_dict=True)
         if not rows:
             return {"rows": [], "total_by_ccy": [], "cats": [], "groups": [], "accts": [],
                        "sinfs": [], "positions": [], "dkinds": [], "count": 0, "truncated": 0}
@@ -2421,7 +2456,7 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
             out.append({
                 "group": grp, "acct": acct, "sinf": sinf, "pos": pos, "dkind": dkind,
                 "monthly": flt(smmap.get(r.party) or 0) if r.pt == "Customer" else 0,
-                "date": str(r.d), "party_type": r.pt or "",
+                "date": str(r.d), "oy": r.oy or "", "party_type": r.pt or "",
                 "pt_label": NACH_PT_LABELS.get(r.pt, r.pt or "—"),
                 "party": r.party or "", "party_name": _party_name(r.pt, r.party) if r.party else "—",
                 "category": cat, "amount": amount, "currency": cur,
