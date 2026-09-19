@@ -472,7 +472,9 @@ class Kassa(Document):
         o'quvchida ham shunday. Shuning uchun operator buni qo'lda o'zgartiradi.
         Bo'sh qolsa hujjat sanasining oyi qo'yiladi — odatdagi holat shu.
         """
-        if self.transaction_type not in ("Приход", "Расход"):
+        # Faqat XODIM uchun: o'tgan yoki kelasi oy oyligini olish holati xodimlarda uchraydi.
+        # Mijoz/ta'minotchi va xarajat papkalarida bu maydon ishlatilmaydi.
+        if self.transaction_type not in ("Приход", "Расход") or self.party_type != "Employee":
             self.payment_month = None
             return
         value = (self.payment_month or "").strip()

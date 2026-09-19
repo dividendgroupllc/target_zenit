@@ -289,8 +289,8 @@
    "mandatory_depends_on": "eval:doc.transaction_type !== 'Конвертация'"
   },
   {
-   "depends_on": "eval:['\u041f\u0440\u0438\u0445\u043e\u0434','\u0420\u0430\u0441\u0445\u043e\u0434'].includes(doc.transaction_type)",
-   "description": "Bu to'lov qaysi oy uchun ekani (o'tgan/kelasi oy bo'lishi mumkin)",
+   "depends_on": "eval:doc.party_type === 'Employee'",
+   "description": "Xodimning bu to'lovi qaysi oy uchun (o'tgan yoki kelasi oy bo'lishi mumkin)",
    "fieldname": "payment_month",
    "fieldtype": "Autocomplete",
    "in_standard_filter": 1,

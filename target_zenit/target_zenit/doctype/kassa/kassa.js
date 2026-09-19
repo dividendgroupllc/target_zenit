@@ -836,31 +836,26 @@ function get_party_name_field(party_type) {
 }
 
 
-// "За какой месяц" — ro'yxat ochilganda faqat UCHTA variant ko'rinadi
-// (o'tgan / shu / kelasi oy), lekin yozib qidirsa boshqa oylar ham topiladi:
-// ro'yxatda 24 oy orqaga va 12 oy oldinga bor, ko'rinadigan qatorlar soni 3 ta.
-// Format: yil oldin — "2026 Avgust".
+// "За какой месяц" (faqat xodim tanlanganda ko'rinadi) — ro'yxat ochilganda
+// UCHTA oy ko'rinadi (o'tgan, shu, kelasi), yozib qidirsa boshqa oylar ham topiladi:
+// ro'yxatda 24 oy orqaga va 12 oy oldinga bor. Format: yil oldin — "2026 Avgust".
 const MONTHS_UZ = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
     "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 
-function month_entry(offset, tag) {
+function month_entry(offset) {
     const now = new Date();
     const dt = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const m = dt.getMonth();
     const y = dt.getFullYear();
-    return {
-        value: `${y}-${String(m + 1).padStart(2, "0")}`,
-        label: `${y} ${MONTHS_UZ[m]}${tag ? " — " + tag : ""}`,
-    };
+    return { value: `${y}-${String(m + 1).padStart(2, "0")}`, label: `${y} ${MONTHS_UZ[m]}` };
 }
 
 function payment_month_options() {
-    // avval uchtasi — ro'yxat ochilganda aynan shular ko'rinadi
-    const head = [month_entry(-1, "o'tgan oy"), month_entry(0, "shu oy"), month_entry(1, "kelasi oy")];
+    const head = [month_entry(-1), month_entry(0), month_entry(1)];   // ochilganda shular
     const seen = new Set(head.map((o) => o.value));
     const rest = [];
     for (let d = -24; d <= 12; d++) {
-        const e = month_entry(d, "");
+        const e = month_entry(d);
         if (!seen.has(e.value)) { seen.add(e.value); rest.push(e); }
     }
     return head.concat(rest);
@@ -871,7 +866,7 @@ function apply_payment_month_options(frm) {
     if (!ctrl) return;
     const opts = payment_month_options();
     frm.set_df_property("payment_month", "options", opts);
-    frm.set_df_property("payment_month", "max_items", 3);   // ochilganda 3 qator
+    frm.set_df_property("payment_month", "max_items", 3);
     if (ctrl.set_data) ctrl.set_data(opts);
     if (ctrl.awesomplete) ctrl.awesomplete.maxItems = 3;
 }
