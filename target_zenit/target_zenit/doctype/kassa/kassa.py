@@ -134,6 +134,11 @@ class Kassa(Document):
         pe.custom_payment_month = self.payment_month
         pe.remarks = self.remarks or f"Payment for {self.name}"
 
+        # Xodim to'lovi bo'lsa — shu oy uchun yozilgan nachisleniyaga bog'lanadi.
+        # Shunda "qaysi oy uchun" yorliqdan emas, haqiqiy nachisleniyadan kelib chiqadi
+        # va qarzdorlik avtomatik yopiladi.
+        self.allocate_employee_accruals(pe)
+
         pe.flags.ignore_permissions = True
         pe.insert()
         pe.submit()
@@ -143,6 +148,40 @@ class Kassa(Document):
         frappe.msgprint(_("Payment Entry {0} создан").format(
             frappe.utils.get_link_to_form("Payment Entry", pe.name)
         ))
+
+    def allocate_employee_accruals(self, pe):
+        """To'lovni shu oy uchun yozilgan nachisleniya(lar)ga taqsimlash.
+
+        Eskisidan yangisiga: har nachisleniyaga qoldig'igacha yoziladi. Nachisleniya
+        topilmasa hech narsa bog'lanmaydi — to'lov AVANS bo'lib qoladi va keyin
+        nachisleniya yozilganda avtomatik ulanadi (journal_entry.py).
+        """
+        if self.party_type != "Employee" or not self.payment_month:
+            return
+        # To'lovning kontragent hisobi (Pay -> paid_to, Приход -> paid_from)
+        party_account = pe.paid_to if pe.payment_type == "Pay" else pe.paid_from
+        accruals = [a for a in get_employee_accruals(
+            self.party, self.payment_month, self.company, account=party_account)
+            if a.get("linkable")]
+        if not accruals:
+            return
+
+        # Pay turida received_amount kontragent hisobi valyutasida bo'ladi
+        left = flt(pe.received_amount or pe.paid_amount)
+        for a in accruals:
+            if left <= 0.005:
+                break
+            share = min(left, flt(a["outstanding"]))
+            if share <= 0.005:
+                continue
+            pe.append("references", {
+                "reference_doctype": "Journal Entry",
+                "reference_name": a["journal_entry"],
+                "total_amount": flt(a["total"]),
+                "outstanding_amount": flt(a["outstanding"]),
+                "allocated_amount": share,
+            })
+            left -= share
 
     def get_paid_from_account(self, payment_type, party_account=None):
         """Payment type ga qarab paid_from accountni olish"""
@@ -164,15 +203,7 @@ class Kassa(Document):
             return erpnext_get_party_account(self.party_type, self.party, self.company)
 
         if self.party_type == "Employee":
-            payable_account = frappe.db.get_value(
-                "Account",
-                {
-                    "company": self.company,
-                    "account_type": "Payable",
-                    "is_group": 0,
-                },
-                "name",
-            )
+            payable_account = get_employee_payable_account(self.company)
             if payable_account:
                 return payable_account
 
@@ -1073,3 +1104,110 @@ def get_student_group(customer):
             groups.append(st.custom_sinf_guruh)
 
     return ", ".join(groups) if groups else None
+
+
+def get_employee_payable_account(company):
+    """Xodimlar oyligi yuritiladigan qarz hisobi — ANIQ va BARQAROR tanlanadi.
+
+    Ilgari bu yerda `frappe.db.get_value("Account", {...})` turardi: u tartibsiz
+    (order_by'siz) birinchi uchragan Payable hisobni qaytarardi. Yangi Payable
+    hisob yaratilganda natija jimgina o'zgarib, xodim to'lovlari ikki xil hisobga
+    bo'linib ketgan. Shuning uchun tartib quyidagicha:
+      1) Company'dagi "Xodimlar qarzi hisobi" sozlamasi
+      2) bo'sh bo'lsa — xodim yozuvlari eng ko'p bo'lgan hisob (tarixga mos)
+      3) u ham bo'lmasa — nomi bo'yicha barqaror birinchi hisob
+    """
+    if not company:
+        return None
+
+    configured = frappe.db.get_value("Company", company, "custom_employee_payable_account")
+    if configured:
+        return configured
+
+    rows = frappe.db.sql(
+        """
+        SELECT ge.account, COUNT(*) n
+        FROM `tabGL Entry` ge
+        JOIN `tabAccount` a ON a.name = ge.account
+             AND a.account_type = 'Payable' AND a.is_group = 0
+        WHERE ge.is_cancelled = 0 AND ge.party_type = 'Employee' AND ge.company = %s
+        GROUP BY ge.account ORDER BY n DESC, ge.account ASC LIMIT 1
+        """,
+        company,
+    )
+    if rows:
+        return rows[0][0]
+
+    return frappe.db.get_value(
+        "Account",
+        {"company": company, "account_type": "Payable", "is_group": 0},
+        "name",
+        order_by="name asc",
+    )
+
+
+def _employee_payable_accounts(company):
+    """Xodimlar qarzi yuritiladigan hisoblar."""
+    return frappe.get_all(
+        "Account",
+        filters={"company": company, "account_type": "Payable", "is_group": 0},
+        pluck="name",
+    )
+
+
+@frappe.whitelist()
+def get_employee_accruals(employee, payment_month, company=None, account=None):
+    """Xodimga shu OY uchun yozilgan nachisleniyalar (Journal Entry) va ularning qoldig'i.
+
+    Oy hujjatdagi "За какой месяц" maydonidan, u bo'sh bo'lsa hujjat sanasidan
+    olinadi — dashboarddagi qoida bilan bir xil. Faqat qoldig'i bor (hali to'liq
+    to'lanmagan) nachisleniyalar qaytariladi, eskisidan yangisiga tartibda.
+
+    `account` — to'lovning kontragent hisobi. Nachisleniyalar BARCHA hisoblardan
+    qaytariladi, lekin har biriga `linkable` belgisi qo'yiladi: faqat shu hisobdagi
+    nachisleniyaga bog'lanish mumkin (ERPNext talabi — aks holda "does not have
+    account ..." xatosi). Boshqa hisobdagilar ham ko'rsatiladi, operator nega
+    bog'lanmayotganini bilsin.
+    """
+    from erpnext.accounts.doctype.payment_entry.payment_entry import (
+        get_outstanding_on_journal_entry,
+    )
+
+    if not employee or not payment_month:
+        return []
+    company = company or frappe.db.get_single_value("Global Defaults", "default_company")
+    accounts = _employee_payable_accounts(company)
+    if not accounts:
+        return []
+
+    rows = frappe.db.sql(
+        """
+        SELECT DISTINCT ge.voucher_no vn, ge.posting_date d, ge.account acc,
+               ge.account_currency cur
+        FROM `tabGL Entry` ge
+        JOIN `tabJournal Entry` je ON je.name = ge.voucher_no AND je.docstatus = 1
+        WHERE ge.is_cancelled = 0 AND ge.voucher_type = 'Journal Entry'
+          AND ge.party_type = 'Employee' AND ge.party = %(emp)s
+          AND ge.account IN %(accs)s AND ge.credit_in_account_currency > 0
+          AND COALESCE(NULLIF(je.custom_payment_month, ''),
+                       DATE_FORMAT(ge.posting_date, '%%Y-%%m')) = %(oy)s
+        ORDER BY ge.posting_date
+        """,
+        {"emp": employee, "accs": tuple(accounts), "oy": payment_month},
+        as_dict=True,
+    )
+
+    out = []
+    for r in rows:
+        try:
+            outstanding, total = get_outstanding_on_journal_entry(r.vn, "Employee", employee)
+        except Exception:
+            continue
+        if flt(outstanding) <= 0.005:
+            continue                      # to'liq yopilgan — ko'rsatmaymiz
+        out.append({
+            "journal_entry": r.vn, "date": str(r.d), "account": r.acc,
+            "currency": r.cur, "total": flt(total), "outstanding": flt(outstanding),
+            "linkable": (not account) or (r.acc == account),
+        })
+    return out

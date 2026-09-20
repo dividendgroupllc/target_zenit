@@ -2242,7 +2242,7 @@ PERS_MONTH_EXPR = (
 
 
 @frappe.whitelist()
-def get_personal(from_date=None, to_date=None, limit=500):
+def get_personal(from_date=None, to_date=None, limit=500, months=None):
     """Personal — barcha kontragentlar (xodim, o'quvchi/mijoz, ta'minotchi) kesimida:
     kategoriya, oylik oklad (oxirgi nachisleniya), davr nachisleniyasi, davrda to'langan
     va qarzdorlik.
@@ -2250,7 +2250,11 @@ def get_personal(from_date=None, to_date=None, limit=500):
     Yo'nalish hisob turiga bog'liq:
       Payable (biz qarzmiz — xodim/ta'minotchi):  nachisleniya = kredit, to'lov = debet
       Receivable (bizga qarz — o'quvchi/mijoz):   nachisleniya = debet,  to'lov = kredit
-    Qarzdorlik — davr oxiriga to'plangan qoldiq (musbat = qarz bor)."""
+    Qarzdorlik — davr oxiriga to'plangan qoldiq (musbat = qarz bor).
+
+    `months` — "qaysi oy uchun" bo'yicha filtr (YYYY-MM ro'yxati). Berilsa davr
+    sanasi o'rniga aynan shu oylar olinadi (bir nechtasini birdan tanlash mumkin).
+    Qarzdorlik bunda ham davr oxiriga to'plangan qoldiq bo'lib qoladi."""
     _guard()
     company = _default_company()
     ccy = _company_currency(company)
@@ -2263,15 +2267,23 @@ def get_personal(from_date=None, to_date=None, limit=500):
     paid_expr = ("CASE WHEN a.account_type='Payable' THEN ge.debit_in_account_currency "
                  "ELSE ge.credit_in_account_currency END")
 
+    # Oy filtri: tanlangan oylar bo'lsa aynan shular, aks holda davr sanasining oylari.
+    picked_months = [m for m in _as_list(months) if re.fullmatch(r"\d{4}-\d{2}", str(m))]
+    params = {"t": str(t0), "company": company}
+    if picked_months:
+        month_cond = f"{PERS_MONTH_EXPR} IN %(months)s"
+        params["months"] = tuple(picked_months)
+    else:
+        month_cond = f"{PERS_MONTH_EXPR} BETWEEN %(fm)s AND %(tm)s"
+        params["fm"], params["tm"] = str(f0)[:7], str(t0)[:7]
+
     # Davr — "qaysi oy uchun" bo'yicha: sentyabrda qilingan lekin avgust uchun
     # to'lov/nachisleniya avgust davrida hisoblanadi. Qarzdorlik esa to'plangan
     # qoldiq bo'lgani uchun sana bo'yicha (davr oxiriga) qoladi.
     rows = frappe.db.sql(f"""
         SELECT ge.party_type pt, ge.party, ge.account_currency cur,
-               SUM(CASE WHEN {PERS_MONTH_EXPR} BETWEEN %(fm)s AND %(tm)s
-                        THEN {nach_expr} ELSE 0 END) nach,
-               SUM(CASE WHEN {PERS_MONTH_EXPR} BETWEEN %(fm)s AND %(tm)s
-                        THEN {paid_expr} ELSE 0 END) paid,
+               SUM(CASE WHEN {month_cond} THEN {nach_expr} ELSE 0 END) nach,
+               SUM(CASE WHEN {month_cond} THEN {paid_expr} ELSE 0 END) paid,
                SUM({nach_expr} - {paid_expr}) debt
         FROM `tabGL Entry` ge
         JOIN `tabAccount` a ON a.name = ge.account
@@ -2285,7 +2297,7 @@ def get_personal(from_date=None, to_date=None, limit=500):
         WHERE ge.is_cancelled = 0 AND ge.posting_date <= %(t)s
           AND IFNULL(ge.party, '') != '' {_co(company, 'ge')}
         GROUP BY ge.party_type, ge.party, ge.account_currency
-    """, {"t": str(t0), "fm": str(f0)[:7], "tm": str(t0)[:7], "company": company}, as_dict=True)
+    """, params, as_dict=True)
 
     # "Oylik oklad" — buxgalteriyadan emas, buxgalter Excel vedomostidan
     # (Oylik Vedomost doctype'i, oy bo'yicha; xodim ID yoki F.I.Sh bo'yicha mos keladi).
@@ -2324,6 +2336,28 @@ def get_personal(from_date=None, to_date=None, limit=500):
         t["paid"] += paid
         t["debt"] += debt
 
+    # Filtr menyusi uchun mavjud oylar (davrdan qat'i nazar — istalgan oyni tanlash mumkin)
+    month_list = []
+    try:
+        for m in frappe.db.sql(f"""
+            SELECT {PERS_MONTH_EXPR} oy, COUNT(*) n
+            FROM `tabGL Entry` ge
+            JOIN `tabAccount` a ON a.name = ge.account
+                 AND a.account_type IN ('Payable', 'Receivable') AND a.company = %(company)s
+            LEFT JOIN `tabJournal Entry` je
+                   ON je.name = ge.voucher_no AND ge.voucher_type = 'Journal Entry'
+            LEFT JOIN `tabPayment Entry` pe
+                   ON pe.name = ge.voucher_no AND ge.voucher_type = 'Payment Entry'
+            LEFT JOIN `tabSales Invoice` si
+                   ON si.name = ge.voucher_no AND ge.voucher_type = 'Sales Invoice'
+            WHERE ge.is_cancelled = 0 AND IFNULL(ge.party, '') != '' {_co(company, 'ge')}
+            GROUP BY oy ORDER BY oy DESC
+        """, {"company": company}, as_dict=True):
+            if m.oy:
+                month_list.append({"label": m.oy, "count": cint(m.n)})
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: personal months")
+
     out.sort(key=lambda x: -abs(x["debt"]))
     truncated = max(0, len(out) - limit)
     cat_list = sorted(cats.values(), key=lambda x: -x["count"])
@@ -2331,6 +2365,7 @@ def get_personal(from_date=None, to_date=None, limit=500):
     totals.sort(key=lambda x: -abs(x["debt"]))
     return {"rows": out[:limit], "cats": cat_list, "totals": totals, "currency": ccy,
             "count": len(out), "truncated": truncated, "vedomost": ved_name,
+            "months": month_list, "picked_months": picked_months,
             "from_date": str(f0), "to_date": str(t0)}
 
 

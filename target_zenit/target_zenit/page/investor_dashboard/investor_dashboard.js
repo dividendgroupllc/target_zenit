@@ -45,6 +45,7 @@ class TZInvestorDashboard {
 		this.personal = null;       // Personal bo'limi ma'lumoti (kesh)
 		this.personalCats = [];     // kategoriya filtri (bo'sh = hammasi)
 		this.personalQ = "";        // ism bo'yicha qidiruv
+		this.personalMonths = [];   // "qaysi oy uchun" filtri (bo'sh = davr oylari)
 		this.cfAccTx = null;        // o'sha hisob harakatlari (kesh)
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
@@ -211,7 +212,7 @@ class TZInvestorDashboard {
 			const k = String($(e.currentTarget).attr("data-mselbtn"));
 			this.mselOpen = (this.mselOpen === k) ? null : k;
 			if (k === "acc" || k === "op") this.paintCashFilter();
-			else if (k === "perscat") this.paintPersonalFilter();
+			else if (k === "perscat" || k === "persmonth") this.paintPersonalFilter();
 			else this.paintNachFilter();
 		});
 		body.on("click", ".tz-msel-menu", (e) => e.stopPropagation());
@@ -385,6 +386,7 @@ class TZInvestorDashboard {
 		this.ovCash = null;
 		this.cfAcc = null; this.cfAccTx = null;
 		this.personal = null; this.personalCats = []; this.personalQ = "";
+		this.personalMonths = [];
 		this._ovBsAuto = null;
 		this.nach = null;
 		this.nachClearFilters(); this.nachCcy = null; this.nachQ = "";
@@ -814,13 +816,14 @@ class TZInvestorDashboard {
 	// Ko'p tanlovli filtrlar reestri: kalit -> holat massivi nomi va qayta chizish
 	MSEL = { acc: "ovCashAccs", op: "ovCashOps", nachgrp: "nachGroups", nachcat: "nachCats",
 		nachacct: "nachAccts", nachsinf: "nachSinfs", nachpos: "nachPoss", nachdkind: "nachDkinds",
-		perscat: "personalCats" };
+		perscat: "personalCats", persmonth: "personalMonths" };
 
 	mselList(key) { return this[this.MSEL[key]] || []; }
 
 	mselApply(key) {
 		if (key === "acc" || key === "op") { this.paintCashFilter(); this.loadOvCash(true); }
 		else if (key === "perscat") { this.paintPersonal(); }
+		else if (key === "persmonth") { this.loadPersonal(); }
 		else { this.paintNach(); }
 	}
 
@@ -1632,17 +1635,29 @@ class TZInvestorDashboard {
 		let h = this.sec("Personal", `${this.data.meta.period.label} · xodimlar, o'quvchilar va ta'minotchilar bir jadvalda`);
 		h += this.card(`
 			<div class="hd"><div><h3>Kontragentlar kesimida</h3>
-				<div class="meta">Oklad — buxgalter oylik vedomostidan (Excel) · nachisleniya, to'langan va qarzdorlik — buxgalteriya provodkalaridan · davr: ${this.esc(this.data.meta.period.label)}</div></div>
+				<div class="meta">Oklad — buxgalter oylik vedomostidan (Excel) · nachisleniya va to'langan — tanlangan oy(lar) bo'yicha · qarzdorlik — davr oxiriga to'plangan qoldiq${(this.personalMonths || []).length ? ` · <b>${this.personalMonths.map((m) => this.esc(this.monthLabel(m))).join(", ")}</b>` : ` · davr: ${this.esc(this.data.meta.period.label)}`}</div></div>
 				<div class="kt-filter tz-pers-filter-box">${this.personalFilterHtml()}</div></div>
 			<div class="tz-pers-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb");
 		setTimeout(() => { if (this.personal) this.paintPersonal(); else this.loadPersonal(); }, 0);
 		return h + this.note();
 	}
 
+	// "2026-08" -> "2026 Avgust"
+	monthLabel(v) {
+		const MM = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
+			"Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
+		const m = /^(\d{4})-(\d{2})$/.exec(String(v || ""));
+		return m ? `${m[1]} ${MM[parseInt(m[2], 10) - 1]}` : String(v || "");
+	}
+
 	personalFilterHtml() {
-		const cats = ((this.personal || {}).cats || [])
+		const p = this.personal || {};
+		const months = (p.months || [])
+			.map((m) => ({ value: m.label, label: `${this.monthLabel(m.label)} (${m.count})` }));
+		const cats = (p.cats || [])
 			.map((c) => ({ value: c.label, label: `${c.label} (${c.count})` }));
-		return this.mselHtml("perscat", "Kategoriya", cats, this.personalCats);
+		return this.mselHtml("persmonth", "Oy", months, this.personalMonths)
+			+ this.mselHtml("perscat", "Kategoriya", cats, this.personalCats);
 	}
 
 	paintPersonalFilter() {
@@ -1655,7 +1670,10 @@ class TZInvestorDashboard {
 		if (!body.length) return;
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_personal",
-			args: { from_date: this.state.from_date, to_date: this.state.to_date },
+			args: {
+				from_date: this.state.from_date, to_date: this.state.to_date,
+				months: JSON.stringify(this.personalMonths || []),
+			},
 		}).then((r) => { this.personal = r.message || null; this.paintPersonal(); })
 			.catch(() => body.html(`<div class="empty-hint">Personal ma'lumotini yuklab bo'lmadi.</div>`));
 	}

@@ -38,16 +38,16 @@
 		if (ctrl.awesomplete) ctrl.awesomplete.maxItems = 3;
 	}
 
-	["Journal Entry", "Payment Entry", "Sales Invoice"].forEach((dt) => {
-		frappe.ui.form.on(dt, {
-			refresh: apply,
-			posting_date(frm) {
-				apply(frm);
-				// bo'sh bo'lsa — hujjat sanasining oyi (keyin qo'lda o'zgartirsa bo'ladi)
-				if (!frm.doc.custom_payment_month && frm.doc.posting_date) {
-					frm.set_value("custom_payment_month", String(frm.doc.posting_date).slice(0, 7));
-				}
-			},
-		});
+	// Tanlov FAQAT Payment Entry'da: u yerda pul chiqqan sana bilan oylik oyi
+	// har xil bo'lishi mumkin. Journal Entry va Sales Invoice'da esa oy posting
+	// date'dan avtomatik olinadi (maydon read-only), shuning uchun picker kerak emas.
+	frappe.ui.form.on("Payment Entry", {
+		refresh: apply,
+		posting_date(frm) {
+			apply(frm);
+			if (!frm.doc.custom_payment_month && frm.doc.posting_date) {
+				frm.set_value("custom_payment_month", String(frm.doc.posting_date).slice(0, 7));
+			}
+		},
 	});
 })();

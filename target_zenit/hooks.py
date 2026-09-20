@@ -163,6 +163,17 @@ doc_events = {
 	"Student": {
 		"on_update": "target_zenit.student_group_sync.on_student_update",
 	},
+	# Nachisleniya yozilganda — o'sha xodim/oy bo'yicha avval to'langan
+	# avanslar avtomatik bog'lanadi (oylik avval to'lanib, nachisleniya keyin
+	# yozilgan holat uchun).
+	"Journal Entry": {
+		# Oy — har doim posting date'dan (buxgalter sanani o'sha oyga suradi)
+		"validate": "target_zenit.journal_entry.sync_month_from_posting_date",
+		"on_submit": "target_zenit.journal_entry.link_employee_advances",
+	},
+	"Sales Invoice": {
+		"validate": "target_zenit.journal_entry.sync_month_from_posting_date",
+	},
 	# Kurs faqat USD→UZS yo'nalishida kiritiladi; teskari yozuv avto-yaratiladi.
 	# Aks holda ikki yo'nalishdagi kurslar mos kelmay, sun'iy gain/loss chiqadi.
 	"Currency Exchange": {
@@ -317,6 +328,8 @@ fixtures = [
                 "Journal Entry-custom_payment_month",
                 "Payment Entry-custom_payment_month",
                 "Sales Invoice-custom_payment_month",
+                # Xodimlar oyligi yuritiladigan qarz hisobi (Kassa uchun barqaror tanlov)
+                "Company-custom_employee_payable_account",
             ]]
         ]
     },

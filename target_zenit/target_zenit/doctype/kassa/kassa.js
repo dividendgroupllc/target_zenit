@@ -22,6 +22,7 @@ frappe.ui.form.on("Kassa", {
         frm._cash_account_to_currency = frm._cash_account_to_currency || "";
         frm.trigger("clear_copied_linked_document");
         apply_payment_month_options(frm);
+        load_employee_accrual(frm);
 
         // "Тип контрагента" ro'yxati: standart party'lar + CoA'dagi xarajat papkalari
         frm.trigger("load_party_type_options");
@@ -173,6 +174,10 @@ frappe.ui.form.on("Kassa", {
         if (!frm.doc.payment_month && frm.doc.date) {
             frm.set_value("payment_month", String(frm.doc.date).slice(0, 7));
         }
+    },
+
+    payment_month: function(frm) {
+        load_employee_accrual(frm);
     },
 
     transaction_type: function(frm) {
@@ -586,6 +591,8 @@ frappe.ui.form.on("Kassa", {
             }
 
             // O'quvchining sinfi — to'lovdan OLDIN ko'rinishi uchun darhol yuklanadi
+            if (frm.doc.party_type === "Employee") load_employee_accrual(frm);
+
             if (frm.doc.party_type === "Customer") {
                 frappe.call({
                     method: "target_zenit.target_zenit.doctype.kassa.kassa.get_student_group",
@@ -869,4 +876,73 @@ function apply_payment_month_options(frm) {
     frm.set_df_property("payment_month", "max_items", 3);
     if (ctrl.set_data) ctrl.set_data(opts);
     if (ctrl.awesomplete) ctrl.awesomplete.maxItems = 3;
+}
+
+// Xodim + oy tanlanganda — o'sha oy uchun yozilgan nachisleniyani ko'rsatish.
+// Uch holat bor: (1) bog'lanadigan nachisleniya bor; (2) nachisleniya bor, lekin
+// BOSHQA qarz hisobida — bog'lanmaydi, ogohlantiramiz; (3) umuman yo'q — avans.
+function load_employee_accrual(frm) {
+    const box = frm.get_field("nachisleniya_html");
+    if (!box || !box.$wrapper) return;
+    const show = (html) => box.$wrapper.html(html);
+
+    if (frm.doc.party_type !== "Employee" || !frm.doc.party || !frm.doc.payment_month) {
+        show(""); return;
+    }
+    show(`<div class="text-muted small">Nachisleniya tekshirilyapti…</div>`);
+    frappe.call({
+        method: "target_zenit.target_zenit.doctype.kassa.kassa.get_employee_accruals",
+        args: {
+            employee: frm.doc.party, payment_month: frm.doc.payment_month,
+            company: frm.doc.company,
+        },
+    }).then((r) => {
+        const all = r.message || [];
+        const ok = all.filter((a) => a.linkable);
+        const other = all.filter((a) => !a.linkable);
+        const esc = frappe.utils.escape_html;
+        const cur = (all[0] || {}).currency;
+        const fmt = (v) => format_currency(v, cur);
+        let html = "";
+
+        if (ok.length) {
+            const rows = ok.map((a) => `<tr>
+                <td><a href="/app/journal-entry/${encodeURIComponent(a.journal_entry)}" target="_blank">${esc(a.journal_entry)}</a></td>
+                <td>${frappe.datetime.str_to_user(a.date)}</td>
+                <td class="text-right">${fmt(a.total)}</td>
+                <td class="text-right"><b>${fmt(a.outstanding)}</b></td>
+            </tr>`).join("");
+            const total = ok.reduce((n, a) => n + (a.outstanding || 0), 0);
+            html += `<div style="border:1px solid var(--border-color);border-radius:6px;padding:8px 10px">
+                <div class="small text-muted" style="margin-bottom:6px">Bu oy uchun nachisleniya — to'lov shunga bog'lanadi</div>
+                <table class="table table-bordered table-sm" style="margin:0;font-size:12px">
+                    <thead><tr><th>Hujjat</th><th>Sana</th><th class="text-right">Jami</th><th class="text-right">Qoldiq</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <div class="small" style="margin-top:6px">Jami to'lanmagan: <b>${fmt(total)}</b></div>
+            </div>`;
+        }
+
+        if (other.length) {
+            // Nachisleniya bor, lekin to'lovning qarz hisobi bilan mos emas —
+            // ERPNext bunday bog'lanishni rad etadi, shuning uchun aniq aytamiz.
+            const list = other.map((a) =>
+                `<li>${esc(a.journal_entry)} — <b>${esc(a.account)}</b> · qoldiq ${fmt(a.outstanding)}</li>`).join("");
+            html += `<div class="alert alert-danger" style="padding:8px 10px;margin:${ok.length ? "8px" : "0"} 0 0">
+                <b>Bog'lanmaydi:</b> bu oyda nachisleniya bor, lekin <b>boshqa qarz hisobida</b>.
+                To'lov esa <b>${esc(frm.doc.cash_account ? "" : "")}xodimlar qarzi hisobi</b> bo'yicha o'tadi.
+                <ul class="small" style="margin:6px 0 0 18px">${list}</ul>
+                <div class="small" style="margin-top:6px">Yechim: nachisleniyani to'g'ri hisobga o'tkazing yoki
+                Company sozlamasidagi «Xodimlar qarzi hisobi» ni moslang. Hozircha to'lov <b>avans</b> bo'lib yoziladi.</div>
+            </div>`;
+        }
+
+        if (!all.length) {
+            html = `<div class="alert alert-warning" style="padding:8px 10px;margin:0">
+                <b>Bu oy uchun nachisleniya topilmadi.</b><br>
+                <span class="small">To'lov <b>avans</b> sifatida yoziladi. Nachisleniya yozilganda avtomatik bog'lanadi.</span>
+            </div>`;
+        }
+        show(html);
+    }).catch(() => show(`<div class="text-muted small">Nachisleniyani yuklab bo'lmadi.</div>`));
 }
