@@ -2250,11 +2250,13 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None):
     Yo'nalish hisob turiga bog'liq:
       Payable (biz qarzmiz — xodim/ta'minotchi):  nachisleniya = kredit, to'lov = debet
       Receivable (bizga qarz — o'quvchi/mijoz):   nachisleniya = debet,  to'lov = kredit
-    Qarzdorlik — davr oxiriga to'plangan qoldiq (musbat = qarz bor).
+    Qarzdorlik — SHU DAVR farqi: nachisleniya minus to'langan (musbat = to'lanmagan
+    qoldi, manfiy = ortiqcha to'landi). Umumiy to'plangan qoldiq bu yerda emas,
+    "Qarzdorlik" bo'limida ko'riladi.
 
     `months` — "qaysi oy uchun" bo'yicha filtr (YYYY-MM ro'yxati). Berilsa davr
     sanasi o'rniga aynan shu oylar olinadi (bir nechtasini birdan tanlash mumkin).
-    Qarzdorlik bunda ham davr oxiriga to'plangan qoldiq bo'lib qoladi."""
+    Qarzdorlik tanlangan oylar farqidan hisoblanadi."""
     _guard()
     company = _default_company()
     ccy = _company_currency(company)
@@ -2283,8 +2285,7 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None):
     rows = frappe.db.sql(f"""
         SELECT ge.party_type pt, ge.party, ge.account_currency cur,
                SUM(CASE WHEN {month_cond} THEN {nach_expr} ELSE 0 END) nach,
-               SUM(CASE WHEN {month_cond} THEN {paid_expr} ELSE 0 END) paid,
-               SUM({nach_expr} - {paid_expr}) debt
+               SUM(CASE WHEN {month_cond} THEN {paid_expr} ELSE 0 END) paid
         FROM `tabGL Entry` ge
         JOIN `tabAccount` a ON a.name = ge.account
              AND a.account_type IN ('Payable', 'Receivable') AND a.company = %(company)s
@@ -2314,8 +2315,12 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None):
     gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows])
     out, cats, tot = [], {}, defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "debt": 0.0})
     for r in rows:
-        nach, paid, debt = flt(r.nach), flt(r.paid), flt(r.debt)
-        if abs(nach) < 0.005 and abs(paid) < 0.005 and abs(debt) < 0.005:
+        nach, paid = flt(r.nach), flt(r.paid)
+        # Qarzdorlik — SHU DAVR uchun: nachisleniya minus to'langan.
+        # To'plangan umumiy qoldiq bu yerda ko'rsatilmaydi — u "Qarzdorlik"
+        # bo'limida alohida yuritiladi.
+        debt = nach - paid
+        if abs(nach) < 0.005 and abs(paid) < 0.005:
             continue
         cur = r.cur or ccy
         cat = _nach_group(r.pt, r.party, gmap)
