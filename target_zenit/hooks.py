@@ -32,7 +32,7 @@ app_include_js = [
 	"/assets/target_zenit/js/report_formatter.js?v=20260825",
 	"/assets/target_zenit/js/pl_pdf_button.js?v=20260825",
 	"/assets/target_zenit/js/balance_sheet_pdf.js?v=20260825",
-	"/assets/target_zenit/js/payment_month.js?v=20260919",
+	"/assets/target_zenit/js/payment_month.js?v=20260921",
 ]
 
 # include js, css files in header of web template

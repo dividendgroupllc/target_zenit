@@ -51,3 +51,48 @@
 		},
 	});
 })();
+
+// ── Nachisleniya yozilayotganda hisobni avansnikiga moslash ───────────────────
+// Xodimga shu oy uchun Kassadan avans berilgan bo'lsa, nachisleniya ham O'SHA
+// qarz hisobida yozilishi kerak — aks holda to'lov va nachisleniya har xil
+// hisobda qolib, bir-biriga bog'lanmaydi.
+(function () {
+	function suggest(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		if (!row || row.party_type !== "Employee" || !row.party || !frm.doc.posting_date) return;
+		frappe.call({
+			method: "target_zenit.journal_entry.get_advance_account",
+			args: {
+				employee: row.party,
+				posting_date: frm.doc.posting_date,
+				company: frm.doc.company,
+			},
+		}).then((r) => {
+			const d = r.message;
+			if (!d || !d.account) return;
+			const cur = locals[cdt][cdn];           // qator almashgan bo'lishi mumkin
+			if (!cur || cur.party !== row.party) return;
+			if (!cur.account) {
+				frappe.model.set_value(cdt, cdn, "account", d.account);
+				frappe.show_alert({
+					message: __("Hisob avansga moslandi: {0} ({1} uchun {2})",
+						[d.account, d.month, format_currency(d.amount, d.currency)]),
+					indicator: "green",
+				}, 7);
+			} else if (cur.account !== d.account) {
+				frappe.msgprint({
+					title: __("Hisob mos emas"),
+					indicator: "orange",
+					message: __("Bu xodimga <b>{0}</b> uchun Kassadan avans <b>{1}</b> hisobida berilgan "
+						+ "({2}). Nachisleniyani ham o'sha hisobda yozmasangiz, to'lov bog'lanmay qoladi.",
+						[d.month, d.account, format_currency(d.amount, d.currency)]),
+				});
+			}
+		});
+	}
+
+	frappe.ui.form.on("Journal Entry Account", {
+		party(frm, cdt, cdn) { suggest(frm, cdt, cdn); },
+		account(frm, cdt, cdn) { suggest(frm, cdt, cdn); },
+	});
+})();

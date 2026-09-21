@@ -203,11 +203,30 @@ class Kassa(Document):
             return erpnext_get_party_account(self.party_type, self.party, self.company)
 
         if self.party_type == "Employee":
+            # Nachisleniya qaysi qarz hisobida yozilgan bo'lsa — to'lov ham
+            # O'SHA hisob orqali o'tadi. Aks holda ERPNext bog'lashni rad etadi
+            # ("Journal Entry ... does not have account ..."), chunki to'lov va
+            # nachisleniya har xil hisobda bo'lib qoladi.
+            accrual_account = self.get_accrual_account()
+            if accrual_account:
+                return accrual_account
             payable_account = get_employee_payable_account(self.company)
             if payable_account:
                 return payable_account
 
         frappe.throw(_("Не удалось определить счет контрагента для {0}").format(self.party_type))
+
+    def get_accrual_account(self):
+        """Shu xodim va oy uchun yozilgan eng eski to'lanmagan nachisleniyaning hisobi.
+
+        Bir nechta hisobda nachisleniya bo'lsa — eng eskisi olinadi (avval eski
+        qarz yopiladi). Nachisleniya bo'lmasa None qaytadi va odatdagi sozlangan
+        hisob ishlatiladi.
+        """
+        if self.party_type != "Employee" or not self.party or not self.payment_month:
+            return None
+        accruals = get_employee_accruals(self.party, self.payment_month, self.company)
+        return accruals[0]["account"] if accruals else None
 
     def is_party_multicurrency_payment(self):
         return (
@@ -844,11 +863,8 @@ def get_party_currency(party_type, party, company):
         if not currency:
             currency = frappe.get_cached_value("Company", company, "default_currency")
     elif party_type == "Employee":
-        account = frappe.db.get_value(
-            "Account",
-            {"company": company, "account_type": "Payable", "is_group": 0},
-            "name"
-        )
+        # tartibsiz tanlov o'rniga — barqaror hisob (get_employee_payable_account)
+        account = get_employee_payable_account(company)
         if account:
             currency = frappe.get_cached_value("Account", account, "account_currency")
         if not currency:
@@ -1208,6 +1224,73 @@ def get_employee_accruals(employee, payment_month, company=None, account=None):
         out.append({
             "journal_entry": r.vn, "date": str(r.d), "account": r.acc,
             "currency": r.cur, "total": flt(total), "outstanding": flt(outstanding),
+            "paid": flt(total) - flt(outstanding),
+            "payments": _accrual_payments(r.vn),
             "linkable": (not account) or (r.acc == account),
         })
     return out
+
+
+def _accrual_payments(journal_entry):
+    """Shu nachisleniyaga bog'langan to'lovlar — Kassa raqami bilan.
+
+    Operator Payment Entry emas, Kassa bilan ishlaydi; shuning uchun mumkin
+    bo'lsa Kassa raqami ko'rsatiladi.
+    """
+    rows = frappe.db.sql("""
+        SELECT ple.voucher_no pe, ABS(ple.amount_in_account_currency) amt,
+               pe.posting_date d, pe.reference_no kassa
+        FROM `tabPayment Ledger Entry` ple
+        LEFT JOIN `tabPayment Entry` pe ON pe.name = ple.voucher_no
+        WHERE ple.against_voucher_no = %s AND ple.delinked = 0
+          AND ple.voucher_no != %s
+        ORDER BY pe.posting_date
+    """, (journal_entry, journal_entry), as_dict=True)
+    return [{
+        "payment_entry": r.pe,
+        "kassa": r.kassa if (r.kassa and frappe.db.exists("Kassa", r.kassa)) else None,
+        "amount": flt(r.amt),
+        "date": str(r.d) if r.d else "",
+    } for r in rows]
+
+
+@frappe.whitelist()
+def get_kassa_payment_links(kassa):
+    """Submit bo'lgan Kassa to'lovi qaysi nachisleniyalarga bog'langani.
+
+    Kassa formasida "bu oy uchun nachisleniya" o'rniga — hujjat submit bo'lgach
+    ALLAQACHON bog'langanini ko'rsatish uchun. Avans keyinroq (nachisleniya
+    yozilganda) ulansa ham shu yerda ko'rinadi.
+    """
+    if not kassa:
+        return {"payment_entry": None, "links": []}
+    pe_name = frappe.db.get_value(
+        "Payment Entry", {"reference_no": kassa, "docstatus": 1}, "name")
+    if not pe_name:
+        return {"payment_entry": None, "links": []}
+
+    links = []
+    # 1) Payment Entry'ning references jadvali. Keyinroq Payment Reconciliation
+    #    orqali ulangan bog'lanishlar ham shu yerga tushadi, shuning uchun
+    #    "qachon bog'landi" degan farq ishonchli emas — ko'rsatilmaydi.
+    for r in frappe.get_all(
+            "Payment Entry Reference",
+            filters={"parent": pe_name, "reference_doctype": "Journal Entry"},
+            fields=["reference_name", "allocated_amount"]):
+        links.append({"journal_entry": r.reference_name,
+                      "amount": flt(r.allocated_amount)})
+
+    # 2) Keyinroq Payment Reconciliation orqali ulanganlar (references'ga tushmaydi)
+    seen = {x["journal_entry"] for x in links}
+    for r in frappe.db.sql("""
+            SELECT ple.against_voucher_no je, ABS(ple.amount_in_account_currency) amt
+            FROM `tabPayment Ledger Entry` ple
+            WHERE ple.voucher_no = %s AND ple.delinked = 0
+              AND ple.against_voucher_no != ple.voucher_no
+        """, pe_name, as_dict=True):
+        if r.je and r.je not in seen:
+            links.append({"journal_entry": r.je, "amount": flt(r.amt)})
+            seen.add(r.je)
+
+    currency = frappe.db.get_value("Payment Entry", pe_name, "paid_to_account_currency")
+    return {"payment_entry": pe_name, "links": links, "currency": currency}

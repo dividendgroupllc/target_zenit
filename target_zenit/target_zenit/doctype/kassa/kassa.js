@@ -889,6 +889,9 @@ function load_employee_accrual(frm) {
     if (frm.doc.party_type !== "Employee" || !frm.doc.party || !frm.doc.payment_month) {
         show(""); return;
     }
+    // Submit bo'lgan hujjatda — "qanday nachisleniya bor" emas, ALLAQACHON
+    // nimaga bog'langani ko'rsatiladi (avans keyin ulansa ham shu yerda chiqadi).
+    if (frm.doc.docstatus === 1) { show_payment_links(frm, show); return; }
     show(`<div class="text-muted small">Nachisleniya tekshirilyapti…</div>`);
     frappe.call({
         method: "target_zenit.target_zenit.doctype.kassa.kassa.get_employee_accruals",
@@ -906,20 +909,41 @@ function load_employee_accrual(frm) {
         let html = "";
 
         if (ok.length) {
-            const rows = ok.map((a) => `<tr>
-                <td><a href="/app/journal-entry/${encodeURIComponent(a.journal_entry)}" target="_blank">${esc(a.journal_entry)}</a></td>
-                <td>${frappe.datetime.str_to_user(a.date)}</td>
-                <td class="text-right">${fmt(a.total)}</td>
-                <td class="text-right"><b>${fmt(a.outstanding)}</b></td>
-            </tr>`).join("");
-            const total = ok.reduce((n, a) => n + (a.outstanding || 0), 0);
+            // Har nachisleniya uchun: jami, to'langani (qaysi kassalar orqali), qoldig'i
+            const rows = ok.map((a) => {
+                const pays = (a.payments || []).map((p) => {
+                    const ref = p.kassa
+                        ? `<a href="/app/kassa/${encodeURIComponent(p.kassa)}" target="_blank">${esc(p.kassa)}</a>`
+                        : esc(p.payment_entry || "—");
+                    return `<div class="small text-muted">${ref}`
+                        + `${p.date ? " · " + frappe.datetime.str_to_user(p.date) : ""}`
+                        + ` · ${fmt(p.amount)}</div>`;
+                }).join("");
+                return `<tr>
+                    <td><a href="/app/journal-entry/${encodeURIComponent(a.journal_entry)}" target="_blank">${esc(a.journal_entry)}</a>
+                        <div class="small text-muted">${frappe.datetime.str_to_user(a.date)}</div></td>
+                    <td class="text-right">${fmt(a.total)}</td>
+                    <td class="text-right">${a.paid > 0 ? fmt(a.paid) : `<span class="text-muted">—</span>`}${pays}</td>
+                    <td class="text-right"><b>${fmt(a.outstanding)}</b></td>
+                </tr>`;
+            }).join("");
+            const tTotal = ok.reduce((n, a) => n + (a.total || 0), 0);
+            const tPaid = ok.reduce((n, a) => n + (a.paid || 0), 0);
+            const tLeft = ok.reduce((n, a) => n + (a.outstanding || 0), 0);
             html += `<div style="border:1px solid var(--border-color);border-radius:6px;padding:8px 10px">
                 <div class="small text-muted" style="margin-bottom:6px">Bu oy uchun nachisleniya — to'lov shunga bog'lanadi</div>
                 <table class="table table-bordered table-sm" style="margin:0;font-size:12px">
-                    <thead><tr><th>Hujjat</th><th>Sana</th><th class="text-right">Jami</th><th class="text-right">Qoldiq</th></tr></thead>
+                    <thead><tr><th>Nachisleniya</th><th class="text-right">Nachisleniya summasi</th>
+                        <th class="text-right">To'langan (qaysi kassadan)</th><th class="text-right">Qoldiq</th></tr></thead>
                     <tbody>${rows}</tbody>
+                    <tfoot><tr>
+                        <th>JAMI</th>
+                        <th class="text-right">${fmt(tTotal)}</th>
+                        <th class="text-right">${fmt(tPaid)}</th>
+                        <th class="text-right" style="color:var(--red-600)">${fmt(tLeft)}</th>
+                    </tr></tfoot>
                 </table>
-                <div class="small" style="margin-top:6px">Jami to'lanmagan: <b>${fmt(total)}</b></div>
+                <div class="small" style="margin-top:6px">To'lov <b>${esc(ok[0].account)}</b> hisobi orqali o'tadi</div>
             </div>`;
         }
 
@@ -945,4 +969,39 @@ function load_employee_accrual(frm) {
         }
         show(html);
     }).catch(() => show(`<div class="text-muted small">Nachisleniyani yuklab bo'lmadi.</div>`));
+}
+
+// Submit bo'lgan Kassa: to'lov qaysi nachisleniyalarga bog'langani.
+function show_payment_links(frm, show) {
+    show(`<div class="text-muted small">Bog'lanish tekshirilyapti…</div>`);
+    frappe.call({
+        method: "target_zenit.target_zenit.doctype.kassa.kassa.get_kassa_payment_links",
+        args: { kassa: frm.doc.name },
+    }).then((r) => {
+        const d = r.message || {};
+        const esc = frappe.utils.escape_html;
+        const fmt = (v) => format_currency(v, d.currency);
+        if (!d.links || !d.links.length) {
+            show(`<div class="alert alert-warning" style="padding:8px 10px;margin:0">
+                <b>Hali nachisleniyaga bog'lanmagan</b> — to'lov <b>avans</b> bo'lib turibdi.<br>
+                <span class="small">Shu oy uchun nachisleniya yozilganda avtomatik bog'lanadi
+                (nachisleniya to'lov bilan bir xil qarz hisobida bo'lishi kerak).</span>
+            </div>`);
+            return;
+        }
+        const rows = d.links.map((x) => `<tr>
+            <td><a href="/app/journal-entry/${encodeURIComponent(x.journal_entry)}" target="_blank">${esc(x.journal_entry)}</a></td>
+            <td class="text-right"><b>${fmt(x.amount)}</b></td>
+        </tr>`).join("");
+        const total = d.links.reduce((n, x) => n + (x.amount || 0), 0);
+        show(`<div style="border:1px solid var(--green-300);border-radius:6px;padding:8px 10px;background:var(--green-50)">
+            <div class="small" style="margin-bottom:6px"><b>✓ Nachisleniyaga bog'landi</b></div>
+            <table class="table table-bordered table-sm" style="margin:0;font-size:12px;background:var(--card-bg)">
+                <thead><tr><th>Nachisleniya</th><th class="text-right">Bog'langan summa</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div class="small" style="margin-top:6px">Jami bog'langan: <b>${fmt(total)}</b>
+                · to'lov: <a href="/app/payment-entry/${encodeURIComponent(d.payment_entry)}" target="_blank">${esc(d.payment_entry)}</a></div>
+        </div>`);
+    }).catch(() => show(`<div class="text-muted small">Bog'lanishni yuklab bo'lmadi.</div>`));
 }
