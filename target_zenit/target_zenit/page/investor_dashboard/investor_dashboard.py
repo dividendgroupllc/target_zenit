@@ -2234,70 +2234,59 @@ def _nach_group(party_type, party, gmap):
     return NACH_PT_LABELS.get(party_type, party_type)
 
 
-# Personal bo'limi uchun "qaysi oy uchun": hujjatdagi maydon, bo'lmasa sana oyi.
-PERS_MONTH_EXPR = (
-    "COALESCE(NULLIF(je.custom_payment_month, ''), NULLIF(pe.custom_payment_month, ''), "
-    "NULLIF(si.custom_payment_month, ''), DATE_FORMAT(ge.posting_date, '%%Y-%%m'))"
-)
-
-
 @frappe.whitelist()
 def get_personal(from_date=None, to_date=None, limit=500, months=None):
-    """Personal — barcha kontragentlar (xodim, o'quvchi/mijoz, ta'minotchi) kesimida:
-    kategoriya, oylik oklad (oxirgi nachisleniya), davr nachisleniyasi, davrda to'langan
-    va qarzdorlik.
+    """Personal — NACHISLENIYA asosida: kontragent, kategoriya, oklad, nachisleniya,
+    unga bog'langan to'lov va qoldiq.
 
-    Yo'nalish hisob turiga bog'liq:
-      Payable (biz qarzmiz — xodim/ta'minotchi):  nachisleniya = kredit, to'lov = debet
-      Receivable (bizga qarz — o'quvchi/mijoz):   nachisleniya = debet,  to'lov = kredit
-    Qarzdorlik — SHU DAVR farqi: nachisleniya minus to'langan (musbat = to'lanmagan
-    qoldi, manfiy = ortiqcha to'landi). Umumiy to'plangan qoldiq bu yerda emas,
-    "Qarzdorlik" bo'limida ko'riladi.
+    Davr filtri faqat NACHISLENIYAGA qo'llanadi. To'lov qachon qilinganidan qat'i
+    nazar, u bog'langan nachisleniyaning davrida hisoblanadi — iyul nachisleniyasi
+    sentyabrda to'lansa ham iyulda ko'rinadi.
 
-    `months` — "qaysi oy uchun" bo'yicha filtr (YYYY-MM ro'yxati). Berilsa davr
-    sanasi o'rniga aynan shu oylar olinadi (bir nechtasini birdan tanlash mumkin).
-    Qarzdorlik tanlangan oylar farqidan hisoblanadi."""
+    Manba — Payment Ledger Entry (ERPNext'ning qoldiq yuritish jadvali):
+      * nachisleniya qatori: voucher_no == against_voucher_no
+      * unga bog'langan to'lov: voucher_no != against_voucher_no (manfiy summa)
+    Qoldiq = shu nachisleniyaga tegishli barcha qatorlar yig'indisi.
+    """
     _guard()
     company = _default_company()
     ccy = _company_currency(company)
     f0, t0, _ = _resolve_range(from_date, to_date)
     limit = min(cint(limit) or 500, 2000)
 
-    # nachisleniya/to'lov tomonini hisob turiga qarab tanlaydigan ifodalar
-    nach_expr = ("CASE WHEN a.account_type='Payable' THEN ge.credit_in_account_currency "
-                 "ELSE ge.debit_in_account_currency END")
-    paid_expr = ("CASE WHEN a.account_type='Payable' THEN ge.debit_in_account_currency "
-                 "ELSE ge.credit_in_account_currency END")
-
-    # Oy filtri: tanlangan oylar bo'lsa aynan shular, aks holda davr sanasining oylari.
+    # Oy filtri: tanlangan oylar bo'lsa shular, aks holda davr sanasi —
+    # ikkalasi ham NACHISLENIYA sanasiga qo'llanadi.
     picked_months = [m for m in _as_list(months) if re.fullmatch(r"\d{4}-\d{2}", str(m))]
-    params = {"t": str(t0), "company": company}
+    params = {"company": company}
     if picked_months:
-        month_cond = f"{PERS_MONTH_EXPR} IN %(months)s"
+        acc_cond = "DATE_FORMAT(ple0.posting_date, '%%Y-%%m') IN %(months)s"
         params["months"] = tuple(picked_months)
     else:
-        month_cond = f"{PERS_MONTH_EXPR} BETWEEN %(fm)s AND %(tm)s"
-        params["fm"], params["tm"] = str(f0)[:7], str(t0)[:7]
+        acc_cond = "ple0.posting_date BETWEEN %(f)s AND %(t)s"
+        params["f"], params["t"] = str(f0), str(t0)
 
-    # Davr — "qaysi oy uchun" bo'yicha: sentyabrda qilingan lekin avgust uchun
-    # to'lov/nachisleniya avgust davrida hisoblanadi. Qarzdorlik esa to'plangan
-    # qoldiq bo'lgani uchun sana bo'yicha (davr oxiriga) qoladi.
+    # ple0 — NACHISLENIYANING o'z qatori (davr shu bo'yicha filtrlanadi),
+    # ple  — o'sha nachisleniyaga tegishli barcha qatorlar (o'zi + to'lovlar).
+    #
+    # Muhim: bog'lanmagan avans to'lovi ham o'ziga ishora qiluvchi qator yaratadi,
+    # lekin uning summasi MANFIY. Nachisleniya esa musbat — shu bilan ajratiladi,
+    # aks holda avans nachisleniyadan ayrilib, summa buziladi.
     rows = frappe.db.sql(f"""
-        SELECT ge.party_type pt, ge.party, ge.account_currency cur,
-               SUM(CASE WHEN {month_cond} THEN {nach_expr} ELSE 0 END) nach,
-               SUM(CASE WHEN {month_cond} THEN {paid_expr} ELSE 0 END) paid
-        FROM `tabGL Entry` ge
-        JOIN `tabAccount` a ON a.name = ge.account
-             AND a.account_type IN ('Payable', 'Receivable') AND a.company = %(company)s
-        LEFT JOIN `tabJournal Entry` je
-               ON je.name = ge.voucher_no AND ge.voucher_type = 'Journal Entry'
-        LEFT JOIN `tabPayment Entry` pe
-               ON pe.name = ge.voucher_no AND ge.voucher_type = 'Payment Entry'
-        LEFT JOIN `tabSales Invoice` si
-               ON si.name = ge.voucher_no AND ge.voucher_type = 'Sales Invoice'
-        WHERE ge.is_cancelled = 0 AND ge.posting_date <= %(t)s
-          AND IFNULL(ge.party, '') != '' {_co(company, 'ge')}
-        GROUP BY ge.party_type, ge.party, ge.account_currency
+        SELECT ple.party_type pt, ple.party, ple.account_currency cur,
+               SUM(CASE WHEN ple.voucher_no = ple.against_voucher_no
+                         AND ple.amount_in_account_currency > 0
+                        THEN ple.amount_in_account_currency ELSE 0 END) nach,
+               SUM(CASE WHEN ple.voucher_no != ple.against_voucher_no
+                        THEN -ple.amount_in_account_currency ELSE 0 END) paid
+        FROM `tabPayment Ledger Entry` ple
+        JOIN `tabPayment Ledger Entry` ple0
+             ON ple0.against_voucher_no = ple.against_voucher_no
+            AND ple0.voucher_no = ple0.against_voucher_no
+            AND ple0.amount_in_account_currency > 0
+            AND ple0.party = ple.party AND ple0.delinked = 0
+        WHERE ple.delinked = 0 AND ple.company = %(company)s
+          AND IFNULL(ple.party, '') != '' AND {acc_cond}
+        GROUP BY ple.party_type, ple.party, ple.account_currency
     """, params, as_dict=True)
 
     # "Oylik oklad" — buxgalteriyadan emas, buxgalter Excel vedomostidan
@@ -2315,11 +2304,9 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None):
     gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows])
     out, cats, tot = [], {}, defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "debt": 0.0})
     for r in rows:
-        nach, paid = flt(r.nach), flt(r.paid)
-        # Qarzdorlik — SHU DAVR uchun: nachisleniya minus to'langan.
-        # To'plangan umumiy qoldiq bu yerda ko'rsatilmaydi — u "Qarzdorlik"
-        # bo'limida alohida yuritiladi.
-        debt = nach - paid
+        # Payable'da nachisleniya musbat, Receivable'da ham musbat chiqadi
+        nach, paid = abs(flt(r.nach)), abs(flt(r.paid))
+        debt = nach - paid          # shu nachisleniyalardan qancha to'lanmagan
         if abs(nach) < 0.005 and abs(paid) < 0.005:
             continue
         cur = r.cur or ccy
@@ -2341,21 +2328,16 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None):
         t["paid"] += paid
         t["debt"] += debt
 
-    # Filtr menyusi uchun mavjud oylar (davrdan qat'i nazar — istalgan oyni tanlash mumkin)
+    # Filtr menyusi uchun mavjud oylar — NACHISLENIYA sanasi bo'yicha
     month_list = []
     try:
-        for m in frappe.db.sql(f"""
-            SELECT {PERS_MONTH_EXPR} oy, COUNT(*) n
-            FROM `tabGL Entry` ge
-            JOIN `tabAccount` a ON a.name = ge.account
-                 AND a.account_type IN ('Payable', 'Receivable') AND a.company = %(company)s
-            LEFT JOIN `tabJournal Entry` je
-                   ON je.name = ge.voucher_no AND ge.voucher_type = 'Journal Entry'
-            LEFT JOIN `tabPayment Entry` pe
-                   ON pe.name = ge.voucher_no AND ge.voucher_type = 'Payment Entry'
-            LEFT JOIN `tabSales Invoice` si
-                   ON si.name = ge.voucher_no AND ge.voucher_type = 'Sales Invoice'
-            WHERE ge.is_cancelled = 0 AND IFNULL(ge.party, '') != '' {_co(company, 'ge')}
+        for m in frappe.db.sql("""
+            SELECT DATE_FORMAT(ple.posting_date, '%%Y-%%m') oy, COUNT(*) n
+            FROM `tabPayment Ledger Entry` ple
+            WHERE ple.delinked = 0 AND ple.company = %(company)s
+              AND ple.voucher_no = ple.against_voucher_no
+              AND ple.amount_in_account_currency > 0
+              AND IFNULL(ple.party, '') != ''
             GROUP BY oy ORDER BY oy DESC
         """, {"company": company}, as_dict=True):
             if m.oy:

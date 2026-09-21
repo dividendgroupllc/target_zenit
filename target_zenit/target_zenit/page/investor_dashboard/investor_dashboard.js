@@ -1635,7 +1635,7 @@ class TZInvestorDashboard {
 		let h = this.sec("Personal", `${this.data.meta.period.label} · xodimlar, o'quvchilar va ta'minotchilar bir jadvalda`);
 		h += this.card(`
 			<div class="hd"><div><h3>Kontragentlar kesimida</h3>
-				<div class="meta">Oklad — buxgalter oylik vedomostidan (Excel) · nachisleniya, to'langan va farq — tanlangan oy(lar) bo'yicha · umumiy qarzdorlik «Qarzdorlik» bo'limida${(this.personalMonths || []).length ? ` · <b>${this.personalMonths.map((m) => this.esc(this.monthLabel(m))).join(", ")}</b>` : ` · davr: ${this.esc(this.data.meta.period.label)}`}</div></div>
+				<div class="meta">Oklad — buxgalter oylik vedomostidan (Excel) · davr NACHISLENIYA sanasi bo'yicha · to'langan — o'sha nachisleniyaga bog'langan to'lovlar (qachon to'langanidan qat'i nazar) · umumiy qarzdorlik «Qarzdorlik» bo'limida${(this.personalMonths || []).length ? ` · <b>${this.personalMonths.map((m) => this.esc(this.monthLabel(m))).join(", ")}</b>` : ` · davr: ${this.esc(this.data.meta.period.label)}`}</div></div>
 				<div class="kt-filter tz-pers-filter-box">${this.personalFilterHtml()}</div></div>
 			<div class="tz-pers-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb");
 		setTimeout(() => { if (this.personal) this.paintPersonal(); else this.loadPersonal(); }, 0);
@@ -1699,7 +1699,7 @@ class TZInvestorDashboard {
 			if (Math.abs(v) < 0.5) return `<span class="muted-s">—</span>`;
 			const pos = v > 0;
 			return `<span class="num" style="color:${pos ? "var(--bad-ink)" : "var(--good-ink)"};font-weight:700;white-space:nowrap"
-				data-tt="${pos ? "To'lanmay qolgan" : "Ortiqcha to'langan"}: ${this.fmt(Math.abs(v))} ${this.esc(cur)} (shu davr uchun)">${this.mAmt(v, cur)} <small>${this.ccyLabel(cur)}</small></span>`;
+				data-tt="${pos ? "Nachisleniyadan to'lanmay qolgan" : "Nachisleniyadan ortiq to'langan"}: ${this.fmt(Math.abs(v))} ${this.esc(cur)}">${this.mAmt(v, cur)} <small>${this.ccyLabel(cur)}</small></span>`;
 		};
 		const amt = (v, cur, color) => (Math.abs(v) > 0.5
 			? `<span class="num" style="${color ? `color:${color};` : ""}white-space:nowrap">${this.mAmt(v, cur)} <small>${this.ccyLabel(cur)}</small></span>`
@@ -1726,11 +1726,11 @@ class TZInvestorDashboard {
 		const tot = Object.keys(ftot).map((c) => `<div class="ov-total num" data-tt="${this.esc(c)}">
 			<span style="font-size:12px;color:var(--muted)">${this.ccyLabel(c)}</span>
 			nach: <b>${this.mAmt(ftot[c].nach, c)}</b> · to'landi: <b style="color:var(--good-ink)">${this.mAmt(ftot[c].paid, c)}</b>
-			· farq: <b style="color:${ftot[c].debt > 0 ? "var(--bad-ink)" : "var(--good-ink)"}">${this.mAmt(ftot[c].debt, c)}</b></div>`).join("");
+			· qoldiq: <b style="color:${ftot[c].debt > 0 ? "var(--bad-ink)" : "var(--good-ink)"}">${this.mAmt(ftot[c].debt, c)}</b></div>`).join("");
 		return `<div class="ov-totals">${tot}<div class="muted-s">${this.fmt(shown)} ta kontragent</div></div>
 			<input type="text" class="tz-ovstud-filter tz-pers-search" placeholder="Ism bo'yicha qidirish…" value="${this.esc(q)}">
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>F.I.Sh</th><th>Kategoriyasi</th><th class="r">Oylik okladi</th><th class="r">Nachisleniya summasi</th><th class="r">Oyda to'langan</th><th class="r">Farq (nach − to'langan)</th></tr></thead>
+				<thead><tr><th>F.I.Sh</th><th>Kategoriyasi</th><th class="r">Oylik okladi</th><th class="r">Nachisleniya summasi</th><th class="r">To'langan</th><th class="r">Qoldiq</th></tr></thead>
 				<tbody>${rows}</tbody>
 			</table></div>
 			<div class="kt-count">${d.truncated ? `Eng katta qarzdorlikdagi ${this.fmt((d.rows || []).length)} tasi ko'rsatildi (${this.fmt(d.truncated)} ta sig'madi).` : ""}</div>`;
