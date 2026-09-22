@@ -45,7 +45,8 @@ class TZInvestorDashboard {
 		this.personal = null;       // Personal bo'limi ma'lumoti (kesh)
 		this.personalCats = [];     // kategoriya filtri (bo'sh = hammasi)
 		this.personalQ = "";        // ism bo'yicha qidiruv
-		this.personalMonths = [];   // "qaysi oy uchun" filtri (bo'sh = davr oylari)
+		this.personalMonths = []; this.personalNach = [];   // "qaysi oy uchun" filtri (bo'sh = davr oylari)
+		this.personalNach = [];     // nachisleniya holati: "qilingan" / "qilinmagan"
 		this.cfAccTx = null;        // o'sha hisob harakatlari (kesh)
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
@@ -212,7 +213,7 @@ class TZInvestorDashboard {
 			const k = String($(e.currentTarget).attr("data-mselbtn"));
 			this.mselOpen = (this.mselOpen === k) ? null : k;
 			if (k === "acc" || k === "op") this.paintCashFilter();
-			else if (k === "perscat" || k === "persmonth") this.paintPersonalFilter();
+			else if (k === "perscat" || k === "persmonth" || k === "persnach") this.paintPersonalFilter();
 			else this.paintNachFilter();
 		});
 		body.on("click", ".tz-msel-menu", (e) => e.stopPropagation());
@@ -386,7 +387,7 @@ class TZInvestorDashboard {
 		this.ovCash = null;
 		this.cfAcc = null; this.cfAccTx = null;
 		this.personal = null; this.personalCats = []; this.personalQ = "";
-		this.personalMonths = [];
+		this.personalMonths = []; this.personalNach = [];
 		this._ovBsAuto = null;
 		this.nach = null;
 		this.nachClearFilters(); this.nachCcy = null; this.nachQ = "";
@@ -816,14 +817,14 @@ class TZInvestorDashboard {
 	// Ko'p tanlovli filtrlar reestri: kalit -> holat massivi nomi va qayta chizish
 	MSEL = { acc: "ovCashAccs", op: "ovCashOps", nachgrp: "nachGroups", nachcat: "nachCats",
 		nachacct: "nachAccts", nachsinf: "nachSinfs", nachpos: "nachPoss", nachdkind: "nachDkinds",
-		perscat: "personalCats", persmonth: "personalMonths" };
+		perscat: "personalCats", persmonth: "personalMonths", persnach: "personalNach" };
 
 	mselList(key) { return this[this.MSEL[key]] || []; }
 
 	mselApply(key) {
 		if (key === "acc" || key === "op") { this.paintCashFilter(); this.loadOvCash(true); }
 		else if (key === "perscat") { this.paintPersonal(); }
-		else if (key === "persmonth") { this.loadPersonal(); }
+		else if (key === "persmonth" || key === "persnach") { this.loadPersonal(); }
 		else { this.paintNach(); }
 	}
 
@@ -1656,7 +1657,12 @@ class TZInvestorDashboard {
 			.map((m) => ({ value: m.label, label: `${this.monthLabel(m.label)} (${m.count})` }));
 		const cats = (p.cats || [])
 			.map((c) => ({ value: c.label, label: `${c.label} (${c.count})` }));
+		const nachOpts = [
+			{ value: "qilingan", label: "Nachisleniya qilingan" },
+			{ value: "qilinmagan", label: "Nachisleniya qilinmagan" },
+		];
 		return this.mselHtml("persmonth", "Oy", months, this.personalMonths)
+			+ this.mselHtml("persnach", "Nachisleniya", nachOpts, this.personalNach)
 			+ this.mselHtml("perscat", "Kategoriya", cats, this.personalCats);
 	}
 
@@ -1673,6 +1679,7 @@ class TZInvestorDashboard {
 			args: {
 				from_date: this.state.from_date, to_date: this.state.to_date,
 				months: JSON.stringify(this.personalMonths || []),
+				nach_status: JSON.stringify(this.personalNach || []),
 			},
 		}).then((r) => { this.personal = r.message || null; this.paintPersonal(); })
 			.catch(() => body.html(`<div class="empty-hint">Personal ma'lumotini yuklab bo'lmadi.</div>`));
@@ -1695,11 +1702,14 @@ class TZInvestorDashboard {
 		if (!d) return `<div class="empty-hint">Ma'lumot yo'q.</div>`;
 		const q = this.personalQ || "";
 		// qarzdorlik: musbat — qarz (qizil), manfiy — avans/ortiqcha to'lov (yashil)
+		// Qoldiq: musbat — to'lanmay qolgan (qizil). Manfiy bo'lsa nachisleniyadan
+		// ORTIQ to'langan — "+" bilan yashil ko'rsatiladi (avans/ortiqcha).
 		const debtCell = (v, cur) => {
 			if (Math.abs(v) < 0.5) return `<span class="muted-s">—</span>`;
-			const pos = v > 0;
-			return `<span class="num" style="color:${pos ? "var(--bad-ink)" : "var(--good-ink)"};font-weight:700;white-space:nowrap"
-				data-tt="${pos ? "Nachisleniyadan to'lanmay qolgan" : "Nachisleniyadan ortiq to'langan"}: ${this.fmt(Math.abs(v))} ${this.esc(cur)}">${this.mAmt(v, cur)} <small>${this.ccyLabel(cur)}</small></span>`;
+			const over = v < 0;
+			const txt = over ? "+" + this.mAmt(Math.abs(v), cur) : this.mAmt(v, cur);
+			return `<span class="num" style="color:${over ? "var(--good-ink)" : "var(--bad-ink)"};font-weight:700;white-space:nowrap"
+				data-tt="${over ? "Nachisleniyadan ORTIQ to'langan (avans)" : "Nachisleniyadan to'lanmay qolgan"}: ${this.fmt(Math.abs(v))} ${this.esc(cur)}">${txt} <small>${this.ccyLabel(cur)}</small></span>`;
 		};
 		const amt = (v, cur, color) => (Math.abs(v) > 0.5
 			? `<span class="num" style="${color ? `color:${color};` : ""}white-space:nowrap">${this.mAmt(v, cur)} <small>${this.ccyLabel(cur)}</small></span>`
@@ -1717,8 +1727,8 @@ class TZInvestorDashboard {
 				<td class="ell" data-tt="${this.esc(r.name)}">${this.esc(r.name)}</td>
 				<td class="ell">${this.esc(r.category)}<div class="muted-s">${this.esc(r.pt_label)}</div></td>
 				<td class="r">${amt(r.oklad, r.currency)}${r.rejim ? `<div class="muted-s">${this.fmt(r.kun)}/${this.fmt(r.rejim)} kun</div>` : ""}</td>
-				<td class="r">${amt(r.nach, r.currency)}</td>
-				<td class="r">${amt(r.paid, r.currency, "var(--good-ink)")}</td>
+				<td class="r">${r.no_nach ? `<span class="muted-s" data-tt="Bu davrda nachisleniya yozilmagan">nachisleniya yo'q</span>` : amt(r.nach, r.currency)}</td>
+				<td class="r">${amt(r.paid, r.currency, "var(--good-ink)")}${r.advance > 0.5 ? `<div class="muted-s" data-tt="Nachisleniyaga bog'lanmagan ortiqcha to'lov">shundan ortiqcha: ${this.fmt(r.advance)}</div>` : ""}</td>
 				<td class="r">${debtCell(r.debt, r.currency)}</td>
 			</tr>`;
 		});
@@ -1726,7 +1736,7 @@ class TZInvestorDashboard {
 		const tot = Object.keys(ftot).map((c) => `<div class="ov-total num" data-tt="${this.esc(c)}">
 			<span style="font-size:12px;color:var(--muted)">${this.ccyLabel(c)}</span>
 			nach: <b>${this.mAmt(ftot[c].nach, c)}</b> · to'landi: <b style="color:var(--good-ink)">${this.mAmt(ftot[c].paid, c)}</b>
-			· qoldiq: <b style="color:${ftot[c].debt > 0 ? "var(--bad-ink)" : "var(--good-ink)"}">${this.mAmt(ftot[c].debt, c)}</b></div>`).join("");
+			· qoldiq: <b style="color:${ftot[c].debt > 0 ? "var(--bad-ink)" : "var(--good-ink)"}">${ftot[c].debt < 0 ? "+" + this.mAmt(Math.abs(ftot[c].debt), c) : this.mAmt(ftot[c].debt, c)}</b></div>`).join("");
 		return `<div class="ov-totals">${tot}<div class="muted-s">${this.fmt(shown)} ta kontragent</div></div>
 			<input type="text" class="tz-ovstud-filter tz-pers-search" placeholder="Ism bo'yicha qidirish…" value="${this.esc(q)}">
 			<div class="tbl-wrap"><table>

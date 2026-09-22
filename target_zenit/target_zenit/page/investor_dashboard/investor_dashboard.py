@@ -2235,7 +2235,7 @@ def _nach_group(party_type, party, gmap):
 
 
 @frappe.whitelist()
-def get_personal(from_date=None, to_date=None, limit=500, months=None):
+def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_status=None):
     """Personal — NACHISLENIYA asosida: kontragent, kategoriya, oklad, nachisleniya,
     unga bog'langan to'lov va qoldiq.
 
@@ -2301,15 +2301,98 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None):
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: oklad map")
         okmap, ved_name, _norm_name = {}, None, lambda v: ""
 
+    # ── Ortiqcha to'lov (bog'lanmagan avans) ────────────────────────────────
+    # ERPNext to'lovni nachisleniya summasidan ortiq taqsimlamaydi: ortiqchasi
+    # "unallocated" bo'lib, o'ziga ishora qiluvchi MANFIY qator bo'lib qoladi.
+    # U hech qaysi nachisleniyaga tegishli emas, shuning uchun davrga to'lov
+    # oyidan (Kassadagi "За какой месяц", bo'lmasa sanasidan) joylashtiriladi.
+    adv_params = {"company": company}
+    if picked_months:
+        adv_cond = ("COALESCE(NULLIF(pe.custom_payment_month, ''), "
+                    "DATE_FORMAT(ple.posting_date, '%%Y-%%m')) IN %(months)s")
+        adv_params["months"] = tuple(picked_months)
+    else:
+        adv_cond = ("COALESCE(NULLIF(pe.custom_payment_month, ''), "
+                    "DATE_FORMAT(ple.posting_date, '%%Y-%%m')) BETWEEN %(fm)s AND %(tm)s")
+        adv_params["fm"], adv_params["tm"] = str(f0)[:7], str(t0)[:7]
+
+    adv_map = {}
+    try:
+        for a in frappe.db.sql(f"""
+            SELECT ple.party_type pt, ple.party, ple.account_currency cur,
+                   SUM(-ple.amount_in_account_currency) adv
+            FROM `tabPayment Ledger Entry` ple
+            JOIN `tabPayment Entry` pe ON pe.name = ple.voucher_no
+            WHERE ple.delinked = 0 AND ple.company = %(company)s
+              AND ple.voucher_type = 'Payment Entry'
+              AND ple.voucher_no = ple.against_voucher_no
+              AND ple.amount_in_account_currency < 0
+              AND IFNULL(ple.party, '') != '' AND {adv_cond}
+            GROUP BY ple.party_type, ple.party, ple.account_currency
+        """, adv_params, as_dict=True):
+            adv_map[(a.pt, a.party, a.cur)] = flt(a.adv)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: personal advances")
+
+    # nachisleniyasi yo'q, faqat avansi bor kontragentlar ham ro'yxatga tushsin
+    known = {(r.pt, r.party, r.cur) for r in rows}
+    for key in adv_map:
+        if key not in known:
+            rows.append(frappe._dict({"pt": key[0], "party": key[1], "cur": key[2],
+                                      "nach": 0, "paid": 0}))
+
+    # ── "Nachisleniya qilinmaganlar" ────────────────────────────────────────
+    # Tanlangan davrda nachisleniyasi YO'Q kontragentlar. Ro'yxat: ilgari
+    # nachisleniya olgan kontragentlar + barcha faol xodimlar (kimga yozish
+    # esdan chiqqanini topish uchun).
+    picked_status = [str(x) for x in _as_list(nach_status)]
+    want_yes = (not picked_status) or ("qilingan" in picked_status)
+    want_no = "qilinmagan" in picked_status
+
+    has_nach = {(r.pt, r.party) for r in rows if abs(flt(r.nach)) > 0.005}
+    missing = []
+    if want_no:
+        universe = {}
+        try:
+            for u in frappe.db.sql("""
+                SELECT DISTINCT ple.party_type pt, ple.party, ple.account_currency cur
+                FROM `tabPayment Ledger Entry` ple
+                WHERE ple.delinked = 0 AND ple.company = %(company)s
+                  AND ple.voucher_no = ple.against_voucher_no
+                  AND ple.amount_in_account_currency > 0
+                  AND IFNULL(ple.party, '') != ''
+            """, {"company": company}, as_dict=True):
+                universe[(u.pt, u.party)] = u.cur
+            for e in frappe.get_all("Employee", filters={"status": "Active"}, pluck="name"):
+                universe.setdefault(("Employee", e), None)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "investor_dashboard: personal missing")
+
+        for (pt, party), cur in universe.items():
+            if (pt, party) in has_nach:
+                continue
+            missing.append(frappe._dict({"pt": pt, "party": party, "cur": cur or ccy,
+                                         "nach": 0, "paid": 0, "_missing": 1}))
+
+    if not want_yes:
+        rows = []                       # faqat "qilinmaganlar" so'ralgan
+    elif "qilingan" in picked_status:
+        # aniq "qilingan" tanlansa — faqat nachisleniyasi borlar
+        rows = [r for r in rows if abs(flt(r.nach)) > 0.005]
+    rows = list(rows) + missing
+
     gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows])
     out, cats, tot = [], {}, defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "debt": 0.0})
     for r in rows:
         # Payable'da nachisleniya musbat, Receivable'da ham musbat chiqadi
         nach, paid = abs(flt(r.nach)), abs(flt(r.paid))
-        debt = nach - paid          # shu nachisleniyalardan qancha to'lanmagan
-        if abs(nach) < 0.005 and abs(paid) < 0.005:
+        cur0 = r.cur or ccy
+        advance = flt(adv_map.get((r.pt, r.party, cur0)) or 0)   # ortiqcha to'lov
+        paid += advance                      # jami to'langan: bog'langan + ortiqcha
+        debt = nach - paid                   # manfiy bo'lsa — ortiqcha to'langan
+        if abs(nach) < 0.005 and abs(paid) < 0.005 and not r.get("_missing"):
             continue
-        cur = r.cur or ccy
+        cur = cur0
         cat = _nach_group(r.pt, r.party, gmap)
         pname = _party_name(r.pt, r.party)
         ok = okmap.get(r.party) or okmap.get("name::" + _norm_name(pname)) or {}
@@ -2319,7 +2402,8 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None):
             "category": cat, "pt_label": NACH_PT_LABELS.get(r.pt, r.pt or "—"),
             "oklad": flt(ok.get("oklad") or 0),
             "kun": flt(ok.get("kun") or 0), "rejim": flt(ok.get("rejim") or 0),
-            "nach": nach, "paid": paid, "debt": debt, "currency": cur,
+            "nach": nach, "paid": paid, "debt": debt, "advance": advance, "currency": cur,
+            "no_nach": 1 if abs(nach) < 0.005 else 0,
         })
         c = cats.setdefault(cat, {"label": cat, "count": 0})
         c["count"] += 1
@@ -2353,6 +2437,7 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None):
     return {"rows": out[:limit], "cats": cat_list, "totals": totals, "currency": ccy,
             "count": len(out), "truncated": truncated, "vedomost": ved_name,
             "months": month_list, "picked_months": picked_months,
+            "nach_status": picked_status,
             "from_date": str(f0), "to_date": str(t0)}
 
 
