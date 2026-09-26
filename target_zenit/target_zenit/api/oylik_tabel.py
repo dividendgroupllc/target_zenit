@@ -112,8 +112,11 @@ def _kompaniya():
     return frappe.defaults.get_global_default("company")
 
 
-def _valyuta(company):
-    return frappe.db.get_value("Company", company, "default_currency") or "UZS"
+def _valyuta(company=None):
+    """Maosh hujjatlari (SSA, Additional Salary, struktura) DOIM UZS'da.
+    Kompaniya valyutasi USD — uni ishlatmaymiz: maoshlar so'mda kelishilgan,
+    Kassa/nachisleniya oqimi ham o'z UZS logikasida ishlayveradi."""
+    return "UZS"
 
 
 def _bonus_komponent_ta_minla():
@@ -174,6 +177,89 @@ def _kassa_taklif(emp_ids, oy_boshi):
         if r.party not in eng_oxirgi or r.oy > eng_oxirgi[r.party][0]:
             eng_oxirgi[r.party] = (r.oy, flt(r.summa))
     return {p: v[1] for p, v in eng_oxirgi.items()}
+
+
+def _oylik_maydon_yoz(xodim, summa):
+    """SSA yozilganda Employee.custom_oylik ("Oylik ish haqi (shartnoma)",
+    Overview tabida) ham sinxron yangilanadi (db.set_value — hook qayta
+    ishga tushmaydi)."""
+    frappe.db.set_value("Employee", xodim, "custom_oylik", flt(summa), update_modified=False)
+
+
+# ---------------------------------------------------------------- Employee hook
+
+def employee_oylik_ssa(doc, method=None):
+    """Employee saqlanganda: custom_oylik ("Oylik ish haqi (shartnoma)",
+    Overview tabida) to'ldirilgan/o'zgartirilgan bo'lsa — Salary Structure
+    Assignment avto-yaratiladi.
+
+    from_date = saqlangan kun (bugun), xodim keyinroq ishga kirsa — kirish
+    sanasi. Tabel va payroll SSA'dan o'qiyveradi."""
+    if doc.flags.get("tabel_ssa_yaratilmasin"):
+        return
+    summa = flt(doc.get("custom_oylik"))
+    if summa <= 0:
+        return
+
+    old = doc.get_doc_before_save()
+    if old is not None and flt(old.get("custom_oylik")) == summa:
+        return  # oylik o'zgarmagan — boshqa maydon saqlangan
+
+    # amaldagi eng oxirgi SSA allaqachon shu summa bo'lsa — takror yozmaymiz
+    joriy = frappe.get_all(
+        "Salary Structure Assignment",
+        filters={"employee": doc.name, "docstatus": 1},
+        fields=["base"],
+        order_by="from_date desc",
+        limit=1,
+    )
+    if joriy and flt(joriy[0].base) == summa:
+        return
+
+    _bonus_komponent_ta_minla()
+    _struktura_ta_minla()
+
+    from_date = getdate(nowdate())
+    if doc.date_of_joining and getdate(doc.date_of_joining) > from_date:
+        from_date = getdate(doc.date_of_joining)
+
+    # yangi qiymat shu sanadan g'olib bo'lishi uchun shu (va undan keyingi)
+    # from_date'li eski SSA'lar bekor qilinadi — tabel set_oylik bilan
+    # (from_date = oy boshi) aralashganda eski yozuv "yashirib" qo'ymasin
+    eski = None
+    for r in frappe.get_all(
+        "Salary Structure Assignment",
+        filters={"employee": doc.name, "from_date": [">=", from_date], "docstatus": 1},
+        pluck="name",
+    ):
+        s = frappe.get_doc("Salary Structure Assignment", r)
+        eski = flt(s.base)
+        s.flags.ignore_permissions = True
+        s.cancel()
+
+    company = doc.company or _kompaniya()
+    ssa = frappe.get_doc({
+        "doctype": "Salary Structure Assignment",
+        "employee": doc.name,
+        "salary_structure": STRUKTURA,
+        "from_date": from_date,
+        "company": company,
+        "currency": _valyuta(company),
+        "base": summa,
+    })
+    ssa.flags.ignore_permissions = True
+    ssa.insert(ignore_permissions=True)
+    ssa.submit()
+
+    _jurnal(doc.name, doc.employee_name, f"{from_date.year}-{from_date.month:02d}",
+            "Oylik summa (Employee'dan)",
+            str(eski) if eski is not None else "", str(summa))
+    frappe.msgprint(
+        _("Oylik {0} so'm — {1} dan amal qiladi (Salary Structure Assignment yaratildi)").format(
+            frappe.format_value(summa, {"fieldtype": "Currency"}), from_date
+        ),
+        alert=True, indicator="green",
+    )
 
 
 # ---------------------------------------------------------------- asosiy hisob
@@ -428,10 +514,12 @@ def set_oylik(xodim, yil, oy, summa):
     if emp.date_of_joining and getdate(emp.date_of_joining) > oy_boshi:
         from_date = getdate(emp.date_of_joining)
 
+    # shu sanadan keyingi eski SSA'lar ham bekor qilinadi — Employee hook'i
+    # (from_date = bugun) yozgan yozuv yangi qiymatni "yashirib" qo'ymasin
     eski = None
     for r in frappe.get_all(
         "Salary Structure Assignment",
-        filters={"employee": xodim, "from_date": from_date, "docstatus": 1},
+        filters={"employee": xodim, "from_date": [">=", from_date], "docstatus": 1},
         pluck="name",
     ):
         doc = frappe.get_doc("Salary Structure Assignment", r)
@@ -452,6 +540,7 @@ def set_oylik(xodim, yil, oy, summa):
     doc.flags.ignore_permissions = True
     doc.insert(ignore_permissions=True)
     doc.submit()
+    _oylik_maydon_yoz(xodim, summa)
 
     _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Oylik summa",
             str(eski) if eski is not None else "", str(summa))
@@ -529,6 +618,7 @@ def set_bonus(xodim, yil, oy, summa):
         ssa.flags.ignore_permissions = True
         ssa.insert(ignore_permissions=True)
         ssa.submit()
+        _oylik_maydon_yoz(xodim, flt(taklif))
 
     mavjud = frappe.get_all(
         "Additional Salary",
@@ -630,6 +720,7 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
                     ssa.flags.ignore_permissions = True
                     ssa.insert(ignore_permissions=True)
                     ssa.submit()
+                    _oylik_maydon_yoz(emp, q["oylik"]["summa"])
 
             # 2) Belgilanmagan kunlar 0 (kelmagan) — yozuv yaratilmaydi,
             # hisobda baribir 0 bo'lib qoladi

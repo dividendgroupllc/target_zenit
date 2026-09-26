@@ -163,6 +163,12 @@ doc_events = {
 	"Student": {
 		"on_update": "target_zenit.student_group_sync.on_student_update",
 	},
+	# Shartnoma oyligi (custom_oylik, Overview tabida) to'ldirilib saqlansa —
+	# Salary Structure Assignment avto-yaratiladi (oylik tabel/payroll uchun;
+	# Kassa oqimiga ta'sir qilmaydi)
+	"Employee": {
+		"on_update": "target_zenit.target_zenit.api.oylik_tabel.employee_oylik_ssa",
+	},
 	# Nachisleniya yozilganda — o'sha xodim/oy bo'yicha avval to'langan
 	# avanslar avtomatik bog'lanadi (oylik avval to'lanib, nachisleniya keyin
 	# yozilgan holat uchun).

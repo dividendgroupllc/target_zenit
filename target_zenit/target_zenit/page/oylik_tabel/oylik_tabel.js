@@ -178,7 +178,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				<td class="ot-c-nr">${i + 1}</td>
 				<td class="ot-c-ism" title="${frappe.utils.escape_html(q.ismi || q.xodim)}">${frappe.utils.escape_html(q.ismi || q.xodim)}</td>
 				<td class="ot-c-lavozim" title="${frappe.utils.escape_html(q.lavozim || "")}">${frappe.utils.escape_html(q.lavozim || "—")}</td>
-				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="Bosib o'zgartiring">${fmt(q.oylik.summa)}${manba}</td>
+				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="Bosib o'zgartiring (Employee hujjati bilan sinxron)">${fmt(q.oylik.summa)}${manba}</td>
 				<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="Norma ish kuni — bosib o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}</td>`;
 			q.kunlar.forEach((kq, j) => {
 				const kd = d.kunlar[j];
@@ -208,7 +208,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 
 		if (d.oylik_izoh_kerak !== false) {
 			$joy.append(`<div class="ot-info" style="margin-top:8px">
-				* "Kassa taklifi" — oylik hali tasdiqlanmagan, Kassa'dagi oxirgi oy to'lovlaridan avtomatik olingan. Ustiga bosib tasdiqlang yoki o'zgartiring.<br>
+				* "Kassa taklifi" — oylik hali kiritilmagan, Kassa'dagi oxirgi oy to'lovlaridan avtomatik taxmin. Oylikni tabelda katakni bosib yoki Employee hujjatidagi "Oylik ish haqi (shartnoma)" (Overview) maydonidan kiritish mumkin — ikkalasi sinxron.<br>
 				Katak ranglari: <span style="color:#c0392b">qizil — yakshanba</span>, <span style="color:#1a56b0">ko'k — yo'qlamada belgilangan</span>, kulrang "0" — hali belgilanmagan (kelmagan hisoblanadi). Kim kelgan bo'lsa katagini bosib "1" qilinadi.
 			</div>`);
 		}
@@ -284,10 +284,10 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 	function oylikDialog(q) {
 		const izoh =
 			q.oylik.manba === "kassa"
-				? "Bu summa Kassa'dagi oxirgi oy to'lovlaridan taklif sifatida olingan. Saqlasangiz rasmiy tasdiqlanadi."
+				? "Bu summa Kassa'dagi oxirgi oy to'lovlaridan taklif sifatida olingan. Saqlasangiz rasmiy tasdiqlanadi va Employee hujjatiga ham yoziladi."
 				: q.oylik.manba === "yoq"
 					? "Bu xodimga hali oylik kiritilmagan (Kassa'da to'lov ham topilmadi)."
-					: "O'zgartirilsa, shu oyning BOSHIDAN amal qiladi (o'tgan oylar o'zgarmaydi).";
+					: "O'zgartirilsa shu oyning BOSHIDAN amal qiladi va Employee hujjatidagi \"Oylik ish haqi (shartnoma)\" maydoni ham yangilanadi.";
 		const dlg = new frappe.ui.Dialog({
 			title: `${q.ismi} — oylik summa`,
 			fields: [{
