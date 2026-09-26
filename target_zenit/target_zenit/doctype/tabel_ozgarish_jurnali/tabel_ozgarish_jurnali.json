@@ -1,0 +1,102 @@
+{
+ "actions": [],
+ "autoname": "format:TBJ-{#####}",
+ "creation": "2026-09-25 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "xodim",
+  "xodim_ismi",
+  "oy",
+  "sana",
+  "column_break_1",
+  "maydon",
+  "eski",
+  "yangi",
+  "kim"
+ ],
+ "fields": [
+  {
+   "fieldname": "xodim",
+   "fieldtype": "Link",
+   "label": "Xodim",
+   "options": "Employee",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "xodim_ismi",
+   "fieldtype": "Data",
+   "label": "Xodim ismi",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "oy",
+   "fieldtype": "Data",
+   "label": "Oy (YYYY-MM)",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "sana",
+   "fieldtype": "Date",
+   "label": "Kun (agar kun katakchasi bo'lsa)"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "maydon",
+   "fieldtype": "Data",
+   "label": "Nima o'zgardi",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "eski",
+   "fieldtype": "Data",
+   "label": "Eski qiymat",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "yangi",
+   "fieldtype": "Data",
+   "label": "Yangi qiymat",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "kim",
+   "fieldtype": "Data",
+   "label": "Kim o'zgartirdi",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "in_create": 0,
+ "links": [],
+ "modified": "2026-09-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Tabel Ozgarish Jurnali",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "export": 1,
+   "report": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

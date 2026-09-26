@@ -1,0 +1,91 @@
+{
+ "actions": [],
+ "autoname": "format:TAB-{yil}-{oy}",
+ "creation": "2026-09-25 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "yil",
+  "oy",
+  "holat",
+  "column_break_1",
+  "yopgan_kim",
+  "yopilgan_vaqt"
+ ],
+ "fields": [
+  {
+   "fieldname": "yil",
+   "fieldtype": "Int",
+   "label": "Yil",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "oy",
+   "fieldtype": "Int",
+   "label": "Oy (1-12)",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "holat",
+   "fieldtype": "Select",
+   "label": "Holat",
+   "options": "Ochiq\nYopilmoqda\nYopiq",
+   "default": "Ochiq",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "yopgan_kim",
+   "fieldtype": "Data",
+   "label": "Kim yopdi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "yopilgan_vaqt",
+   "fieldtype": "Datetime",
+   "label": "Yopilgan vaqt",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Tabel Oyi",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

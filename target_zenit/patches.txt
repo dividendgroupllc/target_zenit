@@ -7,3 +7,4 @@
 target_zenit.patches.backfill_sinf_guruh
 target_zenit.patches.sync_kassa_party_name
 target_zenit.patches.customer_show_title_in_link
+target_zenit.patches.add_oylik_tabel_setup #2026-09-26 ish kuni maydoni
