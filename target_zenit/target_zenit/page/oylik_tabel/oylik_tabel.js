@@ -54,6 +54,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		.ot-kun.default { color:var(--text-muted); }
 		th.ot-yak-bosh { background:#fdecea !important; color:#c0392b; }
 		.ot-c-bonus { min-width:90px; text-align:right; cursor:pointer; }
+		.ot-c-kelgan { min-width:70px; font-weight:600; }
 		.ot-c-bonus:hover, .ot-c-oylik-t:hover { outline:2px solid var(--primary); outline-offset:-2px; }
 		.ot-c-oylik-t { cursor:pointer; }
 		.ot-c-jami { min-width:120px; text-align:right; font-weight:700; }
@@ -164,7 +165,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		d.kunlar.forEach((k) => {
 			th += `<th class="${k.yakshanba ? "ot-yak-bosh" : ""}" title="${k.sana}${k.yakshanba ? " (yakshanba)" : ""}">${k.kun}</th>`;
 		});
-		th += `<th>Bonus</th><th>Jami (so'm)</th></tr>`;
+		th += `<th>Bonus</th><th class="ot-c-kelgan" title="Yo'qlamada 1 belgilangan kunlar soni">Kelgan kun</th><th>Jami (so'm)</th></tr>`;
 
 		let rows = "";
 		d.qatorlar.forEach((q, i) => {
@@ -190,6 +191,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				}
 			});
 			tr += `<td class="ot-c-bonus" data-i="${i}" title="Bosib o'zgartiring">${q.bonus ? fmt(q.bonus) : "+"}</td>`;
+			tr += `<td class="ot-c-kelgan" title="Kelgan kunlari (1 belgilanganlar), norma: ${q.ish_kuni}">${koefFmt(q.koef_yigindi)}</td>`;
 			tr += `<td class="ot-c-jami" title="Kunlik: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)}">${fmt(q.jami)}</td></tr>`;
 			rows += tr;
 		});
@@ -197,6 +199,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		const foot = `<tr><td class="ot-c-nr"></td><td class="ot-c-ism">JAMI</td><td class="ot-c-lavozim"></td><td class="ot-c-oylik"></td><td class="ot-c-ishkun"></td>
 			<td colspan="${d.kunlar.length}"></td>
 			<td style="text-align:right">${fmt(d.jami_bonus)}</td>
+			<td class="ot-c-kelgan">${koefFmt(d.qatorlar.reduce((s, q) => s + (q.koef_yigindi || 0), 0))}</td>
 			<td class="ot-c-jami">${fmt(d.jami_oylik)}</td></tr>`;
 
 		const $orab = $(`<div class="ot-jadval-orab"><table class="ot-jadval">
