@@ -64,9 +64,6 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		.ot-plitka { border:1px solid var(--border-color); border-radius:8px; padding:8px 14px; background:var(--card-bg); min-width:130px; }
 		.ot-plitka .son { font-size:17px; font-weight:700; }
 		.ot-plitka .nom { font-size:11px; color:var(--text-muted); }
-		.ot-koef-btnlar { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
-		.ot-koef-btnlar button { border:1px solid var(--border-color); background:var(--card-bg); border-radius:6px; padding:6px 16px; cursor:pointer; font-size:14px; font-weight:600; }
-		.ot-koef-btnlar button:hover { border-color:var(--primary); color:var(--primary); }
 		`;
 		$("<style id='oylik-tabel-css'>").text(css).appendTo("head");
 	}
@@ -189,7 +186,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 					if (kd.yakshanba) cls.push("yak");
 					if (kq.holat === "saqlangan") cls.push("saqlangan");
 					else cls.push("default");
-					tr += `<td class="${cls.join(" ")}" data-i="${i}" data-j="${j}" title="${kd.sana} — bosib o'zgartiring">${koefFmt(kq.koef)}</td>`;
+					tr += `<td class="${cls.join(" ")}" data-i="${i}" data-j="${j}" title="${kd.sana} — bosilsa keldi (1) / kelmadi (0) almashadi">${koefFmt(kq.koef)}</td>`;
 				}
 			});
 			tr += `<td class="ot-c-bonus" data-i="${i}" title="Bosib o'zgartiring">${q.bonus ? fmt(q.bonus) : "+"}</td>`;
@@ -209,7 +206,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		if (d.oylik_izoh_kerak !== false) {
 			$joy.append(`<div class="ot-info" style="margin-top:8px">
 				* "Kassa taklifi" — oylik hali kiritilmagan, Kassa'dagi oxirgi oy to'lovlaridan avtomatik taxmin. Oylikni tabelda katakni bosib yoki Employee hujjatidagi "Oylik ish haqi (shartnoma)" (Overview) maydonidan kiritish mumkin — ikkalasi sinxron.<br>
-				Katak ranglari: <span style="color:#c0392b">qizil — yakshanba</span>, <span style="color:#1a56b0">ko'k — yo'qlamada belgilangan</span>, kulrang "0" — hali belgilanmagan (kelmagan hisoblanadi). Kim kelgan bo'lsa katagini bosib "1" qilinadi.
+				Katak ranglari: <span style="color:#c0392b">qizil — yakshanba</span>, <span style="color:#1a56b0">ko'k — yo'qlamada belgilangan</span>, kulrang "0" — hali belgilanmagan (kelmagan hisoblanadi). Katak bosilsa keldi (1) / kelmadi (0) almashadi.
 			</div>`);
 		}
 
@@ -227,9 +224,12 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 
 		// hodisalar
 		if (d.tahrir_mumkin) {
+			// Yo'qlama: bir bosishda keldi (1) / kelmadi (0) almashadi
 			$orab.on("click", "td.ot-kun:not(.kirmagan)", function () {
 				const i = $(this).data("i"), j = $(this).data("j");
-				koefDialog(d.qatorlar[i], d.kunlar[j], d.qatorlar[i].kunlar[j]);
+				const q = d.qatorlar[i];
+				const yangi = q.kunlar[j].koef ? 0 : 1;
+				saqlaKoef(q.xodim, d.kunlar[j].sana, yangi);
 			});
 			$orab.on("click", "td.ot-c-oylik-t", function () {
 				oylikDialog(d.qatorlar[$(this).data("i")]);
@@ -244,34 +244,6 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 	}
 
 	// ---------------------------------------------------------------- dialoglar
-	function koefDialog(q, kun, kq) {
-		const dlg = new frappe.ui.Dialog({
-			title: `${q.ismi} — ${kun.sana}`,
-			fields: [
-				{ fieldtype: "HTML", fieldname: "btnlar" },
-				{
-					fieldtype: "Float", fieldname: "koef", label: "Stavka koeffitsienti",
-					default: kq.koef, reqd: 1,
-					description: "1 = to'liq kun, 0.5 = yarim kun, 2 = ikki smena, 0 = ishlamadi",
-				},
-			],
-			primary_action_label: "Saqlash",
-			primary_action: (v) => {
-				dlg.hide();
-				saqlaKoef(q.xodim, kun.sana, v.koef);
-			},
-		});
-		const $b = $('<div class="ot-koef-btnlar"></div>');
-		[0, 0.5, 1, 1.5, 2].forEach((k) => {
-			$(`<button>${String(k).replace(".", ",")}</button>`).on("click", () => {
-				dlg.hide();
-				saqlaKoef(q.xodim, kun.sana, k);
-			}).appendTo($b);
-		});
-		dlg.fields_dict.btnlar.$wrapper.append($b);
-		dlg.show();
-	}
-
 	function saqlaKoef(xodim, sana, koef) {
 		frappe.call({
 			method: "target_zenit.target_zenit.api.oylik_tabel.set_koef",

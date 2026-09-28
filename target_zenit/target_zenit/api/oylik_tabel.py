@@ -12,7 +12,8 @@ bo'lmasa: o'qituvchi 21, boshqalar 26),
 jami = kunlik narx * koeffitsientlar yig'indisi + bonus. Yaxlitlanmaydi.
 
 Yo'qlama: barcha kunlar default 0 — har kuni zam direktor belgilaydi,
-kim kelgan bo'lsa 1 (yoki 0.5, 2 ...) qilinadi. Belgilanmagan kun = kelmagan.
+kim kelgan bo'lsa 1 qilinadi (faqat 0/1: keldi yoki kelmadi).
+Belgilanmagan kun = kelmagan.
 
 Oy yopilganda: belgilangan qoralamalar submit qilinadi (0 kunlarga yozuv
 yaratilmaydi), tabel qulflanadi.
@@ -28,7 +29,6 @@ from frappe.utils import cint, flt, getdate, now_datetime, nowdate
 SAHIFA = "oylik-tabel"
 STRUKTURA = "Target Oylik"
 BONUS_KOMPONENT = "Bonus"
-MAKS_KOEF = 5
 
 OY_NOMLARI = {
     1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun",
@@ -292,9 +292,11 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
 
     ish_kunlari = kun_soni - len(yakshanbalar)
 
+    # Faqat "Oylik tabelda" belgisi qo'yilgan xodimlar — Active'lar ko'p (180+),
+    # tabelga esa faqat hozir real ishlayotganlar kiradi
     xodimlar = frappe.get_all(
         "Employee",
-        filters={"status": "Active", "date_of_joining": ["<=", oy_oxiri]},
+        filters={"status": "Active", "custom_tabelda": 1, "date_of_joining": ["<=", oy_oxiri]},
         fields=["name", "employee_name", "designation", "custom_ish_kuni", "date_of_joining"],
         order_by="employee_name asc",
     )
@@ -431,8 +433,8 @@ def set_koef(xodim, sana, koef):
     _rol_tekshir()
     sana = getdate(sana)
     koef = flt(koef)
-    if koef < 0 or koef > MAKS_KOEF:
-        frappe.throw(_("Koeffitsient 0 dan {0} gacha bo'lishi kerak").format(MAKS_KOEF))
+    if koef not in (0.0, 1.0):
+        frappe.throw(_("Faqat 0 (kelmadi) yoki 1 (keldi) kiritiladi"))
     if sana > getdate(nowdate()):
         frappe.throw(_("Kelajak kunga yozib bo'lmaydi"))
     _ochiq_tekshir(sana.year, sana.month)
@@ -445,7 +447,7 @@ def set_koef(xodim, sana, koef):
     if emp.date_of_joining and sana < getdate(emp.date_of_joining):
         frappe.throw(_("Xodim {0} da ishga kirgan — undan oldingi kunga yozib bo'lmaydi").format(emp.date_of_joining))
 
-    status = "Absent" if koef == 0 else ("Half Day" if koef < 1 else "Present")
+    status = "Present" if koef else "Absent"
 
     mavjud = frappe.get_all(
         "Attendance",

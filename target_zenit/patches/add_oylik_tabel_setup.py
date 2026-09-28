@@ -29,6 +29,18 @@ def execute():
                     "insert_after": "designation",
                     "description": "Oylik tabelda kunlik narx = oylik / shu son. Bo'sh qolsa: o'qituvchi 21, boshqalar 26.",
                 },
+                # Tabelga kirish belgisi: Active/Inactive yetarli emas (Active'lar
+                # ko'p) — tabel FAQAT shu checkbox belgilanganlarni oladi
+                {
+                    "fieldname": "custom_tabelda",
+                    "label": "Oylik tabelda (hozir ishlayapti)",
+                    "fieldtype": "Check",
+                    "insert_after": "status",
+                    "default": "0",
+                    "in_list_view": 1,
+                    "in_standard_filter": 1,
+                    "description": "Belgilangan xodimlargina oylik tabel jadvalida chiqadi.",
+                },
                 # Shartnoma oyligi — Overview tabida (designation/ish kuni yonida).
                 # Saqlanganda hook SSA avto-yaratadi; oylik tabel bilan ikki tomonlama sinxron.
                 {
