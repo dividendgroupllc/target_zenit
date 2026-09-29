@@ -1677,11 +1677,15 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
     cred_extra = {}
     comb = defaultdict(zero)           # (pt, p) -> hisoblar bo'ylab jami vektor
     acc_of = defaultdict(list)         # (pt, p) -> [(hisob, vektor)]
+    tiny = zero()                      # ko'rsatilmaydigan tiyin qoldiqlar (≤0.005) —
+    #                                    jamidan TUSHMAYDI, aks holda bir nechtasi
+    #                                    yig'ilib FARQ qatorida ±0.01 chiqib qoladi
     for (acc, pt, p), v in party_vec.items():
         if not p:
             s = _bs_sig(v)
             if s == 0 and not any(abs(x) > 0.005 for x in v):
-                continue               # butunlay nol — ko'rsatmaymiz
+                tiny = _vadd(tiny, v)  # ko'rsatmaymiz, lekin jamida qoladi
+                continue
             disp = list(v) if s >= 0 else [-x for x in v]
             tgt = deb_extra if s >= 0 else cred_extra
             tgt[acc] = _vadd(tgt.get(acc, zero()), disp)
@@ -1692,7 +1696,8 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
     for (pt, p), v in comb.items():
         s = _bs_sig(v)
         if s == 0 and not any(abs(x) > 0.005 for x in v):
-            continue                   # sof qoldiq nol — ikkala tomondan ham tushadi
+            tiny = _vadd(tiny, v)      # sof qoldiq ~nol — ko'rsatmaymiz, jamida qoladi
+            continue
         disp = list(v) if s >= 0 else [-x for x in v]
         side = deb if s >= 0 else cred
         accs_p = acc_of[(pt, p)]
@@ -1765,10 +1770,10 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
             if not a or a.account_type in ("Receivable", "Payable") or not pred(a):
                 continue
             vv = [-x for x in v] if negate else list(v)
+            tot = _vadd(tot, vv)       # jami DOIM to'liq — tiyin qatorlar faqat ko'rsatilmaydi
             if not any(abs(x) > 0.005 for x in vv):
                 continue
             kids.append(_bs_node(f"{prefix}|{acc}", a.account_name or acc, vv))
-            tot = _vadd(tot, vv)
         kids.sort(key=lambda n: -abs(n["amount"]))
         return kids, tot
 
@@ -1783,6 +1788,10 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
 
     deb_nodes = side_tree(deb, deb_extra, "deb")
     cred_nodes = side_tree(cred, cred_extra, "cred")
+    if any(abs(x) > 0.0005 for x in tiny):
+        # yashirilgan tiyin qoldiqlar yig'indisi — alohida qator sifatida, shunda
+        # bo'lim jami to'liq bo'ladi va FARQ (Aktiv − Passiv) aynan 0 qoladi
+        deb_nodes.append(_bs_node("deb|__tiny", "Tiyin qoldiqlar (yaxlitlash)", tiny))
 
     oliab_kids, oliab_tot = collect(lambda a: a.root_type == "Liability", "ol", negate=True)
     eq_kids, eq_tot = collect(lambda a: a.root_type == "Equity", "eq", negate=True)
