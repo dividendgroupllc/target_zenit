@@ -1677,8 +1677,9 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
     cred_extra = {}
     comb = defaultdict(zero)           # (pt, p) -> hisoblar bo'ylab jami vektor
     acc_of = defaultdict(list)         # (pt, p) -> [(hisob, vektor)]
-    tiny = zero()                      # ko'rsatilmaydigan tiyin qoldiqlar (≤0.005) —
-    #                                    jamidan TUSHMAYDI, aks holda bir nechtasi
+    tiny = zero()                      # ko'rsatilmaydigan tiyin qoldiqlar (≤0.005):
+    #                                    qator chiqarilmaydi, lekin bo'lim jamiga
+    #                                    JIMGINA qo'shiladi — aks holda bir nechtasi
     #                                    yig'ilib FARQ qatorida ±0.01 chiqib qoladi
     for (acc, pt, p), v in party_vec.items():
         if not p:
@@ -1788,10 +1789,6 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
 
     deb_nodes = side_tree(deb, deb_extra, "deb")
     cred_nodes = side_tree(cred, cred_extra, "cred")
-    if any(abs(x) > 0.0005 for x in tiny):
-        # yashirilgan tiyin qoldiqlar yig'indisi — alohida qator sifatida, shunda
-        # bo'lim jami to'liq bo'ladi va FARQ (Aktiv − Passiv) aynan 0 qoladi
-        deb_nodes.append(_bs_node("deb|__tiny", "Tiyin qoldiqlar (yaxlitlash)", tiny))
 
     oliab_kids, oliab_tot = collect(lambda a: a.root_type == "Liability", "ol", negate=True)
     eq_kids, eq_tot = collect(lambda a: a.root_type == "Equity", "eq", negate=True)
@@ -1809,7 +1806,10 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
 
     # ---- Aktiv: Pul → Debitorka → Sklad → Asosiy vositalar → Boshqa → Vaqtinchalik ----
     assets = [_bs_node("cash", "Pul (kassa va bank)", cash_tot, cash_kids),
-              _bs_node("deb", "Debitorka (bizga qarzdorlar)", vsum([n["_v"] for n in deb_nodes]), deb_nodes)]
+              # tiny — ko'rsatilmagan tiyin qatorlar: jamiga jimgina qo'shiladi,
+              # ko'rinishda esa faqat yaxlitlangan qiymat chiqadi
+              _bs_node("deb", "Debitorka (bizga qarzdorlar)",
+                       _vadd(vsum([n["_v"] for n in deb_nodes]), tiny), deb_nodes)]
     if stock_kids:
         assets.append(_bs_node("stock", "Sklad (tovar zaxiralari)", stock_tot, stock_kids))
     if fixed_kids:
