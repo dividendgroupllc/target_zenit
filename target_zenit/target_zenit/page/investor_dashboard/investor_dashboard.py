@@ -879,60 +879,61 @@ def _tuition_section(company, from_date=None, to_date=None):
 # Umumiy tab kartalari — debitorka/kreditorka toifa kesimi, o'quvchilar sinf
 # kesimi (Student Group), pul qoldiqlari va balans (mockup dizayni uchun)
 # ===========================================================================
-PARTY_CAT_LABELS = {
-    "customer": "O'quvchilar",
-    "employee": "Xodimlar (o'qituvchilar)",
-    "supplier": "Ta'minotchilar",
-    "shareholder": "Investorlar",
-    "kredit": "Kredit",
-    "other": "Boshqa",
-}
-
-
 def _party_balance_cards(company, date):
-    """Debitorka/kreditorka — sana holatiga, valyuta + kontragent toifasi kesimida.
-    Har kontragentning sof qoldig'i: musbat (Дт) → debitorka, manfiy (Кт) → kreditorka.
-    'Kredit qarzdorlik' hisobidagi harakat alohida 'Kredit' toifasiga chiqariladi.
-    Kontragentli hisoblar hozircha barchasi qisqa muddatli (Current) guruhlarda."""
+    """Debitorka/kreditorka kartalari — pastdagi "to'liq" daraxt (get_balance_sheet)
+    bilan BIR XIL qoidada, shunda tepani past bilan bemalol solishtirsa bo'ladi:
+      * faqat Receivable/Payable hisoblar, KOMPANIYA VALYUTASIDA (GL debit−credit);
+      * har kontragent sof qoldig'i BARCHA hisoblari bo'ylab birlashtiriladi
+        (akt sverka kabi): musbat (Дт) → debitorka, manfiy (Кт) → kreditorka;
+      * toifa nomlari daraxt bilan bir xil (BS_PT_LABELS); "Kredit" toifasi =
+        sof qoldig'ining asosiy qismi "Kredit qarzdorlik" hisobida bo'lganlar
+        (daraxtda ham xuddi shu qoida bilan joylashadi).
+    Natijada karta jami = daraxtdagi Debitorka/Kreditorka bo'lim jami."""
     res = {"debitorka": [], "kreditorka": []}
+    ccy = _company_currency(company)
     try:
         rows = frappe.db.sql(
-            f"""SELECT ge.party_type, ge.party, ge.account_currency cur,
-                       CASE WHEN a.account_name LIKE 'Kredit qarzdorlik%%' THEN 1 ELSE 0 END is_kredit,
-                       IFNULL(SUM(ge.debit_in_account_currency - ge.credit_in_account_currency),0) bal
+            f"""SELECT ge.account, a.account_name, ge.party_type, ge.party,
+                       IFNULL(SUM(ge.debit - ge.credit),0) bal
                 FROM `tabGL Entry` ge JOIN `tabAccount` a ON a.name = ge.account
                 WHERE ge.is_cancelled=0 AND ge.posting_date<=%(d)s
-                  AND ge.party IS NOT NULL AND ge.party!='' {_co(company,'ge')}
-                GROUP BY ge.party_type, ge.party, ge.account_currency, is_kredit""",
+                  AND a.account_type IN ('Receivable','Payable') {_co(company,'ge')}
+                GROUP BY ge.account, ge.party_type, ge.party""",
             {"d": date, "company": company}, as_dict=True)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: party_balance_cards")
         return res
-    ptmap = {"Customer": "customer", "Student": "customer", "Employee": "employee",
-             "Supplier": "supplier", "Shareholder": "shareholder"}
-    deb = defaultdict(lambda: defaultdict(float))    # valyuta -> toifa -> summa
-    cred = defaultdict(lambda: defaultdict(float))
+
+    per = defaultdict(lambda: defaultdict(float))    # (pt, p) -> {hisob nomi: qoldiq}
+    extra = defaultdict(float)                       # kontragentsiz: hisob -> qoldiq
     for r in rows:
-        bal = flt(r.bal)
-        if abs(bal) < 0.5:
-            continue
-        cat = "kredit" if r.is_kredit else ptmap.get(r.party_type, "other")
-        cur = r.cur or "UZS"
-        if bal > 0:
-            deb[cur][cat] += bal
+        nm = r.account_name or r.account
+        if r.party:
+            per[(r.party_type, r.party)][nm] += flt(r.bal)
         else:
-            cred[cur][cat] += -bal
+            extra[nm] += flt(r.bal)
+
+    deb = defaultdict(float)                         # toifa -> summa
+    cred = defaultdict(float)
+    for (pt, p), accs in per.items():
+        net = sum(accs.values())
+        if abs(net) < 0.005:
+            continue
+        dom = max(accs.items(), key=lambda kv: abs(kv[1]))[0]
+        cat = "Kredit" if (dom or "").startswith("Kredit qarzdorlik") \
+            else BS_PT_LABELS.get(pt, pt or "Boshqa")
+        (deb if net > 0 else cred)[cat] += abs(net)
+    for _acc, v in extra.items():
+        if abs(v) < 0.005:
+            continue
+        (deb if v > 0 else cred)["Kontragentsiz yozuvlar"] += abs(v)
 
     def pack(dd):
-        out = []
-        for cur, cats in dd.items():
-            items = [{"key": k, "label": PARTY_CAT_LABELS.get(k, k), "amount": v}
-                     for k, v in cats.items() if v > 0.5]
-            items.sort(key=lambda x: -x["amount"])
-            if items:
-                out.append({"currency": cur, "total": sum(x["amount"] for x in items), "items": items})
-        out.sort(key=lambda x: (x["currency"] != "UZS", x["currency"]))
-        return out
+        items = [{"key": k, "label": k, "amount": v} for k, v in dd.items() if v > 0.005]
+        items.sort(key=lambda x: -x["amount"])
+        if not items:
+            return []
+        return [{"currency": ccy, "total": sum(x["amount"] for x in items), "items": items}]
 
     res["debitorka"] = pack(deb)
     res["kreditorka"] = pack(cred)
@@ -1562,13 +1563,17 @@ def _bs_periods(f0, t0, periodicity):
 
 
 @frappe.whitelist()
-def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_default_fb=1, periodicity=None):
+def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_default_fb=1, periodicity=None,
+                      group_by=None):
     """Balans daraxti, davr ustunlari bilan (solishtirish uchun).
     periodicity: '' (bitta ustun) | weekly | monthly | quarterly | half | yearly.
     accumulated=1 → har ustun o'sha sana holatiga yig'ilgan qoldiq (haqiqiy balans),
     0 → har ustun faqat o'sha davr ichidagi harakat. include_default_fb — Frappe'dagi
     'Include Default FB Entries' kabi. HECH QANDAY qoldiq tashlab yuborilmaydi —
-    Aktiv − Passiv farqi har ustunda 0 bo'lishi shart (oxirida tekshiruv qatori)."""
+    Aktiv − Passiv farqi har ustunda 0 bo'lishi shart (oxirida tekshiruv qatori).
+    group_by='category' → Debitorka/Kreditorka daraxti hisob o'rniga TOIFA kesimida
+    (Umumiy tabdagi kartalar bilan bir xil nom/qoida — solishtirish uchun);
+    jamilarga ta'sir qilmaydi, faqat guruhlash o'zgaradi."""
     _guard()
     f0, t0, _ = _resolve_range(from_date, to_date)
     company = _default_company()
@@ -1660,31 +1665,58 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
             ncache[(pt, p)] = _party_name(pt, p)
         return ncache[(pt, p)]
 
-    # Har kontragent sof qoldig'i (oxirgi ahamiyatli ustun bo'yicha): Дт → debitorka, Кт → kreditorka.
-    # Hech narsa tashlanmaydi — tomon faqat KO'RSATISH uchun; qiymat boshqa tomonda bo'lgan
-    # davr ustunida manfiy chiqadi (bu tarixiy holatni ko'rsatadi, tenglik buzilmaydi).
+    # Har kontragent sof qoldig'i BARCHA Receivable/Payable hisoblari bo'ylab
+    # BIRLASHTIRILADI (akt sverka kabi): bir kontragent 2-3 hisob orqali yurgan
+    # bo'lsa ham qoldiqlar o'zaro +/- qilinib, yakuniy Дт → debitorka, Кт →
+    # kreditorka — faqat BITTA tomonda, bitta qatorda chiqadi (eng katta hissali
+    # hisob ostida, "· N hisob" belgisi bilan). Hech narsa tashlanmaydi:
+    # deb − cred ayirmasi o'zgarmaydi, Aktiv = Passiv tengligi saqlanadi.
     deb = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))    # acc -> pt -> grp -> [leaf]
     cred = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     deb_extra = {}                     # kontragentsiz yozuvlar (masalan, opening)
     cred_extra = {}
+    comb = defaultdict(zero)           # (pt, p) -> hisoblar bo'ylab jami vektor
+    acc_of = defaultdict(list)         # (pt, p) -> [(hisob, vektor)]
     for (acc, pt, p), v in party_vec.items():
-        s = _bs_sig(v)
-        if s == 0 and not any(abs(x) > 0.005 for x in v):
-            continue                   # butunlay nol — ko'rsatmaymiz (jamiga ham ta'sir qilmaydi)
-        disp = list(v) if s >= 0 else [-x for x in v]
         if not p:
+            s = _bs_sig(v)
+            if s == 0 and not any(abs(x) > 0.005 for x in v):
+                continue               # butunlay nol — ko'rsatmaymiz
+            disp = list(v) if s >= 0 else [-x for x in v]
             tgt = deb_extra if s >= 0 else cred_extra
             tgt[acc] = _vadd(tgt.get(acc, zero()), disp)
             continue
+        comb[(pt, p)] = _vadd(comb[(pt, p)], v)
+        acc_of[(pt, p)].append((acc, v))
+
+    for (pt, p), v in comb.items():
+        s = _bs_sig(v)
+        if s == 0 and not any(abs(x) > 0.005 for x in v):
+            continue                   # sof qoldiq nol — ikkala tomondan ham tushadi
+        disp = list(v) if s >= 0 else [-x for x in v]
         side = deb if s >= 0 else cred
+        accs_p = acc_of[(pt, p)]
+        acc = max(accs_p, key=lambda av: abs(_bs_sig(av[1])))[0]
+        nm = pname(pt, p)
+        if len(accs_p) > 1:
+            nm = f"{nm} · {len(accs_p)} hisob"
         if pt in ("Customer", "Student", "Supplier"):
             grp = gmap.get((pt, p), "") or "Guruhsiz"
         else:
             grp = ""                   # Employee/Shareholder — guruh tushunchasi yo'q, bevosita ro'yxat
-        side[acc][pt or "—"][grp].append({"name": pname(pt, p), "v": disp})
+        if (group_by or "") == "category":
+            # toifa rejimi: Umumiy tab kartalari bilan bir xil nom/qoida
+            dom_name = ((amap[acc].account_name if amap.get(acc) else acc) or acc)
+            slot = "Kredit" if dom_name.startswith("Kredit qarzdorlik") \
+                else BS_PT_LABELS.get(pt, pt or "Boshqa")
+        else:
+            slot = acc
+        side[slot][pt or "—"][grp].append({"name": nm, "v": disp})
 
     def side_tree(side_map, extra_map, prefix):
-        """Hisob → kontragent turi → guruh → kontragent daraxti."""
+        """Hisob (yoki toifa) → kontragent turi → guruh → kontragent daraxti.
+        Toifa rejimida tugun nomi bilan yagona bolasi bir xil bo'lsa (masalan
+        "Xodimlar" → "Xodimlar") oradagi qavat olib tashlanadi."""
         acc_nodes = []
         for acc, pts in side_map.items():
             a = amap.get(acc)
@@ -1711,8 +1743,12 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
             pt_nodes.sort(key=lambda n: -n["amount"])
             if acc in extra_map:
                 pt_nodes.append(_bs_node(f"{prefix}|{acc}|__", "Kontragentsiz yozuvlar", extra_map[acc]))
-            acc_nodes.append(_bs_node(f"{prefix}|{acc}", alabel,
-                                      vsum([n["_v"] for n in pt_nodes]), pt_nodes))
+            tot = vsum([n["_v"] for n in pt_nodes])
+            kids_final, cnt = pt_nodes, None
+            if len(pt_nodes) == 1 and pt_nodes[0]["label"] == alabel and pt_nodes[0].get("children"):
+                kids_final = pt_nodes[0]["children"]
+                cnt = pt_nodes[0].get("count")
+            acc_nodes.append(_bs_node(f"{prefix}|{acc}", alabel, tot, kids_final, count=cnt))
         for acc, v in extra_map.items():
             if acc not in side_map:
                 a = amap.get(acc)

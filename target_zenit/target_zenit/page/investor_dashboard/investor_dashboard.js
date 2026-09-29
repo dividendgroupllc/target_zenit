@@ -23,6 +23,7 @@ class TZInvestorDashboard {
 		this.dds = null;
 		// Balans (balance sheet) holati
 		this.bs = null;
+		this.bsCat = null;          // Umumiy tabdagi to'liq ro'yxat — toifa kesimida (group_by=category)
 		this.bsOpen = new Set();                 // ochilgan daraxt tugunlari
 		this.bsOpt = { acc: 1, fb: 1, per: "" }; // yig'ilgan qiymat / default finance book / davr ustunlari
 		// Umumiy tab — karta batafsili: null | 'students' | 'debitorka' | 'kreditorka' | 'cash'
@@ -282,9 +283,9 @@ class TZInvestorDashboard {
 			this.page.main.find(`.dds-arrow[data-arrow="${k}"]`).text(vis ? "▶" : "▼");
 		});
 		// Balans (balance sheet) — davr/checkbox'lar va daraxtni ochish/yopish
-		body.on("change", ".tz-bs-per", (e) => { this.bsOpt.per = e.target.value || ""; this.bs = null; this.loadBs(); });
-		body.on("change", ".tz-bs-acc", (e) => { this.bsOpt.acc = e.target.checked ? 1 : 0; this.bs = null; this.loadBs(); });
-		body.on("change", ".tz-bs-fb", (e) => { this.bsOpt.fb = e.target.checked ? 1 : 0; this.bs = null; this.loadBs(); });
+		body.on("change", ".tz-bs-per", (e) => { this.bsOpt.per = e.target.value || ""; this.bs = null; this.bsCat = null; this.loadBs(); });
+		body.on("change", ".tz-bs-acc", (e) => { this.bsOpt.acc = e.target.checked ? 1 : 0; this.bs = null; this.bsCat = null; this.loadBs(); });
+		body.on("change", ".tz-bs-fb", (e) => { this.bsOpt.fb = e.target.checked ? 1 : 0; this.bs = null; this.bsCat = null; this.loadBs(); });
 		body.on("click", "[data-bs-k]", (e) => {
 			const k = String($(e.currentTarget).attr("data-bs-k"));
 			if (this.bsOpen.has(k)) this.bsOpen.delete(k); else this.bsOpen.add(k);
@@ -383,6 +384,7 @@ class TZInvestorDashboard {
 		this.kontragent = null;
 		this.dds = null;
 		this.bs = null;
+		this.bsCat = null;
 		this.ovStudents = null;
 		this.ovCash = null;
 		this.cfAcc = null; this.cfAccTx = null;
@@ -608,7 +610,7 @@ class TZInvestorDashboard {
 			const isDeb = k === "debitorka";
 			return this.card(`
 				<div class="hd"><div><h3>${isDeb ? "Debitorka — bizga qarzdorlar (to'liq)" : "Kreditorka — biz qarzdormiz (to'liq)"}</h3>
-					<div class="meta">${asOf} holatiga · ${this.ccyLabel(this.data.meta.currency)} (kompaniya valyutasi) · qatorni bosib ichini oching: hisob → tur → guruh → kontragent</div></div>
+					<div class="meta">${asOf} holatiga · ${this.ccyLabel(this.data.meta.currency)} (kompaniya valyutasi) · tepadagi karta bilan bir xil toifalar — qatorni bosib ichini oching: toifa → guruh → kontragent</div></div>
 					<button class="tz-mini-btn" data-ov="balance">To'liq balans →</button></div>
 				<div class="tz-ovbs-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb ov-detail-card");
 		}
@@ -771,10 +773,25 @@ class TZInvestorDashboard {
 
 	// -- debitorka/kreditorka batafsil (balans daraxtining o'sha bo'lagi) --
 	ovBsNode() {
-		if (!this.bs) return null;
+		if (!this.bsCat) return null;
 		return this.ovDetail === "debitorka"
-			? ((this.bs.assets || []).find((n) => n.key === "deb") || null)
-			: ((this.bs.liabilities || []).find((n) => n.key === "cred") || null);
+			? ((this.bsCat.assets || []).find((n) => n.key === "deb") || null)
+			: ((this.bsCat.liabilities || []).find((n) => n.key === "cred") || null);
+	}
+
+	// Umumiy tab paneli TOIFA kesimida yuklanadi (group_by=category) — tepadagi
+	// karta bilan nomma-nom va raqamma-raqam mos bo'lishi uchun; Balans tabi (this.bs)
+	// esa hisob kesimida qoladi.
+	fetchBsCat(cb) {
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_balance_sheet",
+			args: {
+				from_date: this.state.from_date, to_date: this.state.to_date,
+				accumulated: this.bsOpt.acc, include_default_fb: this.bsOpt.fb,
+				periodicity: this.bsOpt.per || null, group_by: "category",
+			},
+		}).then((r) => { this.bsCat = r.message || null; cb && cb(); })
+			.catch(() => { this.bsCat = null; cb && cb(true); });
 	}
 
 	loadOvBs() {
@@ -790,9 +807,9 @@ class TZInvestorDashboard {
 			}
 			this.paintOvBs();
 		};
-		if (this.bs) { paint(); return; }
+		if (this.bsCat) { paint(); return; }
 		body.html(`<div class="tz-loader">Yuklanyapti…</div>`);
-		this.fetchBs((err) => {
+		this.fetchBsCat((err) => {
 			if (err) this.page.main.find(".tz-ovbs-body").html(`<div class="empty-hint">Ma'lumotni yuklab bo'lmadi.</div>`);
 			else paint();
 		});
@@ -805,7 +822,7 @@ class TZInvestorDashboard {
 		if (!node) { body.html(`<div class="empty-hint">Ma'lumot topilmadi.</div>`); return; }
 		const multi = this.bsMulti();
 		const head = multi
-			? `<div class="bs-row bs-head"><span class="bs-lab"></span>${(this.bs.periods || []).map((p) => `<span class="bs-amt" data-tt="${this.esc(p.end)}">${this.esc(p.label)}</span>`).join("")}</div>`
+			? `<div class="bs-row bs-head"><span class="bs-lab"></span>${(this.bsCat.periods || []).map((p) => `<span class="bs-amt" data-tt="${this.esc(p.end)}">${this.esc(p.label)}</span>`).join("")}</div>`
 			: "";
 		body.html(`<div class="bs-scroll"><div class="bs-wrap${multi ? " bs-multi" : ""}">${head}${this.bsNode(node, 0)}</div></div>`);
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
@@ -1950,7 +1967,10 @@ class TZInvestorDashboard {
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
 	}
 
-	bsMulti() { return ((this.bs && this.bs.periods) || []).length > 1; }
+	bsMulti() {
+		const b = this.active === "overview" ? (this.bsCat || this.bs) : this.bs;
+		return ((b && b.periods) || []).length > 1;
+	}
 
 	bsFmt(n) { // balans uchun: to'liq son, kasr yaxlitlanmaydi (masalan 158 688,13)
 		const v = Number(n) || 0;
