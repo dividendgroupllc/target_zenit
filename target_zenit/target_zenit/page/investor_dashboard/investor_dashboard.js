@@ -48,6 +48,7 @@ class TZInvestorDashboard {
 		this.personalQ = "";        // ism bo'yicha qidiruv
 		this.personalMonths = []; this.personalNach = [];   // "qaysi oy uchun" filtri (bo'sh = davr oylari)
 		this.personalNach = [];     // nachisleniya holati: "qilingan" / "qilinmagan"
+		this.persMonths = {};       // kontragent oy-kesimi keshi (pt|party -> months)
 		this.cfAccTx = null;        // o'sha hisob harakatlari (kesh)
 		this.months_uz = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 		this.tabs = [
@@ -208,6 +209,8 @@ class TZInvestorDashboard {
 			if (i === -1) this.ovCashAccs.push(a); else this.ovCashAccs.splice(i, 1);
 			this.loadOvCash(true);
 		});
+		// Personal — qatorni bosib kontragentning oy kesimini ochish/yopish
+		body.on("click", "tr.pers-row", (e) => this.togglePersMonths($(e.currentTarget)));
 		// Kassa filtrlari — ko'p tanlovli menyular (hisoblar / operatsiya turi)
 		body.on("click", "[data-mselbtn]", (e) => {
 			e.stopPropagation();
@@ -390,6 +393,7 @@ class TZInvestorDashboard {
 		this.cfAcc = null; this.cfAccTx = null;
 		this.personal = null; this.personalCats = []; this.personalQ = "";
 		this.personalMonths = []; this.personalNach = [];
+		this.persMonths = {};
 		this._ovBsAuto = null;
 		this.nach = null;
 		this.nachClearFilters(); this.nachCcy = null; this.nachQ = "";
@@ -1653,7 +1657,7 @@ class TZInvestorDashboard {
 		let h = this.sec("Personal", `${this.data.meta.period.label} · xodimlar, o'quvchilar va ta'minotchilar bir jadvalda`);
 		h += this.card(`
 			<div class="hd"><div><h3>Kontragentlar kesimida</h3>
-				<div class="meta">Oklad — buxgalter oylik vedomostidan (Excel) · davr NACHISLENIYA sanasi bo'yicha · to'langan — o'sha nachisleniyaga bog'langan to'lovlar (qachon to'langanidan qat'i nazar) · umumiy qarzdorlik «Qarzdorlik» bo'limida${(this.personalMonths || []).length ? ` · <b>${this.personalMonths.map((m) => this.esc(this.monthLabel(m))).join(", ")}</b>` : ` · davr: ${this.esc(this.data.meta.period.label)}`}</div></div>
+				<div class="meta">Shartnoma summasi — xodimda «Oylik ish haqi (shartnoma)», o'quvchida «Oylik to'lov» maydonidan · davr NACHISLENIYA sanasi bo'yicha · to'langan — o'sha nachisleniyaga bog'langan to'lovlar (qachon to'langanidan qat'i nazar) · <b>qatorni bossangiz oy kesimi ochiladi</b> (qaysi oyga qancha yozildi / to'landi / qoldi)${(this.personalMonths || []).length ? ` · <b>${this.personalMonths.map((m) => this.esc(this.monthLabel(m))).join(", ")}</b>` : ` · davr: ${this.esc(this.data.meta.period.label)}`}</div></div>
 				<div class="kt-filter tz-pers-filter-box">${this.personalFilterHtml()}</div></div>
 			<div class="tz-pers-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb");
 		setTimeout(() => { if (this.personal) this.paintPersonal(); else this.loadPersonal(); }, 0);
@@ -1732,22 +1736,37 @@ class TZInvestorDashboard {
 			? `<span class="num" style="${color ? `color:${color};` : ""}white-space:nowrap">${this.mAmt(v, cur)} <small>${this.ccyLabel(cur)}</small></span>`
 			: `<span class="muted-s">—</span>`);
 
+		// Shartnoma summasi: xodim — Employee "Oylik ish haqi (shartnoma)",
+		// o'quvchi — Student "Oylik to'lov"; ikkalasi ham bo'lmasa vedomost okladi
+		const shartCell = (r) => {
+			if (r.shartnoma > 0.5) return `${amt(r.shartnoma, r.currency)}<div class="muted-s">oyiga</div>`;
+			if (r.oklad > 0.5) return `${amt(r.oklad, r.currency)}<div class="muted-s">vedomostdan${r.rejim ? ` · ${this.fmt(r.kun)}/${this.fmt(r.rejim)} kun` : ""}</div>`;
+			return `<span class="muted-s" data-tt="Shartnoma summasi kiritilmagan. Xodim — Employee «Oylik ish haqi (shartnoma)», o'quvchi — Student «Oylik to'lov» maydoni">kiritilmagan</span>`;
+		};
+		const paidCell = (r) => {
+			if (Math.abs(r.paid) < 0.5) return `<span class="muted-s">—</span>`;
+			const pct = r.nach > 0.5 ? Math.max(0, Math.min(100, (r.paid / r.nach) * 100)) : 100;
+			return `${amt(r.paid, r.currency, "var(--good-ink)")}
+				${r.advance > 0.5 ? `<div class="muted-s" data-tt="Nachisleniyaga bog'lanmagan ortiqcha to'lov">shundan ortiqcha: ${this.fmt(r.advance)}</div>` : ""}
+				${r.nach > 0.5 ? `<div class="pers-bar" data-tt="Nachisleniyaning ${Math.round(pct)}% i to'langan"><i style="width:${pct}%${pct >= 99.5 ? ";background:var(--good)" : ""}"></i></div>` : ""}`;
+		};
 		let rows = "", shown = 0;
 		const ftot = {};
-		(d.rows || []).forEach((r) => {
+		(d.rows || []).forEach((r, pi) => {
 			if (this.personalCats.length && this.personalCats.indexOf(r.category) === -1) return;
 			if (q && String(r.name || "").toLowerCase().indexOf(q) === -1) return;
 			shown++;
 			const t = ftot[r.currency] || (ftot[r.currency] = { nach: 0, paid: 0, debt: 0 });
 			t.nach += r.nach; t.paid += r.paid; t.debt += r.debt;
-			rows += `<tr>
-				<td class="ell" data-tt="${this.esc(r.name)}">${this.esc(r.name)}</td>
+			rows += `<tr class="pers-row" data-pi="${pi}">
+				<td class="ell" data-tt="${this.esc(r.name)} — oy kesimini ochish uchun bosing"><span class="pers-chev">▸</span>${this.esc(r.name)}</td>
 				<td class="ell">${this.esc(r.category)}<div class="muted-s">${this.esc(r.pt_label)}</div></td>
-				<td class="r">${amt(r.oklad, r.currency)}${r.rejim ? `<div class="muted-s">${this.fmt(r.kun)}/${this.fmt(r.rejim)} kun</div>` : ""}</td>
+				<td class="r">${shartCell(r)}</td>
 				<td class="r">${r.no_nach ? `<span class="muted-s" data-tt="Bu davrda nachisleniya yozilmagan">nachisleniya yo'q</span>` : amt(r.nach, r.currency)}</td>
-				<td class="r">${amt(r.paid, r.currency, "var(--good-ink)")}${r.advance > 0.5 ? `<div class="muted-s" data-tt="Nachisleniyaga bog'lanmagan ortiqcha to'lov">shundan ortiqcha: ${this.fmt(r.advance)}</div>` : ""}</td>
+				<td class="r">${paidCell(r)}</td>
 				<td class="r">${debtCell(r.debt, r.currency)}</td>
-			</tr>`;
+			</tr>
+			<tr class="pers-detail" style="display:none"><td colspan="6"><div class="pers-months"></div></td></tr>`;
 		});
 		if (!rows) rows = `<tr><td colspan="6" class="empty-hint">${q || this.personalCats.length ? "Filtrga mos kontragent topilmadi." : "Kontragent topilmadi."}</td></tr>`;
 		const tot = Object.keys(ftot).map((c) => `<div class="ov-total num" data-tt="${this.esc(c)}">
@@ -1757,10 +1776,67 @@ class TZInvestorDashboard {
 		return `<div class="ov-totals">${tot}<div class="muted-s">${this.fmt(shown)} ta kontragent</div></div>
 			<input type="text" class="tz-ovstud-filter tz-pers-search" placeholder="Ism bo'yicha qidirish…" value="${this.esc(q)}">
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>F.I.Sh</th><th>Kategoriyasi</th><th class="r">Oylik okladi</th><th class="r">Nachisleniya summasi</th><th class="r">To'langan</th><th class="r">Qoldiq</th></tr></thead>
+				<thead><tr><th>F.I.Sh</th><th>Kategoriyasi</th><th class="r">Shartnoma summasi</th><th class="r">Nachisleniya</th><th class="r">To'langan</th><th class="r">Qoldiq</th></tr></thead>
 				<tbody>${rows}</tbody>
 			</table></div>
 			<div class="kt-count">${d.truncated ? `Eng katta qarzdorlikdagi ${this.fmt((d.rows || []).length)} tasi ko'rsatildi (${this.fmt(d.truncated)} ta sig'madi).` : ""}</div>`;
+	}
+
+	// -- Personal: bitta kontragentning oy kesimi (qator ochilganda, lazy) --
+	togglePersMonths($tr) {
+		const $det = $tr.next("tr.pers-detail");
+		if (!$det.length) return;
+		if ($det.is(":visible")) { $det.hide(); $tr.removeClass("open"); return; }
+		$det.show(); $tr.addClass("open");
+		const r = ((this.personal && this.personal.rows) || [])[parseInt($tr.attr("data-pi"), 10)];
+		if (r) this.loadPersMonths(r, $det.find(".pers-months"));
+	}
+
+	loadPersMonths(r, box) {
+		const key = r.party_type + "|" + r.party;
+		if (this.persMonths[key]) { box.html(this.persMonthsHtml(this.persMonths[key])); return; }
+		box.html(`<div class="tz-loader">Oy kesimi yuklanyapti…</div>`);
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_personal_months",
+			args: { party_type: r.party_type, party: r.party },
+		}).then((res) => {
+			this.persMonths[key] = res.message || { months: [] };
+			box.html(this.persMonthsHtml(this.persMonths[key]));
+			box.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+		}).catch(() => box.html(`<div class="empty-hint">Oy kesimini yuklab bo'lmadi.</div>`));
+	}
+
+	persMonthsHtml(d) {
+		const ms = d.months || [];
+		if (!ms.length) return `<div class="empty-hint">Bu kontragent bo'yicha nachisleniya/to'lov topilmadi.</div>`;
+		const pill = (m) => {
+			if (m.nach > 0.5 && Math.abs(m.debt) <= 0.5) return `<span class="pers-pill good">To'langan</span>`;
+			if (m.nach > 0.5 && m.debt < -0.5) return `<span class="pers-pill good">Ortiq to'langan</span>`;
+			if (m.nach > 0.5 && m.paid > 0.5) return `<span class="pers-pill warn">Qisman</span>`;
+			if (m.nach > 0.5) return `<span class="pers-pill bad">To'lanmagan</span>`;
+			return `<span class="pers-pill good">Avans</span>`;
+		};
+		const num = (v, cur, color) => (Math.abs(v) > 0.5
+			? `<span class="num" style="${color ? `color:${color};` : ""}white-space:nowrap">${this.mAmt(v, cur)}</span>`
+			: `<span class="muted-s">—</span>`);
+		const rows = ms.map((m) => `<tr>
+			<td>${this.esc(this.monthLabel(m.oy))} <small class="muted-s">${this.esc(m.currency)}</small></td>
+			<td class="r">${num(m.nach, m.currency)}</td>
+			<td class="r">${num(m.paid, m.currency, "var(--good-ink)")}${m.advance > 0.5 ? `<div class="muted-s" data-tt="Nachisleniyaga bog'lanmagan to'lov (avans)">shundan bog'lanmagan: ${this.fmt(m.advance)}</div>` : ""}</td>
+			<td class="r">${m.debt > 0.5 ? num(m.debt, m.currency, "var(--bad-ink)")
+				: (m.debt < -0.5 ? `<span class="num" style="color:var(--good-ink);white-space:nowrap">+${this.mAmt(-m.debt, m.currency)}</span>` : `<span class="muted-s">0</span>`)}</td>
+			<td>${pill(m)}</td>
+		</tr>`).join("");
+		const tots = {};
+		ms.forEach((m) => { const t = tots[m.currency] || (tots[m.currency] = { nach: 0, paid: 0, debt: 0 }); t.nach += m.nach; t.paid += m.paid; t.debt += m.debt; });
+		const trow = Object.keys(tots).map((c) => `<tr class="b"><td>JAMI <small class="muted-s">${this.esc(c)}</small></td>
+			<td class="r num">${this.mAmt(tots[c].nach, c)}</td>
+			<td class="r num" style="color:var(--good-ink)">${this.mAmt(tots[c].paid, c)}</td>
+			<td class="r num" style="color:${tots[c].debt > 0.5 ? "var(--bad-ink)" : "var(--good-ink)"}">${tots[c].debt < -0.5 ? "+" + this.mAmt(-tots[c].debt, c) : this.mAmt(tots[c].debt, c)}</td>
+			<td></td></tr>`).join("");
+		return `<table class="pers-mtbl">
+			<thead><tr><th>Oy</th><th class="r">Nachisleniya</th><th class="r">To'langan</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
+			<tbody>${rows}${trow}</tbody></table>`;
 	}
 
 	renderPnl() {

@@ -2427,6 +2427,27 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
     rows = list(rows) + missing
 
     gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows])
+
+    # Shartnoma summalari (oylik kelishuv): xodim — Employee.custom_oylik
+    # ("Oylik ish haqi (shartnoma)"), o'quvchi — Student.custom_monthly_payment
+    # ("Oylik to'lov"), Student -> Customer bog'lanishi orqali.
+    shart = {}
+    try:
+        emp_ids = list({r.party for r in rows if r.pt == "Employee"})
+        if emp_ids:
+            for e in frappe.get_all("Employee", filters={"name": ["in", emp_ids]},
+                                    fields=["name", "custom_oylik"]):
+                if flt(e.custom_oylik):
+                    shart[("Employee", e.name)] = flt(e.custom_oylik)
+        cust_ids = list({r.party for r in rows if r.pt == "Customer"})
+        if cust_ids:
+            for s in frappe.get_all("Student", filters={"customer": ["in", cust_ids]},
+                                    fields=["customer", "custom_monthly_payment"]):
+                if flt(s.custom_monthly_payment):
+                    shart[("Customer", s.customer)] = flt(s.custom_monthly_payment)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: personal shartnoma")
+
     out, cats, tot = [], {}, defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "debt": 0.0})
     for r in rows:
         # Payable'da nachisleniya musbat, Receivable'da ham musbat chiqadi
@@ -2446,6 +2467,7 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
             "name": pname,
             "category": cat, "pt_label": NACH_PT_LABELS.get(r.pt, r.pt or "—"),
             "oklad": flt(ok.get("oklad") or 0),
+            "shartnoma": flt(shart.get((r.pt, r.party)) or 0),
             "kun": flt(ok.get("kun") or 0), "rejim": flt(ok.get("rejim") or 0),
             "nach": nach, "paid": paid, "debt": debt, "advance": advance, "currency": cur,
             "no_nach": 1 if abs(nach) < 0.005 else 0,
@@ -2484,6 +2506,83 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
             "months": month_list, "picked_months": picked_months,
             "nach_status": picked_status,
             "from_date": str(f0), "to_date": str(t0)}
+
+
+@frappe.whitelist()
+def get_personal_months(party_type=None, party=None):
+    """Bitta kontragent bo'yicha OY KESIMIDA: nachisleniya / to'langan / qoldiq.
+    Personal jadvalida qator ochilganda chaqiriladi.
+
+    Oy — nachisleniya hujjatidagi "За какой месяц" (custom_payment_month),
+    bo'lmasa hujjat sanasining oyi. To'lov o'zi bog'langan nachisleniyaning
+    OYIDA hisoblanadi (qachon to'langanidan qat'i nazar); bog'lanmagan
+    ortiqcha/avans to'lov esa o'z to'lov oyiga tushadi (get_personal bilan
+    bir xil qoidalar — jami qatordagi sonlar bilan mos)."""
+    _guard()
+    if not (party_type and party):
+        frappe.throw("Kontragent ko'rsatilmagan")
+    company = _default_company()
+    ccy = _company_currency(company)
+
+    agg = defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "advance": 0.0})   # (oy, cur)
+    try:
+        for r in frappe.db.sql("""
+            SELECT COALESCE(NULLIF(je.custom_payment_month, ''),
+                            NULLIF(si.custom_payment_month, ''),
+                            DATE_FORMAT(ple0.posting_date, '%%Y-%%m')) oy,
+                   ple.account_currency cur,
+                   SUM(CASE WHEN ple.voucher_no = ple.against_voucher_no
+                             AND ple.amount_in_account_currency > 0
+                            THEN ple.amount_in_account_currency ELSE 0 END) nach,
+                   SUM(CASE WHEN ple.voucher_no != ple.against_voucher_no
+                            THEN -ple.amount_in_account_currency ELSE 0 END) paid
+            FROM `tabPayment Ledger Entry` ple
+            JOIN `tabPayment Ledger Entry` ple0
+                 ON ple0.against_voucher_no = ple.against_voucher_no
+                AND ple0.voucher_no = ple0.against_voucher_no
+                AND ple0.amount_in_account_currency > 0
+                AND ple0.party = ple.party AND ple0.delinked = 0
+            LEFT JOIN `tabJournal Entry` je
+                   ON je.name = ple0.voucher_no AND ple0.voucher_type = 'Journal Entry'
+            LEFT JOIN `tabSales Invoice` si
+                   ON si.name = ple0.voucher_no AND ple0.voucher_type = 'Sales Invoice'
+            WHERE ple.delinked = 0 AND ple.company = %(company)s
+              AND ple.party_type = %(pt)s AND ple.party = %(p)s
+            GROUP BY oy, ple.account_currency
+        """, {"company": company, "pt": party_type, "p": party}, as_dict=True):
+            a = agg[(r.oy or "—", r.cur or ccy)]
+            a["nach"] += abs(flt(r.nach))
+            a["paid"] += abs(flt(r.paid))
+
+        # bog'lanmagan ortiqcha to'lov (avans) — o'z to'lov oyida
+        for r in frappe.db.sql("""
+            SELECT COALESCE(NULLIF(pe.custom_payment_month, ''),
+                            DATE_FORMAT(ple.posting_date, '%%Y-%%m')) oy,
+                   ple.account_currency cur, SUM(-ple.amount_in_account_currency) amt
+            FROM `tabPayment Ledger Entry` ple
+            JOIN `tabPayment Entry` pe ON pe.name = ple.voucher_no
+            WHERE ple.delinked = 0 AND ple.company = %(company)s
+              AND ple.voucher_type = 'Payment Entry'
+              AND ple.voucher_no = ple.against_voucher_no
+              AND ple.amount_in_account_currency < 0
+              AND ple.party_type = %(pt)s AND ple.party = %(p)s
+            GROUP BY oy, cur
+        """, {"company": company, "pt": party_type, "p": party}, as_dict=True):
+            a = agg[(r.oy or "—", r.cur or ccy)]
+            a["advance"] += flt(r.amt)
+            a["paid"] += flt(r.amt)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: personal months")
+        return {"months": [], "currency": ccy}
+
+    months = []
+    for (oy, cur), a in agg.items():
+        if abs(a["nach"]) < 0.005 and abs(a["paid"]) < 0.005:
+            continue
+        months.append({"oy": oy, "currency": cur, "nach": a["nach"], "paid": a["paid"],
+                       "advance": a["advance"], "debt": a["nach"] - a["paid"]})
+    months.sort(key=lambda x: str(x["oy"]), reverse=True)
+    return {"months": months, "currency": ccy}
 
 
 @frappe.whitelist()
