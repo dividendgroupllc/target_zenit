@@ -915,7 +915,7 @@ def _party_balance_cards(company, date):
 
     deb = defaultdict(float)                         # toifa -> summa
     cred = defaultdict(float)
-    for (pt, p), accs in per.items():
+    for (pt, _p), accs in per.items():
         net = sum(accs.values())
         if abs(net) < 0.005:
             continue
