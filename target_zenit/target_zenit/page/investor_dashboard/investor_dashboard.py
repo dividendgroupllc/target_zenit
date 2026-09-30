@@ -913,15 +913,20 @@ def _party_balance_cards(company, date):
         else:
             extra[nm] += flt(r.bal)
 
+    # "Kredit" supplier guruhidagilar ham "Kredit" toifasiga (daraxt bilan bir xil)
+    sup_gmap = _party_groups_map(
+        [{"party_type": pt, "party": p} for (pt, p) in per if pt == "Supplier"])
+
     deb = defaultdict(float)                         # toifa -> summa
     cred = defaultdict(float)
-    for (pt, _p), accs in per.items():
+    for (pt, p), accs in per.items():
         net = sum(accs.values())
         if abs(net) < 0.005:
             continue
         dom = max(accs.items(), key=lambda kv: abs(kv[1]))[0]
-        cat = "Kredit" if (dom or "").startswith("Kredit qarzdorlik") \
-            else BS_PT_LABELS.get(pt, pt or "Boshqa")
+        kredit = (dom or "").startswith("Kredit qarzdorlik") or \
+            (pt == "Supplier" and _kredit_guruhmi(sup_gmap.get((pt, p))))
+        cat = "Kredit" if kredit else BS_PT_LABELS.get(pt, pt or "Boshqa")
         (deb if net > 0 else cred)[cat] += abs(net)
     for _acc, v in extra.items():
         if abs(v) < 0.005:
@@ -1467,6 +1472,12 @@ BS_PT_LABELS = {
 }
 
 
+def _kredit_guruhmi(nom):
+    """"Kredit" supplier guruhi — bank/overdraft kreditlari. Balans va kartalarda
+    Ta'minotchilar ICHIDA emas, alohida "Kredit" toifasi bo'lib chiqadi."""
+    return (nom or "").strip().lower() in ("kredit", "кредит")
+
+
 def _bs_node(key, label, amounts, children=None, count=None):
     """Daraxt tuguni. amounts — davr ustunlari bo'yicha qiymatlar ro'yxati;
     amount — oxirgi ustun (sortlash va bitta-ustun rejim uchun).
@@ -1710,14 +1721,21 @@ def get_balance_sheet(from_date=None, to_date=None, accumulated=1, include_defau
             grp = gmap.get((pt, p), "") or "Guruhsiz"
         else:
             grp = ""                   # Employee/Shareholder — guruh tushunchasi yo'q, bevosita ro'yxat
+        # "Kredit" supplier guruhi — Ta'minotchilar ichida emas, alohida chiqadi
+        kredit_grp = pt == "Supplier" and _kredit_guruhmi(grp)
+        pt_key = pt or "—"
+        if kredit_grp:
+            grp = ""
         if (group_by or "") == "category":
             # toifa rejimi: Umumiy tab kartalari bilan bir xil nom/qoida
             dom_name = ((amap[acc].account_name if amap.get(acc) else acc) or acc)
-            slot = "Kredit" if dom_name.startswith("Kredit qarzdorlik") \
+            slot = "Kredit" if (kredit_grp or dom_name.startswith("Kredit qarzdorlik")) \
                 else BS_PT_LABELS.get(pt, pt or "Boshqa")
         else:
             slot = acc
-        side[slot][pt or "—"][grp].append({"name": nm, "v": disp})
+            if kredit_grp:
+                pt_key = "Kredit"      # hisob ostida Xodimlar/Ta'minotchilar qatorida
+        side[slot][pt_key][grp].append({"name": nm, "v": disp})
 
     def side_tree(side_map, extra_map, prefix):
         """Hisob (yoki toifa) → kontragent turi → guruh → kontragent daraxti.
