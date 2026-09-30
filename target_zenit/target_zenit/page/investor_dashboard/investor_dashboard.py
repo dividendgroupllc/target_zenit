@@ -2468,6 +2468,11 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
 
     out, cats, tot = [], {}, defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "debt": 0.0})
     for r in rows:
+        # Bank kreditlari (supplier_group = "Kredit": Overdraft va h.k.) — personal
+        # EMAS: opening/JE yozuvlari ularni ham PLE'ga tushiradi, lekin bu bo'lim
+        # odamlar (xodim/o'quvchi) uchun. Kreditlar Qarzdorlik/Balans'da ko'rinadi.
+        if r.pt == "Supplier" and _kredit_guruhmi(gmap.get((r.pt, r.party))):
+            continue
         # Payable'da nachisleniya musbat, Receivable'da ham musbat chiqadi
         nach, paid = abs(flt(r.nach)), abs(flt(r.paid))
         cur0 = r.cur or ccy
