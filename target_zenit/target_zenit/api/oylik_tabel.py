@@ -7,8 +7,8 @@ Orqa tomonda HRMS'ning haqiqiy hujjatlari ma'lumot yig'adi:
   - oylik (baza) summa  -> Salary Structure Assignment ("Target Oylik" strukturasi)
   - bonus               -> Additional Salary ("Bonus" komponenti)
 
-Hisob: kunlik narx = oylik / xodimning norma ish kuni (custom_ish_kuni,
-bo'lmasa: o'qituvchi 21, boshqalar 26),
+Hisob: kunlik narx = oylik / xodimning SHU OYDAGI norma ish kuni
+(Tabel Ish Kuni yozuvi -> Employee.custom_ish_kuni -> default 21/26),
 jami = kunlik narx * koeffitsientlar yig'indisi + bonus. Yaxlitlanmaydi.
 
 Yo'qlama: barcha kunlar default 0 — har kuni zam direktor belgilaydi,
@@ -37,8 +37,10 @@ OY_NOMLARI = {
 
 STATUS_KOEF = {"Present": 1.0, "Work From Home": 1.0, "Half Day": 0.5, "Absent": 0.0, "On Leave": 0.0}
 
-# Norma ish kuni (oyiga): o'qituvchilar 21, qolgan barcha xodimlar 26.
-# Xodimda Employee.custom_ish_kuni to'ldirilgan bo'lsa — o'sha ustun keladi.
+# Norma ish kuni (oyiga) — HAR OY UCHUN ALOHIDA bo'lishi mumkin (sentabr 26,
+# avgust 5 ...). Qidiruv tartibi: (1) "Tabel Ish Kuni" yozuvi (xodim+yil+oy),
+# (2) Employee.custom_ish_kuni (doimiy norma), (3) default: o'qituvchi 21,
+# qolgan barcha xodimlar 26.
 DEFAULT_ISH_KUNI = 26
 OQITUVCHI_ISH_KUNI = 21
 
@@ -48,6 +50,17 @@ def _default_ish_kuni(lavozim):
     if "teacher" in l or "o'qituvchi" in l or "oqituvchi" in l or "o‘qituvchi" in l or "o’qituvchi" in l:
         return OQITUVCHI_ISH_KUNI
     return DEFAULT_ISH_KUNI
+
+
+def _oy_ish_kuni_map(yil, oy, emp_ids):
+    """Shu oy uchun qo'lda kiritilgan norma ish kunlari: {xodim: kun}."""
+    if not emp_ids:
+        return {}
+    return {r.xodim: cint(r.kun) for r in frappe.get_all(
+        "Tabel Ish Kuni",
+        filters={"yil": cint(yil), "oy": cint(oy), "xodim": ["in", emp_ids]},
+        fields=["xodim", "kun"],
+    )}
 
 
 # ---------------------------------------------------------------- ruxsat
@@ -302,6 +315,9 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
     )
     emp_ids = [x.name for x in xodimlar]
 
+    # Shu oy uchun qo'lda kiritilgan norma ish kunlari
+    oy_ish_kuni = _oy_ish_kuni_map(yil, oy, emp_ids)
+
     # Oylik (baza): SSA'dan; bo'lmasa Kassa taklifi
     base_map = {}
     if emp_ids:
@@ -373,8 +389,14 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             kun_qatori.append({"koef": koef, "holat": holat})
 
         bonus = bonus_map.get(x.name, 0.0)
-        # Kunlik narx xodimning o'z norma ish kuniga bo'linadi (kalendar emas)
-        ish_kuni = cint(x.custom_ish_kuni) or _default_ish_kuni(x.designation)
+        # Kunlik narx xodimning SHU OYDAGI norma ish kuniga bo'linadi:
+        # oy uchun kiritilgani -> xodimning doimiy normasi -> default
+        if x.name in oy_ish_kuni:
+            ish_kuni, ik_manba = oy_ish_kuni[x.name], "oy"
+        elif cint(x.custom_ish_kuni):
+            ish_kuni, ik_manba = cint(x.custom_ish_kuni), "xodim"
+        else:
+            ish_kuni, ik_manba = _default_ish_kuni(x.designation), "default"
         kunlik_narx = (oylik["summa"] / ish_kuni) if ish_kuni else 0.0
         jami = kunlik_narx * koef_yigindi + bonus
 
@@ -383,7 +405,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             "ismi": x.employee_name,
             "lavozim": x.designation or "",
             "ish_kuni": ish_kuni,
-            "ish_kuni_manba": "xodim" if cint(x.custom_ish_kuni) else "default",
+            "ish_kuni_manba": ik_manba,
             "kirgan_sana": str(kirgan) if kirgan else None,
             "oylik": oylik,
             "kunlar": kun_qatori,
@@ -551,10 +573,11 @@ def set_oylik(xodim, yil, oy, summa):
 
 @frappe.whitelist()
 def set_ish_kuni(xodim, yil, oy, kun):
-    """Xodimning norma ish kunini o'rnatish -> Employee.custom_ish_kuni.
+    """Xodimning norma ish kunini FAQAT SHU OY uchun o'rnatish -> "Tabel Ish Kuni".
 
-    Xodimning o'ziga saqlanadi, shuning uchun keyingi (ochiq) oylarga ham
-    amal qiladi; yopilgan oylar hisobi qayta ochilmaguncha o'zgarmaydi."""
+    Har oyning normasi har xil bo'lishi mumkin (sentabr 26, avgust 5 ...),
+    shuning uchun qiymat oyga biriktiriladi. Yozuv bo'lmagan oylarda xodimning
+    doimiy normasi (Employee.custom_ish_kuni) yoki default (21/26) amal qiladi."""
     _rol_tekshir()
     yil, oy = cint(yil), cint(oy)
     kun = cint(kun)
@@ -569,10 +592,21 @@ def set_ish_kuni(xodim, yil, oy, kun):
     if not emp:
         frappe.throw(_("Xodim topilmadi"))
 
-    eski = cint(emp.custom_ish_kuni) or _default_ish_kuni(emp.designation)
-    frappe.db.set_value("Employee", xodim, "custom_ish_kuni", kun)
+    mavjud = frappe.db.get_value(
+        "Tabel Ish Kuni", {"xodim": xodim, "yil": yil, "oy": oy}, ["name", "kun"], as_dict=True
+    )
+    if mavjud:
+        eski = cint(mavjud.kun)
+        frappe.db.set_value("Tabel Ish Kuni", mavjud.name, "kun", kun)
+    else:
+        eski = cint(emp.custom_ish_kuni) or _default_ish_kuni(emp.designation)
+        doc = frappe.get_doc({
+            "doctype": "Tabel Ish Kuni",
+            "xodim": xodim, "yil": yil, "oy": oy, "kun": kun,
+        })
+        doc.insert(ignore_permissions=True)
 
-    _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Ish kuni",
+    _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Ish kuni (oy)",
             str(eski), str(kun))
     return {"ok": True, "kun": kun}
 

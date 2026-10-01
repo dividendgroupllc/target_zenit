@@ -177,7 +177,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				<td class="ot-c-ism" title="${frappe.utils.escape_html(q.ismi || q.xodim)}">${frappe.utils.escape_html(q.ismi || q.xodim)}</td>
 				<td class="ot-c-lavozim" title="${frappe.utils.escape_html(q.lavozim || "")}">${frappe.utils.escape_html(q.lavozim || "—")}</td>
 				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="Bosib o'zgartiring (Employee hujjati bilan sinxron)">${fmt(q.oylik.summa)}${manba}</td>
-				<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="Norma ish kuni — bosib o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}</td>`;
+				<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="${q.ish_kuni_manba === "oy" ? "Shu oy uchun kiritilgan" : q.ish_kuni_manba === "xodim" ? "Xodimning doimiy normasi" : "Default"} norma ish kuni — bosib FAQAT shu oy uchun o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}</td>`;
 			q.kunlar.forEach((kq, j) => {
 				const kd = d.kunlar[j];
 				if (kq.holat === "kirmagan") {
@@ -306,12 +306,12 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 
 	function ishKuniDialog(q) {
 		const dlg = new frappe.ui.Dialog({
-			title: `${q.ismi} — norma ish kuni`,
+			title: `${q.ismi} — ${holat.data.oy_nomi} uchun norma ish kuni`,
 			fields: [{
-				fieldtype: "Int", fieldname: "kun", label: "Ish kuni (oyiga)",
+				fieldtype: "Int", fieldname: "kun", label: `Ish kuni (${holat.data.oy_nomi} ${holat.data.yil})`,
 				default: q.ish_kuni, reqd: 1,
-				description: "Kunlik narx = oylik / shu son. Default: o'qituvchi 21, boshqalar 26. " +
-					"Xodimning o'ziga saqlanadi — keyingi oylarga ham amal qiladi.",
+				description: "Kunlik narx = oylik / shu son. FAQAT SHU OYGA saqlanadi — " +
+					"boshqa oylarga ta'sir qilmaydi (kiritilmagan oylarda default: o'qituvchi 21, boshqalar 26).",
 			}],
 			primary_action_label: "Saqlash",
 			primary_action: (v) => {
