@@ -51,6 +51,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		.ot-kun.yak { background:#fdecea !important; color:#c0392b; font-weight:600; }
 		.ot-kun.saqlangan { background:#e7f1ff !important; font-weight:700; color:#1a56b0; }
 		.ot-kun.kirmagan { background:var(--control-bg, #f5f5f5) !important; color:var(--text-muted); cursor:default; }
+		.ot-ketgan { display:block; font-size:10px; line-height:1.1; color:#c0392b; }
 		.ot-kun.default { color:var(--text-muted); }
 		th.ot-yak-bosh { background:#fdecea !important; color:#c0392b; }
 		.ot-c-bonus { min-width:90px; text-align:right; cursor:pointer; }
@@ -174,14 +175,16 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			if (q.oylik.manba === "yoq") manba = '<span class="ot-manba-kassa ot-manba-yoq">kiritilmagan</span>';
 			let tr = `<tr data-ism="${frappe.utils.escape_html(((q.ismi || "") + " " + (q.lavozim || "")).toLowerCase())}" data-xodim="${q.xodim}">
 				<td class="ot-c-nr">${i + 1}</td>
-				<td class="ot-c-ism" title="${frappe.utils.escape_html(q.ismi || q.xodim)}">${frappe.utils.escape_html(q.ismi || q.xodim)}</td>
+				<td class="ot-c-ism" title="${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? ` — ${q.ketgan_sana} da ishdan ketgan` : ""}">${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? `<span class="ot-ketgan">ketgan: ${q.ketgan_sana}</span>` : ""}</td>
 				<td class="ot-c-lavozim" title="${frappe.utils.escape_html(q.lavozim || "")}">${frappe.utils.escape_html(q.lavozim || "—")}</td>
 				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="Bosib o'zgartiring (Employee hujjati bilan sinxron)">${fmt(q.oylik.summa)}${manba}</td>
 				<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="${q.ish_kuni_manba === "oy" ? "Shu oy uchun kiritilgan" : q.ish_kuni_manba === "xodim" ? "Xodimning doimiy normasi" : "Default"} norma ish kuni — bosib FAQAT shu oy uchun o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}</td>`;
 			q.kunlar.forEach((kq, j) => {
 				const kd = d.kunlar[j];
 				if (kq.holat === "kirmagan") {
-					tr += `<td class="ot-kun kirmagan" title="Hali ishga kirmagan">—</td>`;
+					tr += `<td class="ot-kun kirmagan" title="Hali ishga kirmagan (${q.kirgan_sana || ""} da kirgan)">—</td>`;
+				} else if (kq.holat === "ketgan") {
+					tr += `<td class="ot-kun kirmagan" title="Ishdan ketgan (${q.ketgan_sana || ""})">—</td>`;
 				} else {
 					const cls = ["ot-kun"];
 					if (kd.yakshanba) cls.push("yak");

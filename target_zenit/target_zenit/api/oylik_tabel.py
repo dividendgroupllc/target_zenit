@@ -306,13 +306,26 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
     ish_kunlari = kun_soni - len(yakshanbalar)
 
     # Faqat "Oylik tabelda" belgisi qo'yilgan xodimlar — Active'lar ko'p (180+),
-    # tabelga esa faqat hozir real ishlayotganlar kiradi
+    # tabelga esa faqat hozir real ishlayotganlar kiradi.
+    # Ishdan KETGANLAR (status=Left + relieving_date) ketgan OYIGACHA ko'rinadi:
+    # o'sha oyda ketgan kunigacha ishlagan — undan keyingi kunlar "—" bo'ladi,
+    # keyingi oylardan esa butunlay chiqib ketadi (belgini olish ham shart emas).
     xodimlar = frappe.get_all(
         "Employee",
-        filters={"status": "Active", "custom_tabelda": 1, "date_of_joining": ["<=", oy_oxiri]},
-        fields=["name", "employee_name", "designation", "custom_ish_kuni", "date_of_joining"],
+        filters={"custom_tabelda": 1, "date_of_joining": ["<=", oy_oxiri]},
+        fields=["name", "employee_name", "designation", "custom_ish_kuni",
+                "date_of_joining", "status", "relieving_date"],
         order_by="employee_name asc",
     )
+    saralangan = []
+    for x in xodimlar:
+        ketgan = getdate(x.relieving_date) if x.relieving_date else None
+        if x.status != "Active" and (not ketgan or ketgan < oy_boshi):
+            continue                   # ketgan sanasi yo'q yoki bu oydan oldin ketgan
+        if ketgan and ketgan < oy_boshi:
+            continue                   # sana qo'yilgan, status hali almashmagan bo'lsa ham
+        saralangan.append(x)
+    xodimlar = saralangan
     emp_ids = [x.name for x in xodimlar]
 
     # Shu oy uchun qo'lda kiritilgan norma ish kunlari
@@ -370,6 +383,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
         else:
             oylik = {"summa": 0.0, "manba": "yoq"}
 
+        ketgan = getdate(x.relieving_date) if x.relieving_date else None
         kun_qatori = []
         koef_yigindi = 0.0
         for kd in kunlar:
@@ -377,6 +391,10 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             sana_k = date(yil, oy, k)
             if kirgan and sana_k < kirgan:
                 kun_qatori.append({"koef": None, "holat": "kirmagan"})
+                continue
+            if ketgan and sana_k > ketgan:
+                # ishdan ketgan kundan keyingi kunlar — xuddi kirishdan oldingidek "—"
+                kun_qatori.append({"koef": None, "holat": "ketgan"})
                 continue
             if (x.name, k) in davomat:
                 koef = davomat[(x.name, k)]
@@ -407,6 +425,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             "ish_kuni": ish_kuni,
             "ish_kuni_manba": ik_manba,
             "kirgan_sana": str(kirgan) if kirgan else None,
+            "ketgan_sana": str(ketgan) if ketgan else None,
             "oylik": oylik,
             "kunlar": kun_qatori,
             "koef_yigindi": koef_yigindi,
@@ -462,12 +481,15 @@ def set_koef(xodim, sana, koef):
     _ochiq_tekshir(sana.year, sana.month)
 
     emp = frappe.db.get_value(
-        "Employee", xodim, ["name", "employee_name", "company", "date_of_joining"], as_dict=True
+        "Employee", xodim,
+        ["name", "employee_name", "company", "date_of_joining", "relieving_date"], as_dict=True
     )
     if not emp:
         frappe.throw(_("Xodim topilmadi"))
     if emp.date_of_joining and sana < getdate(emp.date_of_joining):
         frappe.throw(_("Xodim {0} da ishga kirgan — undan oldingi kunga yozib bo'lmaydi").format(emp.date_of_joining))
+    if emp.relieving_date and sana > getdate(emp.relieving_date):
+        frappe.throw(_("Xodim {0} da ishdan ketgan — undan keyingi kunga yozib bo'lmaydi").format(emp.relieving_date))
 
     status = "Present" if koef else "Absent"
 
