@@ -1012,7 +1012,7 @@ def _nachisleniya_je_yarat(yil, oy, natija):
 
     company = _kompaniya()
     ccy = frappe.db.get_value("Company", company, "default_currency")
-    oy_boshi, oy_oxiri, _kun = _oy_chegara(yil, oy)
+    _oy_boshi, oy_oxiri, _kun = _oy_chegara(yil, oy)
 
     from target_zenit.target_zenit.doctype.kassa.kassa import get_employee_payable_account
     payable = get_employee_payable_account(company)
