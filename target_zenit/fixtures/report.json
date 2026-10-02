@@ -54,8 +54,7 @@
     "parentfield": "roles",
     "parenttype": "Report",
     "role": "investor"
-   }
-    ,
+   },
    {
     "parent": "Balance Sheet",
     "parentfield": "roles",
@@ -121,13 +120,18 @@
     "parentfield": "roles",
     "parenttype": "Report",
     "role": "investor"
-   }
-    ,
+   },
    {
     "parent": "Profit and Loss Statement",
     "parentfield": "roles",
     "parenttype": "Report",
     "role": "Operator"
+   },
+   {
+    "parent": "Profit and Loss Statement",
+    "parentfield": "roles",
+    "parenttype": "Report",
+    "role": "Xojakbar_Operator"
    }
   ],
   "snapshot_report": 0,
