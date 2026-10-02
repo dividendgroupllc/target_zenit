@@ -926,6 +926,172 @@ def set_jami(xodim, yil, oy, summa):
     return {"ok": True, "summa": summa}
 
 
+# ---------------------------------------------------------------- avto-nachisleniya
+
+# Ish haqi kategoriyalari (buxgalter registri atamalari) va ularning xarajat
+# hisobi: "Admin oylik" -> admin hisobi, qolgan uchtasi -> sebestoimost hisobi.
+ISH_HAQI_KATEGORIYALARI = ("Admin oylik", "O'qituvchi", "Xodimlar", "Oshxona")
+KATEGORIYA_HISOB_TURI = {"Admin oylik": "admin", "O'qituvchi": "sebest",
+                         "Xodimlar": "sebest", "Oshxona": "sebest"}
+
+# Lavozimdan kategoriya taxmini (Employee.custom_ish_haqi_kategoriya bo'sh
+# bo'lsa) — buxgalter registridagi amaldagi taqsimotdan olingan qoidalar.
+# Bir xil lavozim har xil kategoriyada bo'lishi mumkin (masalan "Bosh oshpaz
+# yordamchisi") — bunday istisnolar Employee'dagi maydonda aniq belgilanadi.
+XODIMLAR_KALITLARI = ("tutor", "tyutor", "tozalik", "komendant",
+                      "academic director", "exam director")
+OQITUVCHI_KALITLARI = ("teacher", "o'qituvchi", "oqituvchi", "o‘qituvchi",
+                       "o’qituvchi", "assistant", "assistent", "pre school",
+                       "preschool", "primary", "mental", "mathematic",
+                       "matematika", "science", "biology", "physics",
+                       "history", "chess", "ethics", "musiqa",
+                       "uzbek language", "biznes", "business", "gimnastika",
+                       "p.e.")
+
+
+def _ish_haqi_kategoriya(tanlov, lavozim, tolov_turi=None):
+    """Xodimning ish haqi kategoriyasi: avval Employee'dagi aniq tanlov,
+    bo'sh bo'lsa lavozim va to'lov turidan taxmin."""
+    if (tanlov or "").strip() in ISH_HAQI_KATEGORIYALARI:
+        return (tanlov or "").strip()
+    l = (lavozim or "").lower()
+    if "oshpaz" in l:
+        return "Oshxona"
+    if any(k in l for k in XODIMLAR_KALITLARI):
+        return "Xodimlar"
+    if (tolov_turi or "").strip() == "Soatbay" or any(k in l for k in OQITUVCHI_KALITLARI):
+        return "O'qituvchi"
+    return "Admin oylik"
+
+
+def _ish_haqi_hisoblari(company):
+    """Ikkala ish haqi xarajat hisobi: {"admin": ..., "sebest": ...}.
+    Hisob nomi bo'yicha topiladi (CoA'dagi mavjud hisoblar)."""
+    admin = frappe.db.get_value(
+        "Account", {"company": company, "is_group": 0, "root_type": "Expense",
+                    "name": ["like", "Ish haqi%admin%"]})
+    sebest = frappe.db.get_value(
+        "Account", {"company": company, "is_group": 0, "root_type": "Expense",
+                    "name": ["like", "Ish haqi%sebest%"]})
+    if not (admin and sebest):
+        frappe.throw(_("Ish haqi xarajat hisoblari topilmadi (admin/sebestoimost) — "
+                       "CoA'da 'Ish haqi — ...' hisoblarini tekshiring"))
+    return {"admin": admin, "sebest": sebest}
+
+
+def _nachisleniya_je_yarat(yil, oy, natija):
+    """Oy yopilganda tabel JAMI'lari bo'yicha QORALAMA nachisleniya JE.
+
+    Tuzilishi buxgalterning qo'lda yozadigan oylik JE'si bilan bir xil
+    (masalan ACC-JV-2026-00411): kredit — har xodimga alohida qator, UZS
+    payable hisobi (kurs bilan); debet — ikkita xarajat hisobi (kompaniya
+    valyutasida): Учебный -> sebestoimost, Офис -> admin.
+
+    JE QORALAMA holda qoladi — buxgalter tekshirib submit qiladi; submit
+    bo'lganda shu oy uchun Kassa'dan qilingan (hali bog'lanmagan) to'lovlar
+    mavjud on_submit hook'i orqali nachisleniyaga AVTOMATIK ulanadi.
+
+    Qaytadi: (je_nomi yoki None, xabar)."""
+    oy_str = f"{yil}-{oy:02d}"
+    marker = f"Oylik tabel avto-nachisleniya {oy_str}"
+
+    # Takror yopishda: submit bo'lgan avto-JE bor — tegmaymiz (dublikat bo'lmasin);
+    # qoralama bo'lsa — o'chirib, yangi summalar bilan qayta yozamiz
+    for b in frappe.get_all("Journal Entry",
+                            filters={"user_remark": ["like", marker + "%"],
+                                     "docstatus": ["<", 2]},
+                            fields=["name", "docstatus"]):
+        if cint(b.docstatus) == 1:
+            return None, _("{0} uchun avto-nachisleniya allaqachon tasdiqlangan: {1}").format(
+                oy_str, b.name)
+        frappe.delete_doc("Journal Entry", b.name, ignore_permissions=True, force=True)
+
+    qatorlar = [q for q in natija["qatorlar"] if flt(q["jami"]) > 0]
+    if not qatorlar:
+        return None, _("Nachisleniya uchun summa yo'q (hamma JAMI = 0)")
+
+    company = _kompaniya()
+    ccy = frappe.db.get_value("Company", company, "default_currency")
+    oy_boshi, oy_oxiri, _kun = _oy_chegara(yil, oy)
+
+    from target_zenit.target_zenit.doctype.kassa.kassa import get_employee_payable_account
+    payable = get_employee_payable_account(company)
+    if not payable:
+        frappe.throw(_("Xodimlar qarz (payable) hisobi topilmadi"))
+    pay_ccy = frappe.db.get_value("Account", payable, "account_currency") or ccy
+
+    kurs = 1.0
+    if pay_ccy != ccy:
+        from erpnext.setup.utils import get_exchange_rate
+        kurs = flt(get_exchange_rate(pay_ccy, ccy, str(oy_oxiri)))
+        if not kurs:
+            frappe.throw(_("{0}->{1} kursi topilmadi ({2})").format(pay_ccy, ccy, oy_oxiri))
+
+    hisoblar = _ish_haqi_hisoblari(company)
+
+    # Xodimlarning ish haqi kategoriyasi (Employee'dagi aniq tanlov;
+    # maydon hali yo'q bo'lsa yoki bo'sh bo'lsa — lavozim/to'lov turidan)
+    emp_ids = [q["xodim"] for q in qatorlar]
+    kat_map = {}
+    emp_fields = ["name", "designation", "custom_tolov_turi"]
+    if frappe.get_meta("Employee").has_field("custom_ish_haqi_kategoriya"):
+        emp_fields.append("custom_ish_haqi_kategoriya")
+    for e in frappe.get_all("Employee", filters={"name": ["in", emp_ids]}, fields=emp_fields):
+        kat_map[e.name] = _ish_haqi_kategoriya(
+            e.get("custom_ish_haqi_kategoriya"), e.designation, e.get("custom_tolov_turi"))
+
+    accounts = []
+    exp_base = {"admin": 0.0, "sebest": 0.0}   # xarajat (kompaniya valyutasida)
+    for q in qatorlar:
+        summa = flt(q["jami"])
+        kat = kat_map.get(q["xodim"], "Admin oylik")
+        exp_base[KATEGORIYA_HISOB_TURI[kat]] += flt(summa * kurs, 9)
+        accounts.append({
+            "account": payable,
+            "party_type": "Employee",
+            "party": q["xodim"],
+            "credit_in_account_currency": summa,
+            "exchange_rate": kurs,
+            "user_remark": f"{q['ismi']} — {OY_NOMLARI[oy]} {yil} oyligi (tabel, {kat})",
+        })
+
+    # Debet qatorlari — hisob turi bo'yicha; kredit bilan aynan tenglashtiriladi
+    exp_rows = []
+    for tur in ("admin", "sebest"):
+        if flt(exp_base[tur], 9) > 0:
+            exp_rows.append({
+                "account": hisoblar[tur],
+                "debit_in_account_currency": flt(exp_base[tur], 9),
+                "exchange_rate": 1,
+            })
+    # mayda float farqi bo'lsa — birinchi xarajat qatoriga tuzatamiz
+    farq = flt(sum(flt(a["credit_in_account_currency"]) * kurs for a in accounts), 9) \
+        - flt(sum(r["debit_in_account_currency"] for r in exp_rows), 9)
+    if exp_rows and abs(farq) > 1e-9:
+        exp_rows[0]["debit_in_account_currency"] = flt(
+            exp_rows[0]["debit_in_account_currency"] + farq, 9)
+
+    je = frappe.get_doc({
+        "doctype": "Journal Entry",
+        "voucher_type": "Journal Entry",
+        "company": company,
+        "posting_date": str(oy_oxiri),
+        "multi_currency": 1 if pay_ccy != ccy else 0,
+        "custom_payment_month": oy_str,
+        "user_remark": f"{marker} — tabel JAMI summalari bo'yicha. "
+                       f"Tekshirib submit qiling; submit bo'lganda {oy_str} "
+                       f"to'lovlari avtomatik bog'lanadi.",
+        "accounts": exp_rows + accounts,
+    })
+    je.flags.ignore_permissions = True
+    je.insert(ignore_permissions=True)   # QORALAMA — submit buxgalterda
+
+    _jurnal(None, "", oy_str, "Avto-nachisleniya (qoralama)", "",
+            f"{je.name}: {len(qatorlar)} xodim")
+    return je.name, _("Nachisleniya qoralamasi yaratildi: {0} ({1} xodim)").format(
+        je.name, len(qatorlar))
+
+
 @frappe.whitelist()
 def oy_yop(yil, oy):
     """Oyni yopish: bo'sh kunlar Attendance bilan to'ldiriladi (default),
@@ -1023,6 +1189,11 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
             doc.flags.ignore_permissions = True
             doc.submit()
 
+        # 5) Oy nachisleniyasi — tabelning yakuniy JAMI summalari bilan
+        # qoralama Journal Entry (buxgalter tekshirib submit qiladi; submit
+        # bo'lganda shu oy to'lovlari avto bog'lanadi)
+        je_nom, je_xabar = _nachisleniya_je_yarat(yil, oy, natija)
+
         tabel = _tabel_doc(yil, oy)
         tabel.db_set("holat", "Yopiq")
         tabel.db_set("yopgan_kim", foydalanuvchi)
@@ -1031,7 +1202,8 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
         frappe.db.commit()
         frappe.publish_realtime(
             "tabel_update",
-            {"yil": yil, "oy": oy, "holat": "Yopiq", "xabar": f"{OY_NOMLARI[oy]} {yil} tabeli yopildi ✅"},
+            {"yil": yil, "oy": oy, "holat": "Yopiq", "je": je_nom,
+             "xabar": f"{OY_NOMLARI[oy]} {yil} tabeli yopildi ✅ {je_xabar}"},
         )
     except Exception:
         frappe.db.rollback()
@@ -1047,12 +1219,37 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
 
 @frappe.whitelist()
 def oy_och(yil, oy):
-    """Yopiq oyni qayta ochish (sahifaga ruxsati bor rollar)."""
+    """Yopiq oyni qayta ochish (sahifaga ruxsati bor rollar).
+
+    Oy yopilganda yaratilgan avto-nachisleniya JE'si ham qaytariladi:
+    submit qilingani BEKOR qilinadi (unga ulangan to'lovlar avtomatik
+    yechiladi va yana avans bo'lib qoladi), qoralama esa o'chiriladi.
+    Oy qayta yopilganda yangi summalar bilan yangi JE yaratiladi."""
     _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     tabel = _tabel_doc(yil, oy)
     if tabel.holat != "Yopiq":
         frappe.throw(_("Bu oy yopiq emas"))
+
+    marker = f"Oylik tabel avto-nachisleniya {yil}-{oy:02d}"
+    je_xabar = ""
+    for b in frappe.get_all("Journal Entry",
+                            filters={"user_remark": ["like", marker + "%"],
+                                     "docstatus": ["<", 2]},
+                            fields=["name", "docstatus"]):
+        doc = frappe.get_doc("Journal Entry", b.name)
+        doc.flags.ignore_permissions = True
+        if doc.docstatus == 1:
+            doc.cancel()
+            je_xabar = _("Avto-nachisleniya bekor qilindi: {0}").format(b.name)
+        else:
+            frappe.delete_doc("Journal Entry", b.name, ignore_permissions=True, force=True)
+            je_xabar = _("Avto-nachisleniya qoralamasi o'chirildi: {0}").format(b.name)
+        _jurnal(None, "", f"{yil}-{oy:02d}", "Avto-nachisleniya",
+                b.name, "bekor qilindi" if cint(b.docstatus) == 1 else "o'chirildi")
+
     tabel.db_set("holat", "Ochiq")
     _jurnal(None, "", f"{yil}-{oy:02d}", "Oy holati", "Yopiq", "Ochiq")
-    return {"ok": True}
+    if je_xabar:
+        frappe.msgprint(je_xabar, alert=True, indicator="orange")
+    return {"ok": True, "je_xabar": je_xabar}

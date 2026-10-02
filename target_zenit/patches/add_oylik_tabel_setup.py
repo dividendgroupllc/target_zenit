@@ -64,6 +64,25 @@ def execute():
                     "insert_after": "custom_oylik",
                     "in_standard_filter": 1,
                 },
+                # Oy yopilgandagi avto-nachisleniya kategoriyasi (buxgalter
+                # registri atamalari bilan). Hisob mapping'i:
+                # "Admin oylik" -> "Ish haqi — admin xodimlar";
+                # O'qituvchi / Xodimlar / Oshxona -> "Ish haqi — o'qituvchilar
+                # va boshqa xodimlar, sebestoimost". Bo'sh bo'lsa lavozim va
+                # to'lov turidan taxmin qilinadi (oshpaz -> Oshxona,
+                # tutor/tozalik/komendant -> Xodimlar, soatbay/teacher ->
+                # O'qituvchi, qolganlar -> Admin oylik).
+                {
+                    "fieldname": "custom_ish_haqi_kategoriya",
+                    "label": "Ish haqi kategoriyasi (tabel)",
+                    "fieldtype": "Select",
+                    "options": "\nAdmin oylik\nO'qituvchi\nXodimlar\nOshxona",
+                    "insert_after": "custom_tolov_turi",
+                    "in_standard_filter": 1,
+                    "description": "Oy yopilganda nachisleniya qaysi xarajat hisobiga tushishini belgilaydi: "
+                    "Admin oylik — admin hisobi; O'qituvchi/Xodimlar/Oshxona — sebestoimost hisobi. "
+                    "Bo'sh bo'lsa lavozim va to'lov turidan avtomatik aniqlanadi.",
+                },
             ],
         },
         ignore_validate=True,
