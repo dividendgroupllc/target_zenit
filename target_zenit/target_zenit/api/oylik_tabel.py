@@ -4,7 +4,9 @@
 Old tomoni: Page "oylik-tabel" (jadval-ekran, katak bosib tahrirlash).
 Orqa tomonda HRMS'ning haqiqiy hujjatlari ma'lumot yig'adi:
   - kunlik koeffitsient -> Attendance (custom_koef maydoni bilan)
-  - oylik (baza) summa  -> Salary Structure Assignment ("Target Oylik" strukturasi)
+  - oylik (baza) summa  -> "Tabel Oylik" (HAR OYga alohida qotirilgan qiymat;
+    bo'lmasa Salary Structure Assignment, "Target Oylik" strukturasi) —
+    bir oyni o'zgartirish boshqa oyga ta'sir qilmaydi
   - bonus               -> Additional Salary ("Bonus" komponenti)
 
 Hisob (Employee.custom_tolov_turi bo'yicha):
@@ -13,7 +15,9 @@ Hisob (Employee.custom_tolov_turi bo'yicha):
     jami = kunlik narx * kelgan kunlar (0/1) + bonus.
   - Soatbay (o'qituvchilar): kataklarga SOAT yoziladi (0-24), shartnoma
     summasi (custom_oylik/SSA base) = SOAT NARXI,
-    jami = soat narxi * oyda ishlagan soatlar + bonus. Yaxlitlanmaydi.
+    jami = soat narxi * oyda ishlagan soatlar + bonus.
+JAMI ming so'mga PASTGA yaxlitlanadi (1 600 500 -> 1 600 000) —
+nachisleniya/to'lov uchun aniq, tekis summa (amaldagi to'lov odati bilan mos).
 
 Yo'qlama: barcha kunlar default 0 — har kuni zam direktor belgilaydi,
 kim kelgan bo'lsa 1 qilinadi (faqat 0/1: keldi yoki kelmadi).
@@ -48,6 +52,16 @@ STATUS_KOEF = {"Present": 1.0, "Work From Home": 1.0, "Half Day": 0.5, "Absent":
 DEFAULT_ISH_KUNI = 26
 OQITUVCHI_ISH_KUNI = 21
 
+# Hisoblangan oylik (JAMI) ming so'mga PASTGA yaxlitlanadi (kesiladi) —
+# nachisleniya/to'lov uchun tekis summa. Foydalanuvchi amaliyoti: 445 3xx
+# chiqsa 445 000 beriladi, 1 600 500 chiqsa ham 1 600 000 — doim pastga.
+JAMI_YAXLITLASH = 1000
+
+
+def _jami_yaxlitla(summa):
+    """Ming so'mga pastga kesish: 1 600 999 -> 1 600 000."""
+    return int(flt(summa) / JAMI_YAXLITLASH) * JAMI_YAXLITLASH
+
 
 def _default_ish_kuni(lavozim):
     l = (lavozim or "").lower()
@@ -64,6 +78,79 @@ def _oy_ish_kuni_map(yil, oy, emp_ids):
         "Tabel Ish Kuni",
         filters={"yil": cint(yil), "oy": cint(oy), "xodim": ["in", emp_ids]},
         fields=["xodim", "kun"],
+    )}
+
+
+def _oy_oylik_map(yil, oy, emp_ids):
+    """Shu oy uchun OYga qotirilgan oylik ish haqi: {xodim: summa} ("Tabel Oylik").
+    Yozuvi bor oy — boshqa oylardagi o'zgarishlardan ta'sirlanmaydi."""
+    if not emp_ids:
+        return {}
+    return {r.xodim: flt(r.summa) for r in frappe.get_all(
+        "Tabel Oylik",
+        filters={"yil": cint(yil), "oy": cint(oy), "xodim": ["in", emp_ids]},
+        fields=["xodim", "summa"],
+    )}
+
+
+def _oy_oylik_yoz(xodim, yil, oy, summa):
+    """Xodimning SHU OY uchun oylik yozuvini yaratish/yangilash ("Tabel Oylik").
+    Qaytadi: eski qiymat (yozuv bo'lmagan bo'lsa None)."""
+    yil, oy = cint(yil), cint(oy)
+    mavjud = frappe.db.get_value(
+        "Tabel Oylik", {"xodim": xodim, "yil": yil, "oy": oy}, ["name", "summa"], as_dict=True
+    )
+    if mavjud:
+        frappe.db.set_value("Tabel Oylik", mavjud.name, "summa", flt(summa))
+        return flt(mavjud.summa)
+    frappe.get_doc({
+        "doctype": "Tabel Oylik",
+        "xodim": xodim, "yil": yil, "oy": oy, "summa": flt(summa),
+    }).insert(ignore_permissions=True)
+    return None
+
+
+def _oy_amaldagi_oylik(xodim, yil, oy):
+    """Oy uchun HOZIR amal qilayotgan oylik: "Tabel Oylik" yozuvi -> SSA
+    (oy oxirigacha eng so'nggisi). Hech biri yo'q bo'lsa None."""
+    rec = frappe.db.get_value(
+        "Tabel Oylik", {"xodim": xodim, "yil": cint(yil), "oy": cint(oy)}, "summa"
+    )
+    if rec is not None:
+        return flt(rec)
+    oy_oxiri = _oy_chegara(yil, oy)[1]
+    r = frappe.get_all(
+        "Salary Structure Assignment",
+        filters={"employee": xodim, "docstatus": 1, "from_date": ["<=", oy_oxiri]},
+        fields=["base"], order_by="from_date desc", limit=1,
+    )
+    return flt(r[0].base) if r else None
+
+
+def _keyingi_oylarni_muzlat(xodim, yil, oy):
+    """Shu oydan KEYINGI ochilgan (Tabel Oyi mavjud) oylarda xodimning o'z
+    "Tabel Oylik" yozuvi bo'lmasa — hozirgi amaldagi qiymatini oyga qotirib
+    qo'yadi. Shunda bu oydagi o'zgarish keyingi oylarga "oqib o'tmaydi"."""
+    yil, oy = cint(yil), cint(oy)
+    for t in frappe.get_all("Tabel Oyi", fields=["yil", "oy"]):
+        if (cint(t.yil), cint(t.oy)) <= (yil, oy):
+            continue
+        if frappe.db.exists("Tabel Oylik", {"xodim": xodim, "yil": t.yil, "oy": t.oy}):
+            continue
+        joriy = _oy_amaldagi_oylik(xodim, t.yil, t.oy)
+        if joriy is not None:
+            _oy_oylik_yoz(xodim, t.yil, t.oy, joriy)
+
+
+def _oy_jami_map(yil, oy, emp_ids):
+    """Shu oy uchun QO'LDA kiritilgan yakuniy JAMI summalar: {xodim: summa}.
+    Bor bo'lsa avtomatik hisob o'rniga shu summa (bonus ham ichida) olinadi."""
+    if not emp_ids:
+        return {}
+    return {r.xodim: flt(r.summa) for r in frappe.get_all(
+        "Tabel Jami",
+        filters={"yil": cint(yil), "oy": cint(oy), "xodim": ["in", emp_ids]},
+        fields=["xodim", "summa"],
     )}
 
 
@@ -351,10 +438,13 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
     xodimlar = saralangan
     emp_ids = [x.name for x in xodimlar]
 
-    # Shu oy uchun qo'lda kiritilgan norma ish kunlari
+    # Shu oy uchun qo'lda kiritilgan norma ish kunlari, oylik va jami summalar
     oy_ish_kuni = _oy_ish_kuni_map(yil, oy, emp_ids)
+    oy_oylik = _oy_oylik_map(yil, oy, emp_ids)
+    oy_jami = _oy_jami_map(yil, oy, emp_ids)
 
-    # Oylik (baza): SSA'dan; bo'lmasa Kassa taklifi
+    # Oylik (baza): avval SHU OYga qotirilgan "Tabel Oylik" yozuvi,
+    # bo'lmasa SSA'dan; bo'lmasa Kassa taklifi
     base_map = {}
     if emp_ids:
         for r in frappe.get_all(
@@ -400,7 +490,10 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
     for x in xodimlar:
         kirgan = getdate(x.date_of_joining) if x.date_of_joining else None
         soatbay = (x.custom_tolov_turi or "").strip() == "Soatbay"
-        if x.name in base_map:
+        if x.name in oy_oylik:
+            # shu oyga qotirilgan qiymat — boshqa oylar o'zgarsa ham o'zgarmaydi
+            oylik = {"summa": oy_oylik[x.name], "manba": "oy"}
+        elif x.name in base_map:
             oylik = {"summa": base_map[x.name], "manba": "ssa"}
         elif x.name in kassa_map and not soatbay:
             # Kassa taklifi oylik summa — soatbayning SOAT NARXI sifatida yaroqsiz
@@ -447,7 +540,13 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             else:
                 ish_kuni, ik_manba = _default_ish_kuni(x.designation), "default"
             kunlik_narx = (oylik["summa"] / ish_kuni) if ish_kuni else 0.0
-        jami = kunlik_narx * koef_yigindi + bonus
+        # nachisleniya uchun aniq summa — ming so'mga pastga yaxlitlanadi;
+        # qo'lda kiritilgan jami bo'lsa — o'sha ustun keladi (bonus ham ichida)
+        jami_avto = _jami_yaxlitla(kunlik_narx * koef_yigindi + bonus)
+        if x.name in oy_jami:
+            jami, jami_manba = oy_jami[x.name], "qolda"
+        else:
+            jami, jami_manba = jami_avto, "avto"
 
         qatorlar.append({
             "xodim": x.name,
@@ -464,6 +563,8 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             "kunlik_narx": kunlik_narx,
             "bonus": bonus,
             "jami": jami,
+            "jami_avto": jami_avto,
+            "jami_manba": jami_manba,
         })
 
     return {
@@ -574,17 +675,23 @@ def set_koef(xodim, sana, koef):
 
 @frappe.whitelist()
 def set_oylik(xodim, yil, oy, summa):
-    """Oylik (baza) summani o'rnatish -> Salary Structure Assignment.
+    """Oylik summani FAQAT SHU OY uchun o'rnatish -> "Tabel Oylik" (+ SSA).
 
-    from_date = oy boshi, shuning uchun qachon o'zgartirilmasin — o'sha oyga
-    TO'LIQ amal qiladi (oldingi oylar eski qiymatida qoladi)."""
+    Har oyning oyligi alohida saqlanadi — bir oyni o'zgartirish boshqa oyga
+    ta'sir qilmaydi:
+      * qiymat "Tabel Oylik" yozuvi bilan OYga qotiriladi;
+      * o'z yozuvi bo'lmagan KEYINGI ochilgan oylar avval joriy qiymatida
+        muzlatiladi (o'zgarish ularga "oqib o'tmaydi");
+      * SSA ham oy boshidan yoziladi (HRMS/payroll mosligi uchun), lekin
+        faqat SHU OY ichidagi eski SSA'lar bekor qilinadi — keyingi
+        oylarning SSA'lariga tegilmaydi."""
     _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
     if summa < 0:
         frappe.throw(_("Oylik manfiy bo'lmaydi"))
     _ochiq_tekshir(yil, oy)
-    oy_boshi = _oy_chegara(yil, oy)[0]
+    oy_boshi, oy_oxiri, _kun = _oy_chegara(yil, oy)
 
     emp = frappe.db.get_value(
         "Employee", xodim, ["name", "employee_name", "company", "date_of_joining"], as_dict=True
@@ -595,21 +702,27 @@ def set_oylik(xodim, yil, oy, summa):
     _bonus_komponent_ta_minla()
     _struktura_ta_minla()
 
-    # SSA from_date xodim kirgan kunidan oldin bo'lolmaydi
+    # 1) Keyingi ochilgan oylarni (o'z yozuvi yo'qlarini) joriy qiymatida muzlatish
+    _keyingi_oylarni_muzlat(xodim, yil, oy)
+
+    # 2) Qiymatni shu OYga qotirish
+    eski = _oy_amaldagi_oylik(xodim, yil, oy)
+    _oy_oylik_yoz(xodim, yil, oy, summa)
+
+    # 3) SSA (HRMS/payroll o'qiydi): from_date xodim kirgan kunidan oldin bo'lolmaydi
     from_date = oy_boshi
     if emp.date_of_joining and getdate(emp.date_of_joining) > oy_boshi:
         from_date = getdate(emp.date_of_joining)
 
-    # shu sanadan keyingi eski SSA'lar ham bekor qilinadi — Employee hook'i
-    # (from_date = bugun) yozgan yozuv yangi qiymatni "yashirib" qo'ymasin
-    eski = None
+    # faqat SHU OY ichidagi eski SSA'lar bekor qilinadi (Employee hook'i yozgani
+    # ham shu oyda bo'lsa) — keyingi oylarning SSA'lari o'z joyida qoladi
     for r in frappe.get_all(
         "Salary Structure Assignment",
-        filters={"employee": xodim, "from_date": [">=", from_date], "docstatus": 1},
+        filters={"employee": xodim, "docstatus": 1,
+                 "from_date": ["between", [from_date, oy_oxiri]]},
         pluck="name",
     ):
         doc = frappe.get_doc("Salary Structure Assignment", r)
-        eski = flt(doc.base)
         doc.flags.ignore_permissions = True
         doc.cancel()
 
@@ -626,7 +739,16 @@ def set_oylik(xodim, yil, oy, summa):
     doc.flags.ignore_permissions = True
     doc.insert(ignore_permissions=True)
     doc.submit()
-    _oylik_maydon_yoz(xodim, summa)
+
+    # Employee.custom_oylik — "hozirgi" oylik: faqat eng so'nggi tabel oyi
+    # (undan keyin ochilgan oy yo'q) tahrirlanganda sinxronlanadi, eski oyni
+    # tuzatish xodimning joriy oyligini o'zgartirmaydi
+    keyingi_bor = any(
+        (cint(t.yil), cint(t.oy)) > (yil, oy)
+        for t in frappe.get_all("Tabel Oyi", fields=["yil", "oy"])
+    )
+    if not keyingi_bor:
+        _oylik_maydon_yoz(xodim, summa)
 
     _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Oylik summa",
             str(eski) if eski is not None else "", str(summa))
@@ -761,6 +883,50 @@ def set_bonus(xodim, yil, oy, summa):
 
 
 @frappe.whitelist()
+def set_jami(xodim, yil, oy, summa):
+    """Yakuniy JAMI oylikni qo'lda o'rnatish (FAQAT shu oy uchun) -> "Tabel Jami".
+
+    Qo'lda kiritilgan summa avtomatik hisob o'rnini bosadi (bonus ham ichida
+    hisoblanadi). 0 yoki bo'sh kiritilsa — qo'lda qiymat O'CHIRILADI va
+    avtomatik hisobga qaytadi."""
+    _tahrir_tekshir()
+    yil, oy = cint(yil), cint(oy)
+    summa = flt(summa)
+    if summa < 0:
+        frappe.throw(_("Summa manfiy bo'lmaydi"))
+    _ochiq_tekshir(yil, oy)
+
+    emp = frappe.db.get_value("Employee", xodim, ["name", "employee_name"], as_dict=True)
+    if not emp:
+        frappe.throw(_("Xodim topilmadi"))
+
+    mavjud = frappe.db.get_value(
+        "Tabel Jami", {"xodim": xodim, "yil": yil, "oy": oy}, ["name", "summa"], as_dict=True
+    )
+    eski = flt(mavjud.summa) if mavjud else None
+
+    if summa == 0:
+        # qo'lda qiymatni olib tashlash — avtomatik hisobga qaytadi
+        if mavjud:
+            frappe.delete_doc("Tabel Jami", mavjud.name, ignore_permissions=True, force=True)
+            _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Jami (qo'lda)",
+                    str(eski), "avto hisobga qaytarildi")
+        return {"ok": True, "summa": 0, "avto": True}
+
+    if mavjud:
+        frappe.db.set_value("Tabel Jami", mavjud.name, "summa", summa)
+    else:
+        frappe.get_doc({
+            "doctype": "Tabel Jami",
+            "xodim": xodim, "yil": yil, "oy": oy, "summa": summa,
+        }).insert(ignore_permissions=True)
+
+    _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Jami (qo'lda)",
+            str(eski) if eski is not None else "avto", str(summa))
+    return {"ok": True, "summa": summa}
+
+
+@frappe.whitelist()
 def oy_yop(yil, oy):
     """Oyni yopish: bo'sh kunlar Attendance bilan to'ldiriladi (default),
     hammasi submit bo'ladi, oylik summalar SSA sifatida saqlanadi, tabel qulflanadi.
@@ -795,6 +961,16 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
         for q in natija["qatorlar"]:
             emp = q["xodim"]
             company = frappe.db.get_value("Employee", emp, "company") or _kompaniya()
+
+            # 0) Oylik va ish kunini OYga qotirish — yopilgan oy keyinchalik
+            # boshqa oylardagi (yoki Employee'dagi) o'zgarishlardan ta'sirlanmasin
+            if q["oylik"]["manba"] != "oy" and flt(q["oylik"]["summa"]) > 0:
+                _oy_oylik_yoz(emp, yil, oy, q["oylik"]["summa"])
+            if q["tolov_turi"] == "kun" and q["ish_kuni_manba"] != "oy" and cint(q["ish_kuni"]):
+                frappe.get_doc({
+                    "doctype": "Tabel Ish Kuni",
+                    "xodim": emp, "yil": yil, "oy": oy, "kun": cint(q["ish_kuni"]),
+                }).insert(ignore_permissions=True)
 
             # 1) Oylik summa SSA'da yo'q bo'lsa — ko'rsatilgan qiymat bilan saqlab qo'yamiz
             if q["oylik"]["manba"] != "ssa":

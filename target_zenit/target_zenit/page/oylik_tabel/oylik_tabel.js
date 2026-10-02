@@ -62,6 +62,9 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		.ot-c-bonus:hover, .ot-c-oylik-t:hover { outline:2px solid var(--primary); outline-offset:-2px; }
 		.ot-c-oylik-t { cursor:pointer; }
 		.ot-c-jami { min-width:120px; text-align:right; font-weight:700; }
+		td.ot-c-jami-t { cursor:pointer; }
+		td.ot-c-jami-t:hover { outline:2px solid var(--primary); outline-offset:-2px; }
+		td.ot-c-jami.qolda { color:#b26a00; }
 		.ot-manba-kassa { color:#b26a00; font-size:10px; display:block; line-height:1; }
 		.ot-manba-yoq { color:var(--text-muted); }
 		.ot-jadval tfoot td { font-weight:700; border-top:2px solid var(--border-color); }
@@ -181,7 +184,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				<td class="ot-c-nr">${i + 1}</td>
 				<td class="ot-c-ism" title="${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? ` — ${q.ketgan_sana} da ishdan ketgan` : ""}">${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? `<span class="ot-ketgan">ketgan: ${q.ketgan_sana}</span>` : ""}</td>
 				<td class="ot-c-lavozim" title="${frappe.utils.escape_html(q.lavozim || "")}">${frappe.utils.escape_html(q.lavozim || "—")}</td>
-				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="${q.tolov_turi === "soat" ? "SOAT NARXI — bosib o'zgartiring (Employee hujjati bilan sinxron)" : "Bosib o'zgartiring (Employee hujjati bilan sinxron)"}">${fmt(q.oylik.summa)}${q.tolov_turi === "soat" ? '<span class="ot-manba-kassa" style="color:var(--text-muted)">soat narxi</span>' : ""}${manba}</td>
+				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="${q.tolov_turi === "soat" ? "SOAT NARXI — bosib FAQAT shu oy uchun o'zgartiring" : "Bosib FAQAT shu oy uchun o'zgartiring — boshqa oylarga ta'sir qilmaydi"}">${fmt(q.oylik.summa)}${q.tolov_turi === "soat" ? '<span class="ot-manba-kassa" style="color:var(--text-muted)">soat narxi</span>' : ""}${manba}</td>
 				${q.tolov_turi === "soat"
 					? `<td class="ot-c-ishkun default" data-i="${i}" title="Soatbay xodim — norma ish kuni qatnashmaydi, hisob soatlardan">soatbay</td>`
 					: `<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="${q.ish_kuni_manba === "oy" ? "Shu oy uchun kiritilgan" : q.ish_kuni_manba === "xodim" ? "Xodimning doimiy normasi" : "Default"} norma ish kuni — bosib FAQAT shu oy uchun o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}</td>`}`;
@@ -203,7 +206,10 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			tr += q.tolov_turi === "soat"
 				? `<td class="ot-c-kelgan" title="Oyda ishlagan soatlari">${koefFmt(q.koef_yigindi)} <small>soat</small></td>`
 				: `<td class="ot-c-kelgan" title="Kelgan kunlari (1 belgilanganlar), norma: ${q.ish_kuni}">${koefFmt(q.koef_yigindi)}</td>`;
-			tr += `<td class="ot-c-jami" title="${q.tolov_turi === "soat" ? `Soat narxi: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)} soat` : `Kunlik: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)}`}">${fmt(q.jami)}</td></tr>`;
+			const jamiIzoh = q.jami_manba === "qolda"
+				? `QO'LDA kiritilgan summa (avtomatik hisob: ${fmt(q.jami_avto)} so'm) — bosib o'zgartiring, 0 kiritsangiz avtoga qaytadi`
+				: `${q.tolov_turi === "soat" ? `Soat narxi: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)} soat` : `Kunlik: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)}`} — ming so'mga pastga yaxlitlangan. Bosib qo'lda o'zgartirsa bo'ladi`;
+			tr += `<td class="ot-c-jami ot-c-jami-t${q.jami_manba === "qolda" ? " qolda" : ""}" data-i="${i}" title="${jamiIzoh}">${fmt(q.jami)}${q.jami_manba === "qolda" ? `<span class="ot-manba-kassa" style="color:#b26a00">qo'lda</span>` : ""}</td></tr>`;
 			rows += tr;
 		});
 
@@ -256,6 +262,9 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			$orab.on("click", "td.ot-c-bonus", function () {
 				bonusDialog(d.qatorlar[$(this).data("i")]);
 			});
+			$orab.on("click", "td.ot-c-jami-t", function () {
+				jamiDialog(d.qatorlar[$(this).data("i")]);
+			});
 			$orab.on("click", "td.ot-c-ishkun", function () {
 				const q = d.qatorlar[$(this).data("i")];
 				if (q.tolov_turi === "soat") return;   // soatbayda norma ish kuni yo'q
@@ -305,10 +314,10 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 	function oylikDialog(q) {
 		const izoh =
 			q.oylik.manba === "kassa"
-				? "Bu summa Kassa'dagi oxirgi oy to'lovlaridan taklif sifatida olingan. Saqlasangiz rasmiy tasdiqlanadi va Employee hujjatiga ham yoziladi."
+				? "Bu summa Kassa'dagi oxirgi oy to'lovlaridan taklif sifatida olingan. Saqlasangiz FAQAT shu oy uchun qotiriladi."
 				: q.oylik.manba === "yoq"
 					? "Bu xodimga hali oylik kiritilmagan (Kassa'da to'lov ham topilmadi)."
-					: "O'zgartirilsa shu oyning BOSHIDAN amal qiladi va Employee hujjatidagi \"Oylik ish haqi (shartnoma)\" maydoni ham yangilanadi.";
+					: "FAQAT SHU OY uchun saqlanadi — boshqa oylarning oyligi o'zgarmaydi. (Eng so'nggi oy tahrirlansa Employee'dagi \"Oylik ish haqi (shartnoma)\" ham yangilanadi.)";
 		const dlg = new frappe.ui.Dialog({
 			title: `${q.ismi} — oylik summa`,
 			fields: [{
@@ -365,6 +374,28 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				frappe.call({
 					method: "target_zenit.target_zenit.api.oylik_tabel.set_ish_kuni",
 					args: { xodim: q.xodim, yil: holat.yil, oy: holat.oy, kun: v.kun },
+					freeze: true,
+					callback: () => yukla(),
+				});
+			},
+		});
+		dlg.show();
+	}
+
+	function jamiDialog(q) {
+		const dlg = new frappe.ui.Dialog({
+			title: `${q.ismi} — jami oylik (${holat.data.oy_nomi} ${holat.data.yil})`,
+			fields: [{
+				fieldtype: "Currency", fieldname: "summa", label: "Jami oylik (so'm)",
+				default: q.jami, reqd: 1,
+				description: `Avtomatik hisob: ${fmt(q.jami_avto)} so'm. Qo'lda kiritilgan summa FAQAT shu oy uchun yakuniy JAMI bo'ladi (bonus ham ichida). 0 kiritsangiz avtomatik hisobga qaytadi.`,
+			}],
+			primary_action_label: "Saqlash",
+			primary_action: (v) => {
+				dlg.hide();
+				frappe.call({
+					method: "target_zenit.target_zenit.api.oylik_tabel.set_jami",
+					args: { xodim: q.xodim, yil: holat.yil, oy: holat.oy, summa: v.summa },
 					freeze: true,
 					callback: () => yukla(),
 				});

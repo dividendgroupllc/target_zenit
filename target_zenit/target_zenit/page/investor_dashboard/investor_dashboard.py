@@ -2306,11 +2306,14 @@ PERS_NACH_MONTH_EXPR = ("COALESCE(NULLIF(je.custom_payment_month, ''), "
 
 
 def _ssa_tarix(emp_ids):
-    """Xodimlarning oylik tarixi — Oylik tabel yozadigan Salary Structure
-    Assignment'lar: employee -> [(from_date 'YYYY-MM-DD', base)], o'sish tartibida."""
-    ssa = defaultdict(list)
+    """Xodimlarning oylik ma'lumotlari — Oylik tabel manbalari:
+      * tabel: {(employee, 'YYYY-MM'): summa} — "Tabel Oylik" (OYga qotirilgan
+        qiymat, ustuvor manba);
+      * ssa:   employee -> [(from_date 'YYYY-MM-DD', base)] o'sish tartibida —
+        Salary Structure Assignment (yozuvsiz oylar uchun fallback)."""
+    ssa, tabel = defaultdict(list), {}
     if not emp_ids:
-        return ssa
+        return frappe._dict({"ssa": ssa, "tabel": tabel})
     try:
         for a in frappe.get_all(
                 "Salary Structure Assignment",
@@ -2320,21 +2323,33 @@ def _ssa_tarix(emp_ids):
             ssa[a.employee].append((str(a.from_date), flt(a.base)))
     except Exception:
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: ssa tarix")
-    return ssa
+    try:
+        for t in frappe.get_all(
+                "Tabel Oylik",
+                filters={"xodim": ["in", emp_ids]},
+                fields=["xodim", "yil", "oy", "summa"]):
+            tabel[(t.xodim, f"{cint(t.yil)}-{cint(t.oy):02d}")] = flt(t.summa)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: tabel oylik")
+    return frappe._dict({"ssa": ssa, "tabel": tabel})
 
 
-def _oylik_oyda(ssa, emp, oy):
-    """Oy ('YYYY-MM') uchun amal qiluvchi oylik: from_date <= oy oxiri bo'lgan
-    eng so'nggi SSA base'i (Oylik tabel _tabel_hisobla bilan bir xil qoida)."""
+def _oylik_oyda(manba, emp, oy):
+    """Oy ('YYYY-MM') uchun amal qiluvchi oylik — Oylik tabel bilan bir xil
+    qoida: avval OYga qotirilgan "Tabel Oylik" yozuvi, bo'lmasa from_date <=
+    oy oxiri bo'lgan eng so'nggi SSA base'i."""
     m = re.fullmatch(r"(\d{4})-(\d{2})", str(oy or ""))
     if not m:
         return 0.0
+    qotirilgan = (manba.get("tabel") or {}).get((emp, str(oy)))
+    if qotirilgan is not None:
+        return flt(qotirilgan)
     y, mo = int(m.group(1)), int(m.group(2))
     if not 1 <= mo <= 12:
         return 0.0
     chegara = f"{y}-{mo:02d}-{calendar.monthrange(y, mo)[1]:02d}"
     best = 0.0
-    for fd, base in ssa.get(emp) or []:
+    for fd, base in (manba.get("ssa") or {}).get(emp) or []:
         if fd <= chegara:
             best = base
         else:
@@ -2342,10 +2357,10 @@ def _oylik_oyda(ssa, emp, oy):
     return best
 
 
-def _oylik_ortacha(ssa, emp, oylar):
+def _oylik_ortacha(manba, emp, oylar):
     """Berilgan oylar bo'yicha o'rtacha oylik (faqat oylik belgilangan oylar
     hisobga olinadi). -> (o'rtacha, nechta oy hisobga olindi)."""
-    vals = [v for v in (_oylik_oyda(ssa, emp, o) for o in sorted(oylar or []))
+    vals = [v for v in (_oylik_oyda(manba, emp, o) for o in sorted(oylar or []))
             if v > 0.005]
     return (sum(vals) / len(vals), len(vals)) if vals else (0.0, 0)
 
@@ -2519,10 +2534,9 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
 
     gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows])
 
-    # Oylik ish haqi — "Oylik tabel" manbai (Salary Structure Assignment):
-    # tabel har oy uchun oylikni SSA bilan yozadi (from_date = oy boshi), shuning
-    # uchun oy M uchun amal qiluvchi oylik — from_date <= M oyining oxiri bo'lgan
-    # ENG SO'NGGI SSA'ning base'i. Qatorda esa ko'rinayotgan oylarning O'RTACHASI.
+    # Oylik ish haqi — Oylik tabel manbalari: avval OYga qotirilgan "Tabel
+    # Oylik" yozuvi, bo'lmasa SSA (from_date <= oy oxiri bo'lgan eng so'nggisi).
+    # Qatorda esa ko'rinayotgan oylarning O'RTACHASI.
     ssa = _ssa_tarix(list({r.party for r in rows if r.pt == "Employee"}))
 
     out, cats, tot = [], {}, defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "debt": 0.0})
