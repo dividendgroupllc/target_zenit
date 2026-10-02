@@ -1654,10 +1654,10 @@ class TZInvestorDashboard {
 	// ================= TAB: P&L =================
 	// ================= TAB: Personal (kontragentlar kesimi) =================
 	renderPersonal() {
-		let h = this.sec("Personal", `${this.data.meta.period.label} · xodimlar, o'quvchilar va ta'minotchilar bir jadvalda`);
+		let h = this.sec("Personal", `faqat xodimlar (o'quvchilar — "O'quvchilar to'lovi" bo'limida)`);
 		h += this.card(`
-			<div class="hd"><div><h3>Kontragentlar kesimida</h3>
-				<div class="meta">Shartnoma summasi — xodimda «Oylik ish haqi (shartnoma)», o'quvchida «Oylik to'lov» maydonidan · davr NACHISLENIYA sanasi bo'yicha · to'langan — o'sha nachisleniyaga bog'langan to'lovlar (qachon to'langanidan qat'i nazar) · <b>qatorni bossangiz oy kesimi ochiladi</b> (qaysi oyga qancha yozildi / to'landi / qoldi)${(this.personalMonths || []).length ? ` · <b>${this.personalMonths.map((m) => this.esc(this.monthLabel(m))).join(", ")}</b>` : ` · davr: ${this.esc(this.data.meta.period.label)}`}</div></div>
+			<div class="hd"><div><h3>Xodimlar kesimida</h3>
+				<div class="meta">Oylik ish haqi — Oylik tabeldan (har oyga o'z qiymati; qatorda ko'rinayotgan oylarning o'rtachasi) · qatordagi sonlar — oy kesimining JAMI'si (oy tanlanmasa butun tarix, tanlansa o'sha oylar) · to'langan — nachisleniyaga bog'langan to'lovlar (qachon to'langanidan qat'i nazar) · <b>qatorni bossangiz oy kesimi ochiladi</b> (qaysi oyga qancha yozildi / to'landi / qoldi)${(this.personalMonths || []).length ? ` · <b>${this.personalMonths.map((m) => this.esc(this.monthLabel(m))).join(", ")}</b>` : ` · butun tarix`}</div></div>
 				<div class="kt-filter tz-pers-filter-box">${this.personalFilterHtml()}</div></div>
 			<div class="tz-pers-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb");
 		setTimeout(() => { if (this.personal) this.paintPersonal(); else this.loadPersonal(); }, 0);
@@ -1736,12 +1736,16 @@ class TZInvestorDashboard {
 			? `<span class="num" style="${color ? `color:${color};` : ""}white-space:nowrap">${this.mAmt(v, cur)} <small>${this.ccyLabel(cur)}</small></span>`
 			: `<span class="muted-s">—</span>`);
 
-		// Shartnoma summasi: xodim — Employee "Oylik ish haqi (shartnoma)",
-		// o'quvchi — Student "Oylik to'lov"; ikkalasi ham bo'lmasa vedomost okladi
-		const shartCell = (r) => {
-			if (r.shartnoma > 0.5) return `${amt(r.shartnoma, r.currency)}<div class="muted-s">oyiga</div>`;
-			if (r.oklad > 0.5) return `${amt(r.oklad, r.currency)}<div class="muted-s">vedomostdan${r.rejim ? ` · ${this.fmt(r.kun)}/${this.fmt(r.rejim)} kun` : ""}</div>`;
-			return `<span class="muted-s" data-tt="Shartnoma summasi kiritilmagan. Xodim — Employee «Oylik ish haqi (shartnoma)», o'quvchi — Student «Oylik to'lov» maydoni">kiritilmagan</span>`;
+		// Oylik ish haqi — Oylik tabeldan (SSA): har oyga o'z qiymati, qatorda
+		// ko'rinayotgan oylarning o'rtachasi (nechta oy hisobga olingani bilan)
+		const oylikCell = (r) => {
+			if (r.oylik > 0.5) {
+				const sub = r.oylik_n > 1
+					? `o'rtacha (${this.fmt(r.oylik_n)} oy)`
+					: "oyiga";
+				return `${amt(r.oylik, r.currency)}<div class="muted-s" data-tt="Oylik tabelda oy uchun belgilangan ish haqi${r.oylik_n > 1 ? ` — ${this.fmt(r.oylik_n)} oyning o'rtachasi` : ""}">${sub}</div>`;
+			}
+			return `<span class="muted-s" data-tt="Oylik tabelda bu oylar uchun ish haqi kiritilmagan">kiritilmagan</span>`;
 		};
 		const paidCell = (r) => {
 			if (Math.abs(r.paid) < 0.5) return `<span class="muted-s">—</span>`;
@@ -1761,7 +1765,7 @@ class TZInvestorDashboard {
 			rows += `<tr class="pers-row" data-pi="${pi}">
 				<td class="ell" data-tt="${this.esc(r.name)} — oy kesimini ochish uchun bosing"><span class="pers-chev">▸</span>${this.esc(r.name)}</td>
 				<td class="ell">${this.esc(r.category)}<div class="muted-s">${this.esc(r.pt_label)}</div></td>
-				<td class="r">${shartCell(r)}</td>
+				<td class="r">${oylikCell(r)}</td>
 				<td class="r">${r.no_nach ? `<span class="muted-s" data-tt="Bu davrda nachisleniya yozilmagan">nachisleniya yo'q</span>` : amt(r.nach, r.currency)}</td>
 				<td class="r">${paidCell(r)}</td>
 				<td class="r">${debtCell(r.debt, r.currency)}</td>
@@ -1776,7 +1780,7 @@ class TZInvestorDashboard {
 		return `<div class="ov-totals">${tot}<div class="muted-s">${this.fmt(shown)} ta kontragent</div></div>
 			<input type="text" class="tz-ovstud-filter tz-pers-search" placeholder="Ism bo'yicha qidirish…" value="${this.esc(q)}">
 			<div class="tbl-wrap"><table>
-				<thead><tr><th>F.I.Sh</th><th>Kategoriyasi</th><th class="r">Shartnoma summasi</th><th class="r">Nachisleniya</th><th class="r">To'langan</th><th class="r">Qoldiq</th></tr></thead>
+				<thead><tr><th>F.I.Sh</th><th>Kategoriyasi</th><th class="r">Oylik ish haqi</th><th class="r">Nachisleniya</th><th class="r">To'langan</th><th class="r">Qoldiq</th></tr></thead>
 				<tbody>${rows}</tbody>
 			</table></div>
 			<div class="kt-count">${d.truncated ? `Eng katta qarzdorlikdagi ${this.fmt((d.rows || []).length)} tasi ko'rsatildi (${this.fmt(d.truncated)} ta sig'madi).` : ""}</div>`;
@@ -1793,12 +1797,14 @@ class TZInvestorDashboard {
 	}
 
 	loadPersMonths(r, box) {
-		const key = r.party_type + "|" + r.party;
+		// kesh kalitiga "Oy" filtri ham kiradi — filtr o'zgarsa qayta yuklanadi
+		const key = r.party_type + "|" + r.party + "|" + (this.personalMonths || []).join(",");
 		if (this.persMonths[key]) { box.html(this.persMonthsHtml(this.persMonths[key])); return; }
 		box.html(`<div class="tz-loader">Oy kesimi yuklanyapti…</div>`);
 		frappe.call({
 			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_personal_months",
-			args: { party_type: r.party_type, party: r.party },
+			args: { party_type: r.party_type, party: r.party,
+				months: JSON.stringify(this.personalMonths || []) },
 		}).then((res) => {
 			this.persMonths[key] = res.message || { months: [] };
 			box.html(this.persMonthsHtml(this.persMonths[key]));
@@ -1821,6 +1827,7 @@ class TZInvestorDashboard {
 			: `<span class="muted-s">—</span>`);
 		const rows = ms.map((m) => `<tr>
 			<td>${this.esc(this.monthLabel(m.oy))} <small class="muted-s">${this.esc(m.currency)}</small></td>
+			<td class="r">${m.oylik > 0.5 ? num(m.oylik, m.currency) : `<span class="muted-s" data-tt="Oylik tabelda bu oy uchun ish haqi kiritilmagan">—</span>`}</td>
 			<td class="r">${num(m.nach, m.currency)}</td>
 			<td class="r">${num(m.paid, m.currency, "var(--good-ink)")}${m.advance > 0.5 ? `<div class="muted-s" data-tt="Nachisleniyaga bog'lanmagan to'lov (avans)">shundan bog'lanmagan: ${this.fmt(m.advance)}</div>` : ""}</td>
 			<td class="r">${m.debt > 0.5 ? num(m.debt, m.currency, "var(--bad-ink)")
@@ -1828,14 +1835,19 @@ class TZInvestorDashboard {
 			<td>${pill(m)}</td>
 		</tr>`).join("");
 		const tots = {};
-		ms.forEach((m) => { const t = tots[m.currency] || (tots[m.currency] = { nach: 0, paid: 0, debt: 0 }); t.nach += m.nach; t.paid += m.paid; t.debt += m.debt; });
+		ms.forEach((m) => {
+			const t = tots[m.currency] || (tots[m.currency] = { nach: 0, paid: 0, debt: 0, oySum: 0, oyN: 0 });
+			t.nach += m.nach; t.paid += m.paid; t.debt += m.debt;
+			if (m.oylik > 0.5) { t.oySum += m.oylik; t.oyN++; }
+		});
 		const trow = Object.keys(tots).map((c) => `<tr class="b"><td>JAMI <small class="muted-s">${this.esc(c)}</small></td>
+			<td class="r num">${tots[c].oyN ? `<span data-tt="Oylik ish haqining ${this.fmt(tots[c].oyN)} oy bo'yicha o'rtachasi">${this.mAmt(tots[c].oySum / tots[c].oyN, c)}<div class="muted-s" style="font-weight:400">o'rtacha</div></span>` : `<span class="muted-s">—</span>`}</td>
 			<td class="r num">${this.mAmt(tots[c].nach, c)}</td>
 			<td class="r num" style="color:var(--good-ink)">${this.mAmt(tots[c].paid, c)}</td>
 			<td class="r num" style="color:${tots[c].debt > 0.5 ? "var(--bad-ink)" : "var(--good-ink)"}">${tots[c].debt < -0.5 ? "+" + this.mAmt(-tots[c].debt, c) : this.mAmt(tots[c].debt, c)}</td>
 			<td></td></tr>`).join("");
 		return `<table class="pers-mtbl">
-			<thead><tr><th>Oy</th><th class="r">Nachisleniya</th><th class="r">To'langan</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
+			<thead><tr><th>Oy</th><th class="r">Oylik ish haqi</th><th class="r">Nachisleniya</th><th class="r">To'langan</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
 			<tbody>${rows}${trow}</tbody></table>`;
 	}
 

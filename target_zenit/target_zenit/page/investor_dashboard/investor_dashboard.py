@@ -2297,14 +2297,72 @@ def _nach_group(party_type, party, gmap):
     return NACH_PT_LABELS.get(party_type, party_type)
 
 
+# Nachisleniyaning OYI: hujjatdagi "За какой месяц" (custom_payment_month),
+# bo'lmasa hujjat sanasining oyi. ple0 (nachisleniya qatori)ga bog'langan
+# je/si LEFT JOIN'lari bilan ishlatiladi — get_personal_months bilan bir xil.
+PERS_NACH_MONTH_EXPR = ("COALESCE(NULLIF(je.custom_payment_month, ''), "
+                        "NULLIF(si.custom_payment_month, ''), "
+                        "DATE_FORMAT(ple0.posting_date, '%%Y-%%m'))")
+
+
+def _ssa_tarix(emp_ids):
+    """Xodimlarning oylik tarixi — Oylik tabel yozadigan Salary Structure
+    Assignment'lar: employee -> [(from_date 'YYYY-MM-DD', base)], o'sish tartibida."""
+    ssa = defaultdict(list)
+    if not emp_ids:
+        return ssa
+    try:
+        for a in frappe.get_all(
+                "Salary Structure Assignment",
+                filters={"employee": ["in", emp_ids], "docstatus": 1},
+                fields=["employee", "from_date", "base"],
+                order_by="from_date asc"):
+            ssa[a.employee].append((str(a.from_date), flt(a.base)))
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "investor_dashboard: ssa tarix")
+    return ssa
+
+
+def _oylik_oyda(ssa, emp, oy):
+    """Oy ('YYYY-MM') uchun amal qiluvchi oylik: from_date <= oy oxiri bo'lgan
+    eng so'nggi SSA base'i (Oylik tabel _tabel_hisobla bilan bir xil qoida)."""
+    m = re.fullmatch(r"(\d{4})-(\d{2})", str(oy or ""))
+    if not m:
+        return 0.0
+    y, mo = int(m.group(1)), int(m.group(2))
+    if not 1 <= mo <= 12:
+        return 0.0
+    chegara = f"{y}-{mo:02d}-{calendar.monthrange(y, mo)[1]:02d}"
+    best = 0.0
+    for fd, base in ssa.get(emp) or []:
+        if fd <= chegara:
+            best = base
+        else:
+            break
+    return best
+
+
+def _oylik_ortacha(ssa, emp, oylar):
+    """Berilgan oylar bo'yicha o'rtacha oylik (faqat oylik belgilangan oylar
+    hisobga olinadi). -> (o'rtacha, nechta oy hisobga olindi)."""
+    vals = [v for v in (_oylik_oyda(ssa, emp, o) for o in sorted(oylar or []))
+            if v > 0.005]
+    return (sum(vals) / len(vals), len(vals)) if vals else (0.0, 0)
+
+
 @frappe.whitelist()
 def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_status=None):
-    """Personal — NACHISLENIYA asosida: kontragent, kategoriya, oklad, nachisleniya,
-    unga bog'langan to'lov va qoldiq.
+    """Personal — NACHISLENIYA asosida, FAQAT XODIMLAR (Employee): kategoriya,
+    oylik ish haqi (Oylik tabeldan — ko'rinayotgan oylar o'rtachasi), nachisleniya,
+    unga bog'langan to'lov va qoldiq. O'quvchilar (Customer) o'z bo'limida —
+    "O'quvchilar to'lovi"da ko'riladi.
 
-    Davr filtri faqat NACHISLENIYAGA qo'llanadi. To'lov qachon qilinganidan qat'i
-    nazar, u bog'langan nachisleniyaning davrida hisoblanadi — iyul nachisleniyasi
-    sentyabrda to'lansa ham iyulda ko'rinadi.
+    Yopiq qator — kontragentning JAMI'si: oy tanlanmasa BUTUN TARIX bo'yicha
+    (dashboard davri qo'llanmaydi), shunda qatordagi sonlar qator ochilgandagi
+    oy kesimi JAMI qatori bilan bir xil bo'ladi. Oy tanlansa — faqat o'sha
+    oylar (oy — hujjatdagi "За какой месяц", bo'lmasa sana oyi; oy kesimi
+    bilan bir xil qoida). To'lov qachon qilinganidan qat'i nazar, bog'langan
+    nachisleniyasining oyida hisoblanadi.
 
     Manba — Payment Ledger Entry (ERPNext'ning qoldiq yuritish jadvali):
       * nachisleniya qatori: voucher_no == against_voucher_no
@@ -2317,16 +2375,17 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
     f0, t0, _ = _resolve_range(from_date, to_date)
     limit = min(cint(limit) or 500, 2000)
 
-    # Oy filtri: tanlangan oylar bo'lsa shular, aks holda davr sanasi —
-    # ikkalasi ham NACHISLENIYA sanasiga qo'llanadi.
+    # Oy filtri: tanlangan oylar bo'lsa — nachisleniya OYI (hujjatdagi
+    # "За какой месяц", bo'lmasa sana oyi — oy kesimi bilan bir xil ifoda)
+    # bo'yicha; tanlanmasa filtr YO'Q (butun tarix), shunda yopiq qator
+    # ochilgandagi JAMI bilan mos keladi.
     picked_months = [m for m in _as_list(months) if re.fullmatch(r"\d{4}-\d{2}", str(m))]
     params = {"company": company}
     if picked_months:
-        acc_cond = "DATE_FORMAT(ple0.posting_date, '%%Y-%%m') IN %(months)s"
+        acc_cond = PERS_NACH_MONTH_EXPR + " IN %(months)s"
         params["months"] = tuple(picked_months)
     else:
-        acc_cond = "ple0.posting_date BETWEEN %(f)s AND %(t)s"
-        params["f"], params["t"] = str(f0), str(t0)
+        acc_cond = "TRUE"
 
     # ple0 — NACHISLENIYANING o'z qatori (davr shu bo'yicha filtrlanadi),
     # ple  — o'sha nachisleniyaga tegishli barcha qatorlar (o'zi + to'lovlar).
@@ -2334,8 +2393,9 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
     # Muhim: bog'lanmagan avans to'lovi ham o'ziga ishora qiluvchi qator yaratadi,
     # lekin uning summasi MANFIY. Nachisleniya esa musbat — shu bilan ajratiladi,
     # aks holda avans nachisleniyadan ayrilib, summa buziladi.
-    rows = frappe.db.sql(f"""
+    rows_raw = frappe.db.sql(f"""
         SELECT ple.party_type pt, ple.party, ple.account_currency cur,
+               {PERS_NACH_MONTH_EXPR} oy,
                SUM(CASE WHEN ple.voucher_no = ple.against_voucher_no
                          AND ple.amount_in_account_currency > 0
                         THEN ple.amount_in_account_currency ELSE 0 END) nach,
@@ -2347,53 +2407,65 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
             AND ple0.voucher_no = ple0.against_voucher_no
             AND ple0.amount_in_account_currency > 0
             AND ple0.party = ple.party AND ple0.delinked = 0
+        LEFT JOIN `tabJournal Entry` je
+               ON je.name = ple0.voucher_no AND ple0.voucher_type = 'Journal Entry'
+        LEFT JOIN `tabSales Invoice` si
+               ON si.name = ple0.voucher_no AND ple0.voucher_type = 'Sales Invoice'
         WHERE ple.delinked = 0 AND ple.company = %(company)s
+          AND ple.party_type = 'Employee'
           AND IFNULL(ple.party, '') != '' AND {acc_cond}
-        GROUP BY ple.party_type, ple.party, ple.account_currency
+        GROUP BY ple.party_type, ple.party, ple.account_currency, oy
     """, params, as_dict=True)
 
-    # "Oylik oklad" — buxgalteriyadan emas, buxgalter Excel vedomostidan
-    # (Oylik Vedomost doctype'i, oy bo'yicha; xodim ID yoki F.I.Sh bo'yicha mos keladi).
-    try:
-        from target_zenit.target_zenit.doctype.oylik_vedomost.oylik_vedomost import (
-            _norm_name,
-            get_oklad_map,
-        )
-        okmap, ved_name = get_oklad_map(to_date=t0)
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "investor_dashboard: oklad map")
-        okmap, ved_name, _norm_name = {}, None, lambda v: ""
+    # Oy kesimidagi so'rovni kontragent darajasiga yig'amiz; qaysi OYLAR
+    # borligini eslab qolamiz — o'rtacha oylik ish haqi shu oylardan olinadi.
+    agg_rows = {}
+    row_months = defaultdict(set)
+    for rr in rows_raw:
+        key = (rr.pt, rr.party, rr.cur)
+        a = agg_rows.setdefault(key, frappe._dict(
+            {"pt": rr.pt, "party": rr.party, "cur": rr.cur, "nach": 0.0, "paid": 0.0}))
+        a["nach"] += flt(rr.nach)
+        a["paid"] += flt(rr.paid)
+        if rr.oy:
+            row_months[(rr.pt, rr.party)].add(rr.oy)
+    rows = list(agg_rows.values())
 
     # ── Ortiqcha to'lov (bog'lanmagan avans) ────────────────────────────────
     # ERPNext to'lovni nachisleniya summasidan ortiq taqsimlamaydi: ortiqchasi
     # "unallocated" bo'lib, o'ziga ishora qiluvchi MANFIY qator bo'lib qoladi.
-    # U hech qaysi nachisleniyaga tegishli emas, shuning uchun davrga to'lov
-    # oyidan (Kassadagi "За какой месяц", bo'lmasa sanasidan) joylashtiriladi.
+    # U hech qaysi nachisleniyaga tegishli emas, shuning uchun oy filtri unga
+    # to'lov oyidan (Kassadagi "За какой месяц", bo'lmasa sanasidan) qo'llanadi;
+    # oy tanlanmasa filtr yo'q — butun tarix.
     adv_params = {"company": company}
     if picked_months:
         adv_cond = ("COALESCE(NULLIF(pe.custom_payment_month, ''), "
                     "DATE_FORMAT(ple.posting_date, '%%Y-%%m')) IN %(months)s")
         adv_params["months"] = tuple(picked_months)
     else:
-        adv_cond = ("COALESCE(NULLIF(pe.custom_payment_month, ''), "
-                    "DATE_FORMAT(ple.posting_date, '%%Y-%%m')) BETWEEN %(fm)s AND %(tm)s")
-        adv_params["fm"], adv_params["tm"] = str(f0)[:7], str(t0)[:7]
+        adv_cond = "TRUE"
 
     adv_map = {}
     try:
         for a in frappe.db.sql(f"""
             SELECT ple.party_type pt, ple.party, ple.account_currency cur,
+                   COALESCE(NULLIF(pe.custom_payment_month, ''),
+                            DATE_FORMAT(ple.posting_date, '%%Y-%%m')) oy,
                    SUM(-ple.amount_in_account_currency) adv
             FROM `tabPayment Ledger Entry` ple
             JOIN `tabPayment Entry` pe ON pe.name = ple.voucher_no
             WHERE ple.delinked = 0 AND ple.company = %(company)s
+              AND ple.party_type = 'Employee'
               AND ple.voucher_type = 'Payment Entry'
               AND ple.voucher_no = ple.against_voucher_no
               AND ple.amount_in_account_currency < 0
               AND IFNULL(ple.party, '') != '' AND {adv_cond}
-            GROUP BY ple.party_type, ple.party, ple.account_currency
+            GROUP BY ple.party_type, ple.party, ple.account_currency, oy
         """, adv_params, as_dict=True):
-            adv_map[(a.pt, a.party, a.cur)] = flt(a.adv)
+            k = (a.pt, a.party, a.cur)
+            adv_map[k] = flt(adv_map.get(k) or 0) + flt(a.adv)
+            if a.oy:
+                row_months[(a.pt, a.party)].add(a.oy)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: personal advances")
 
@@ -2421,6 +2493,7 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
                 SELECT DISTINCT ple.party_type pt, ple.party, ple.account_currency cur
                 FROM `tabPayment Ledger Entry` ple
                 WHERE ple.delinked = 0 AND ple.company = %(company)s
+                  AND ple.party_type = 'Employee'
                   AND ple.voucher_no = ple.against_voucher_no
                   AND ple.amount_in_account_currency > 0
                   AND IFNULL(ple.party, '') != ''
@@ -2446,33 +2519,14 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
 
     gmap = _party_groups_map([{"party_type": r.pt, "party": r.party} for r in rows])
 
-    # Shartnoma summalari (oylik kelishuv): xodim — Employee.custom_oylik
-    # ("Oylik ish haqi (shartnoma)"), o'quvchi — Student.custom_monthly_payment
-    # ("Oylik to'lov"), Student -> Customer bog'lanishi orqali.
-    shart = {}
-    try:
-        emp_ids = list({r.party for r in rows if r.pt == "Employee"})
-        if emp_ids:
-            for e in frappe.get_all("Employee", filters={"name": ["in", emp_ids]},
-                                    fields=["name", "custom_oylik"]):
-                if flt(e.custom_oylik):
-                    shart[("Employee", e.name)] = flt(e.custom_oylik)
-        cust_ids = list({r.party for r in rows if r.pt == "Customer"})
-        if cust_ids:
-            for s in frappe.get_all("Student", filters={"customer": ["in", cust_ids]},
-                                    fields=["customer", "custom_monthly_payment"]):
-                if flt(s.custom_monthly_payment):
-                    shart[("Customer", s.customer)] = flt(s.custom_monthly_payment)
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "investor_dashboard: personal shartnoma")
+    # Oylik ish haqi — "Oylik tabel" manbai (Salary Structure Assignment):
+    # tabel har oy uchun oylikni SSA bilan yozadi (from_date = oy boshi), shuning
+    # uchun oy M uchun amal qiluvchi oylik — from_date <= M oyining oxiri bo'lgan
+    # ENG SO'NGGI SSA'ning base'i. Qatorda esa ko'rinayotgan oylarning O'RTACHASI.
+    ssa = _ssa_tarix(list({r.party for r in rows if r.pt == "Employee"}))
 
     out, cats, tot = [], {}, defaultdict(lambda: {"nach": 0.0, "paid": 0.0, "debt": 0.0})
     for r in rows:
-        # Bank kreditlari (supplier_group = "Kredit": Overdraft va h.k.) — personal
-        # EMAS: opening/JE yozuvlari ularni ham PLE'ga tushiradi, lekin bu bo'lim
-        # odamlar (xodim/o'quvchi) uchun. Kreditlar Qarzdorlik/Balans'da ko'rinadi.
-        if r.pt == "Supplier" and _kredit_guruhmi(gmap.get((r.pt, r.party))):
-            continue
         # Payable'da nachisleniya musbat, Receivable'da ham musbat chiqadi
         nach, paid = abs(flt(r.nach)), abs(flt(r.paid))
         cur0 = r.cur or ccy
@@ -2484,14 +2538,15 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
         cur = cur0
         cat = _nach_group(r.pt, r.party, gmap)
         pname = _party_name(r.pt, r.party)
-        ok = okmap.get(r.party) or okmap.get("name::" + _norm_name(pname)) or {}
+        # Qatorda ko'rinayotgan oylar; nachisleniyasiz ("qilinmagan") xodimga —
+        # tanlangan oylar, bo'lmasa joriy oy (hozirgi amal qiluvchi oylik).
+        oylar = row_months.get((r.pt, r.party)) or set(picked_months) or {today()[:7]}
+        oylik, oylik_n = _oylik_ortacha(ssa, r.party, oylar)
         out.append({
             "party_type": r.pt, "party": r.party,
             "name": pname,
             "category": cat, "pt_label": NACH_PT_LABELS.get(r.pt, r.pt or "—"),
-            "oklad": flt(ok.get("oklad") or 0),
-            "shartnoma": flt(shart.get((r.pt, r.party)) or 0),
-            "kun": flt(ok.get("kun") or 0), "rejim": flt(ok.get("rejim") or 0),
+            "oylik": oylik, "oylik_n": oylik_n,
             "nach": nach, "paid": paid, "debt": debt, "advance": advance, "currency": cur,
             "no_nach": 1 if abs(nach) < 0.005 else 0,
         })
@@ -2502,16 +2557,22 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
         t["paid"] += paid
         t["debt"] += debt
 
-    # Filtr menyusi uchun mavjud oylar — NACHISLENIYA sanasi bo'yicha
+    # Filtr menyusi uchun mavjud oylar — nachisleniya OYI bo'yicha
+    # (asosiy so'rov va oy kesimi bilan bir xil ifoda)
     month_list = []
     try:
-        for m in frappe.db.sql("""
-            SELECT DATE_FORMAT(ple.posting_date, '%%Y-%%m') oy, COUNT(*) n
-            FROM `tabPayment Ledger Entry` ple
-            WHERE ple.delinked = 0 AND ple.company = %(company)s
-              AND ple.voucher_no = ple.against_voucher_no
-              AND ple.amount_in_account_currency > 0
-              AND IFNULL(ple.party, '') != ''
+        for m in frappe.db.sql(f"""
+            SELECT {PERS_NACH_MONTH_EXPR} oy, COUNT(*) n
+            FROM `tabPayment Ledger Entry` ple0
+            LEFT JOIN `tabJournal Entry` je
+                   ON je.name = ple0.voucher_no AND ple0.voucher_type = 'Journal Entry'
+            LEFT JOIN `tabSales Invoice` si
+                   ON si.name = ple0.voucher_no AND ple0.voucher_type = 'Sales Invoice'
+            WHERE ple0.delinked = 0 AND ple0.company = %(company)s
+              AND ple0.party_type = 'Employee'
+              AND ple0.voucher_no = ple0.against_voucher_no
+              AND ple0.amount_in_account_currency > 0
+              AND IFNULL(ple0.party, '') != ''
             GROUP BY oy ORDER BY oy DESC
         """, {"company": company}, as_dict=True):
             if m.oy:
@@ -2525,14 +2586,14 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
     totals = [{"currency": k, **v} for k, v in tot.items()]
     totals.sort(key=lambda x: -abs(x["debt"]))
     return {"rows": out[:limit], "cats": cat_list, "totals": totals, "currency": ccy,
-            "count": len(out), "truncated": truncated, "vedomost": ved_name,
+            "count": len(out), "truncated": truncated,
             "months": month_list, "picked_months": picked_months,
             "nach_status": picked_status,
             "from_date": str(f0), "to_date": str(t0)}
 
 
 @frappe.whitelist()
-def get_personal_months(party_type=None, party=None):
+def get_personal_months(party_type=None, party=None, months=None):
     """Bitta kontragent bo'yicha OY KESIMIDA: nachisleniya / to'langan / qoldiq.
     Personal jadvalida qator ochilganda chaqiriladi.
 
@@ -2540,10 +2601,14 @@ def get_personal_months(party_type=None, party=None):
     bo'lmasa hujjat sanasining oyi. To'lov o'zi bog'langan nachisleniyaning
     OYIDA hisoblanadi (qachon to'langanidan qat'i nazar); bog'lanmagan
     ortiqcha/avans to'lov esa o'z to'lov oyiga tushadi (get_personal bilan
-    bir xil qoidalar — jami qatordagi sonlar bilan mos)."""
+    bir xil qoidalar — jami qatordagi sonlar bilan mos).
+
+    months — Personal'dagi "Oy" filtri: berilsa faqat shu oylar ko'rsatiladi,
+    shunda oy kesimi JAMI'si yopiq qatordagi sonlar bilan mos qoladi."""
     _guard()
     if not (party_type and party):
         frappe.throw("Kontragent ko'rsatilmagan")
+    picked_months = {m for m in _as_list(months) if re.fullmatch(r"\d{4}-\d{2}", str(m))}
     company = _default_company()
     ccy = _company_currency(company)
 
@@ -2598,14 +2663,22 @@ def get_personal_months(party_type=None, party=None):
         frappe.log_error(frappe.get_traceback(), "investor_dashboard: personal months")
         return {"months": [], "currency": ccy}
 
-    months = []
+    out_months = []
     for (oy, cur), a in agg.items():
         if abs(a["nach"]) < 0.005 and abs(a["paid"]) < 0.005:
             continue
-        months.append({"oy": oy, "currency": cur, "nach": a["nach"], "paid": a["paid"],
-                       "advance": a["advance"], "debt": a["nach"] - a["paid"]})
-    months.sort(key=lambda x: str(x["oy"]), reverse=True)
-    return {"months": months, "currency": ccy}
+        if picked_months and oy not in picked_months:
+            continue
+        out_months.append({"oy": oy, "currency": cur, "nach": a["nach"], "paid": a["paid"],
+                           "advance": a["advance"], "debt": a["nach"] - a["paid"]})
+    out_months.sort(key=lambda x: str(x["oy"]), reverse=True)
+
+    # Har oyga o'sha OY uchun belgilangan oylik ish haqi (Oylik tabel / SSA);
+    # JAMI qatorida front o'rtachasini ko'rsatadi.
+    ssa = _ssa_tarix([party]) if party_type == "Employee" else {}
+    for m in out_months:
+        m["oylik"] = _oylik_oyda(ssa, party, m["oy"]) if party_type == "Employee" else 0.0
+    return {"months": out_months, "currency": ccy}
 
 
 @frappe.whitelist()
