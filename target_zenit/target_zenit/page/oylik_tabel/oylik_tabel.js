@@ -52,6 +52,9 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		.ot-kun.saqlangan { background:#e7f1ff !important; font-weight:700; color:#1a56b0; }
 		.ot-kun.kirmagan { background:var(--control-bg, #f5f5f5) !important; color:var(--text-muted); cursor:default; }
 		.ot-ketgan { display:block; font-size:10px; line-height:1.1; color:#c0392b; }
+		.ot-soat-btnlar { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+		.ot-soat-btnlar button { border:1px solid var(--border-color); background:var(--card-bg); border-radius:6px; padding:6px 14px; cursor:pointer; font-size:14px; font-weight:600; }
+		.ot-soat-btnlar button:hover { border-color:var(--primary); color:var(--primary); }
 		.ot-kun.default { color:var(--text-muted); }
 		th.ot-yak-bosh { background:#fdecea !important; color:#c0392b; }
 		.ot-c-bonus { min-width:90px; text-align:right; cursor:pointer; }
@@ -126,10 +129,11 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		const d = holat.data;
 		$joy.empty();
 
-		const badge =
+		let badge =
 			d.holat === "Ochiq" ? '<span class="ot-badge ochiq">🟢 Ochiq</span>' :
 			d.holat === "Yopilmoqda" ? '<span class="ot-badge yopilmoqda">⏳ Yopilmoqda...</span>' :
 			'<span class="ot-badge yopiq">🔒 Yopiq</span>';
+		if (d.faqat_oqish) badge += ' <span class="ot-badge yopiq" title="Sizning rolingiz tabelni faqat ko\'rishga ruxsat beradi">👁 Faqat o\'qish</span>';
 
 		const $bosh = $(`
 			<div class="ot-bosh">
@@ -177,8 +181,10 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				<td class="ot-c-nr">${i + 1}</td>
 				<td class="ot-c-ism" title="${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? ` — ${q.ketgan_sana} da ishdan ketgan` : ""}">${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? `<span class="ot-ketgan">ketgan: ${q.ketgan_sana}</span>` : ""}</td>
 				<td class="ot-c-lavozim" title="${frappe.utils.escape_html(q.lavozim || "")}">${frappe.utils.escape_html(q.lavozim || "—")}</td>
-				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="Bosib o'zgartiring (Employee hujjati bilan sinxron)">${fmt(q.oylik.summa)}${manba}</td>
-				<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="${q.ish_kuni_manba === "oy" ? "Shu oy uchun kiritilgan" : q.ish_kuni_manba === "xodim" ? "Xodimning doimiy normasi" : "Default"} norma ish kuni — bosib FAQAT shu oy uchun o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}</td>`;
+				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="${q.tolov_turi === "soat" ? "SOAT NARXI — bosib o'zgartiring (Employee hujjati bilan sinxron)" : "Bosib o'zgartiring (Employee hujjati bilan sinxron)"}">${fmt(q.oylik.summa)}${q.tolov_turi === "soat" ? '<span class="ot-manba-kassa" style="color:var(--text-muted)">soat narxi</span>' : ""}${manba}</td>
+				${q.tolov_turi === "soat"
+					? `<td class="ot-c-ishkun default" data-i="${i}" title="Soatbay xodim — norma ish kuni qatnashmaydi, hisob soatlardan">soatbay</td>`
+					: `<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="${q.ish_kuni_manba === "oy" ? "Shu oy uchun kiritilgan" : q.ish_kuni_manba === "xodim" ? "Xodimning doimiy normasi" : "Default"} norma ish kuni — bosib FAQAT shu oy uchun o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}</td>`}`;
 			q.kunlar.forEach((kq, j) => {
 				const kd = d.kunlar[j];
 				if (kq.holat === "kirmagan") {
@@ -190,12 +196,14 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 					if (kd.yakshanba) cls.push("yak");
 					if (kq.holat === "saqlangan") cls.push("saqlangan");
 					else cls.push("default");
-					tr += `<td class="${cls.join(" ")}" data-i="${i}" data-j="${j}" title="${kd.sana} — bosilsa keldi (1) / kelmadi (0) almashadi">${koefFmt(kq.koef)}</td>`;
+					tr += `<td class="${cls.join(" ")}" data-i="${i}" data-j="${j}" title="${kd.sana} — ${q.tolov_turi === "soat" ? "bosib ishlagan soatini kiriting" : "bosilsa keldi (1) / kelmadi (0) almashadi"}">${koefFmt(kq.koef)}</td>`;
 				}
 			});
 			tr += `<td class="ot-c-bonus" data-i="${i}" title="Bosib o'zgartiring">${q.bonus ? fmt(q.bonus) : "+"}</td>`;
-			tr += `<td class="ot-c-kelgan" title="Kelgan kunlari (1 belgilanganlar), norma: ${q.ish_kuni}">${koefFmt(q.koef_yigindi)}</td>`;
-			tr += `<td class="ot-c-jami" title="Kunlik: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)}">${fmt(q.jami)}</td></tr>`;
+			tr += q.tolov_turi === "soat"
+				? `<td class="ot-c-kelgan" title="Oyda ishlagan soatlari">${koefFmt(q.koef_yigindi)} <small>soat</small></td>`
+				: `<td class="ot-c-kelgan" title="Kelgan kunlari (1 belgilanganlar), norma: ${q.ish_kuni}">${koefFmt(q.koef_yigindi)}</td>`;
+			tr += `<td class="ot-c-jami" title="${q.tolov_turi === "soat" ? `Soat narxi: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)} soat` : `Kunlik: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)}`}">${fmt(q.jami)}</td></tr>`;
 			rows += tr;
 		});
 
@@ -212,7 +220,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		if (d.oylik_izoh_kerak !== false) {
 			$joy.append(`<div class="ot-info" style="margin-top:8px">
 				* "Kassa taklifi" — oylik hali kiritilmagan, Kassa'dagi oxirgi oy to'lovlaridan avtomatik taxmin. Oylikni tabelda katakni bosib yoki Employee hujjatidagi "Oylik ish haqi (shartnoma)" (Overview) maydonidan kiritish mumkin — ikkalasi sinxron.<br>
-				Katak ranglari: <span style="color:#c0392b">qizil — yakshanba</span>, <span style="color:#1a56b0">ko'k — yo'qlamada belgilangan</span>, kulrang "0" — hali belgilanmagan (kelmagan hisoblanadi). Katak bosilsa keldi (1) / kelmadi (0) almashadi.
+				Katak ranglari: <span style="color:#c0392b">qizil — yakshanba</span>, <span style="color:#1a56b0">ko'k — yo'qlamada belgilangan</span>, kulrang "0" — hali belgilanmagan (kelmagan hisoblanadi). Kunbay xodimda katak bosilsa keldi (1) / kelmadi (0) almashadi; <b>soatbay</b> xodimda esa katak bosilganda o'sha kuni ishlagan SOATI kiritiladi (jami = soat narxi × soatlar).
 			</div>`);
 		}
 
@@ -230,10 +238,15 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 
 		// hodisalar
 		if (d.tahrir_mumkin) {
-			// Yo'qlama: bir bosishda keldi (1) / kelmadi (0) almashadi
+			// Yo'qlama: kunbay — bir bosishda keldi (1) / kelmadi (0);
+			// soatbay — necha soat ishlaganini kiritish oynasi ochiladi
 			$orab.on("click", "td.ot-kun:not(.kirmagan)", function () {
 				const i = $(this).data("i"), j = $(this).data("j");
 				const q = d.qatorlar[i];
+				if (q.tolov_turi === "soat") {
+					soatDialog(q, d.kunlar[j], q.kunlar[j]);
+					return;
+				}
 				const yangi = q.kunlar[j].koef ? 0 : 1;
 				saqlaKoef(q.xodim, d.kunlar[j].sana, yangi);
 			});
@@ -244,12 +257,42 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				bonusDialog(d.qatorlar[$(this).data("i")]);
 			});
 			$orab.on("click", "td.ot-c-ishkun", function () {
-				ishKuniDialog(d.qatorlar[$(this).data("i")]);
+				const q = d.qatorlar[$(this).data("i")];
+				if (q.tolov_turi === "soat") return;   // soatbayda norma ish kuni yo'q
+				ishKuniDialog(q);
 			});
 		}
 	}
 
 	// ---------------------------------------------------------------- dialoglar
+	function soatDialog(q, kun, kq) {
+		const dlg = new frappe.ui.Dialog({
+			title: `${q.ismi} — ${kun.sana}`,
+			fields: [
+				{ fieldtype: "HTML", fieldname: "btnlar" },
+				{
+					fieldtype: "Float", fieldname: "soat", label: "Bugun ishlagan soati",
+					default: kq.koef || 8, reqd: 1,
+					description: "0 = kelmadi. Oy jami = soat narxi × oyda ishlagan soatlar.",
+				},
+			],
+			primary_action_label: "Saqlash",
+			primary_action: (v) => {
+				dlg.hide();
+				saqlaKoef(q.xodim, kun.sana, v.soat);
+			},
+		});
+		const $b = $('<div class="ot-soat-btnlar"></div>');
+		[0, 2, 4, 6, 8, 10, 12].forEach((s) => {
+			$(`<button>${s} soat</button>`).on("click", () => {
+				dlg.hide();
+				saqlaKoef(q.xodim, kun.sana, s);
+			}).appendTo($b);
+		});
+		dlg.fields_dict.btnlar.$wrapper.append($b);
+		dlg.show();
+	}
+
 	function saqlaKoef(xodim, sana, koef) {
 		frappe.call({
 			method: "target_zenit.target_zenit.api.oylik_tabel.set_koef",

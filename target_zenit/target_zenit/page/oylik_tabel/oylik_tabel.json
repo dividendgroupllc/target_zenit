@@ -4,7 +4,7 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-09-25 00:00:00.000000",
+ "modified": "2026-10-02 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "oylik-tabel",
@@ -19,6 +19,9 @@
   },
   {
    "role": "Accounts Manager"
+  },
+  {
+   "role": "investor"
   }
  ],
  "script": null,

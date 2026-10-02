@@ -49,7 +49,20 @@ def execute():
                     "fieldtype": "Currency",
                     "options": "salary_currency",
                     "insert_after": "custom_ish_kuni",
-                    "description": "Saqlanganda Salary Structure Assignment avtomatik yaratiladi (bugundan amal qiladi). Oylik tabel bilan sinxron.",
+                    "description": "Kunbay xodimda — OYLIK summa, soatbay xodimda — SOAT NARXI. "
+                    "Saqlanganda Salary Structure Assignment avtomatik yaratiladi. Oylik tabel bilan sinxron.",
+                },
+                # To'lov turi: kunbay (0/1 yo'qlama, oylik/norma kun) yoki soatbay
+                # (tabelga soat yoziladi, jami = soat narxi x soatlar). O'qituvchilar
+                # odatda soatbay.
+                {
+                    "fieldname": "custom_tolov_turi",
+                    "label": "To'lov turi (tabel)",
+                    "fieldtype": "Select",
+                    "options": "Kunbay\nSoatbay",
+                    "default": "Kunbay",
+                    "insert_after": "custom_oylik",
+                    "in_standard_filter": 1,
                 },
             ],
         },

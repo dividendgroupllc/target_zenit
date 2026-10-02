@@ -7,9 +7,13 @@ Orqa tomonda HRMS'ning haqiqiy hujjatlari ma'lumot yig'adi:
   - oylik (baza) summa  -> Salary Structure Assignment ("Target Oylik" strukturasi)
   - bonus               -> Additional Salary ("Bonus" komponenti)
 
-Hisob: kunlik narx = oylik / xodimning SHU OYDAGI norma ish kuni
-(Tabel Ish Kuni yozuvi -> Employee.custom_ish_kuni -> default 21/26),
-jami = kunlik narx * koeffitsientlar yig'indisi + bonus. Yaxlitlanmaydi.
+Hisob (Employee.custom_tolov_turi bo'yicha):
+  - Kunbay (default): kunlik narx = oylik / SHU OYDAGI norma ish kuni
+    (Tabel Ish Kuni yozuvi -> Employee.custom_ish_kuni -> default 21/26),
+    jami = kunlik narx * kelgan kunlar (0/1) + bonus.
+  - Soatbay (o'qituvchilar): kataklarga SOAT yoziladi (0-24), shartnoma
+    summasi (custom_oylik/SSA base) = SOAT NARXI,
+    jami = soat narxi * oyda ishlagan soatlar + bonus. Yaxlitlanmaydi.
 
 Yo'qlama: barcha kunlar default 0 — har kuni zam direktor belgilaydi,
 kim kelgan bo'lsa 1 qilinadi (faqat 0/1: keldi yoki kelmadi).
@@ -65,8 +69,12 @@ def _oy_ish_kuni_map(yil, oy, emp_ids):
 
 # ---------------------------------------------------------------- ruxsat
 
+# Bu rollar tabelni faqat KO'RADI — hech narsani o'zgartira olmaydi
+FAQAT_OQISH_ROLLARI = {"investor"}
+
+
 def _ruxsat_rollari():
-    """Tahrirlash huquqi sahifaning (Page) role ro'yxatidan olinadi —
+    """Kirish huquqi sahifaning (Page) role ro'yxatidan olinadi —
     egasi Page hujjatida rol qo'shsa/olib tashlasa, shu yerda ham amal qiladi."""
     rollar = frappe.get_all(
         "Has Role",
@@ -77,8 +85,23 @@ def _ruxsat_rollari():
 
 
 def _rol_tekshir():
+    """O'qish huquqi: sahifa rollaridan bittasi bo'lsa yetarli."""
     if not set(_ruxsat_rollari()) & set(frappe.get_roles()):
         frappe.throw(_("Oylik tabelga ruxsatingiz yo'q"), frappe.PermissionError)
+
+
+def _tahrir_mumkinmi():
+    """Tahrir huquqi: sahifa rollaridan faqat-o'qish bo'lmagani ham bo'lishi kerak
+    (masalan, foydalanuvchida faqat 'investor' bo'lsa — ko'radi, o'zgartirmaydi)."""
+    rollar = set(_ruxsat_rollari()) & set(frappe.get_roles())
+    return any(r.strip().lower() not in FAQAT_OQISH_ROLLARI for r in rollar)
+
+
+def _tahrir_tekshir():
+    _rol_tekshir()
+    if not _tahrir_mumkinmi():
+        frappe.throw(_("Oylik tabel siz uchun faqat o'qish rejimida — o'zgartirish mumkin emas"),
+                     frappe.PermissionError)
 
 
 # ---------------------------------------------------------------- yordamchi
@@ -314,7 +337,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
         "Employee",
         filters={"custom_tabelda": 1, "date_of_joining": ["<=", oy_oxiri]},
         fields=["name", "employee_name", "designation", "custom_ish_kuni",
-                "date_of_joining", "status", "relieving_date"],
+                "custom_tolov_turi", "date_of_joining", "status", "relieving_date"],
         order_by="employee_name asc",
     )
     saralangan = []
@@ -376,9 +399,11 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
     qatorlar = []
     for x in xodimlar:
         kirgan = getdate(x.date_of_joining) if x.date_of_joining else None
+        soatbay = (x.custom_tolov_turi or "").strip() == "Soatbay"
         if x.name in base_map:
             oylik = {"summa": base_map[x.name], "manba": "ssa"}
-        elif x.name in kassa_map:
+        elif x.name in kassa_map and not soatbay:
+            # Kassa taklifi oylik summa — soatbayning SOAT NARXI sifatida yaroqsiz
             oylik = {"summa": kassa_map[x.name], "manba": "kassa"}
         else:
             oylik = {"summa": 0.0, "manba": "yoq"}
@@ -407,21 +432,28 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             kun_qatori.append({"koef": koef, "holat": holat})
 
         bonus = bonus_map.get(x.name, 0.0)
-        # Kunlik narx xodimning SHU OYDAGI norma ish kuniga bo'linadi:
-        # oy uchun kiritilgani -> xodimning doimiy normasi -> default
-        if x.name in oy_ish_kuni:
-            ish_kuni, ik_manba = oy_ish_kuni[x.name], "oy"
-        elif cint(x.custom_ish_kuni):
-            ish_kuni, ik_manba = cint(x.custom_ish_kuni), "xodim"
+        if soatbay:
+            # Soatbay: kataklarda SOATLAR, shartnoma summasi = SOAT NARXI,
+            # jami = soat narxi * ishlagan soatlar. Norma ish kuni qatnashmaydi.
+            ish_kuni, ik_manba = 0, "soat"
+            kunlik_narx = flt(oylik["summa"])          # bu yerda: 1 soat narxi
         else:
-            ish_kuni, ik_manba = _default_ish_kuni(x.designation), "default"
-        kunlik_narx = (oylik["summa"] / ish_kuni) if ish_kuni else 0.0
+            # Kunbay: kunlik narx xodimning SHU OYDAGI norma ish kuniga bo'linadi:
+            # oy uchun kiritilgani -> xodimning doimiy normasi -> default
+            if x.name in oy_ish_kuni:
+                ish_kuni, ik_manba = oy_ish_kuni[x.name], "oy"
+            elif cint(x.custom_ish_kuni):
+                ish_kuni, ik_manba = cint(x.custom_ish_kuni), "xodim"
+            else:
+                ish_kuni, ik_manba = _default_ish_kuni(x.designation), "default"
+            kunlik_narx = (oylik["summa"] / ish_kuni) if ish_kuni else 0.0
         jami = kunlik_narx * koef_yigindi + bonus
 
         qatorlar.append({
             "xodim": x.name,
             "ismi": x.employee_name,
             "lavozim": x.designation or "",
+            "tolov_turi": "soat" if soatbay else "kun",
             "ish_kuni": ish_kuni,
             "ish_kuni_manba": ik_manba,
             "kirgan_sana": str(kirgan) if kirgan else None,
@@ -452,7 +484,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
 
 @frappe.whitelist()
 def get_tabel(yil=None, oy=None):
-    _rol_tekshir()
+    _rol_tekshir()                     # o'qish — investor ham ko'radi
     bugun = getdate(nowdate())
     yil = cint(yil) or bugun.year
     oy = cint(oy) or bugun.month
@@ -461,31 +493,39 @@ def get_tabel(yil=None, oy=None):
     tabel = _tabel_doc(yil, oy)
     oy_oxiri = _oy_chegara(yil, oy)[1]
 
+    tahrir = _tahrir_mumkinmi()        # investor kabi faqat-o'qish rollarida False
     natija["holat"] = tabel.holat
-    natija["tahrir_mumkin"] = tabel.holat == "Ochiq"
-    natija["yopish_mumkin"] = tabel.holat == "Ochiq" and bugun >= oy_oxiri
-    natija["ochish_mumkin"] = tabel.holat == "Yopiq"
+    natija["faqat_oqish"] = not tahrir
+    natija["tahrir_mumkin"] = tahrir and tabel.holat == "Ochiq"
+    natija["yopish_mumkin"] = tahrir and tabel.holat == "Ochiq" and bugun >= oy_oxiri
+    natija["ochish_mumkin"] = tahrir and tabel.holat == "Yopiq"
     return natija
 
 
 @frappe.whitelist()
 def set_koef(xodim, sana, koef):
     """Bitta kun katakchasini o'zgartirish -> Attendance yoziladi."""
-    _rol_tekshir()
+    _tahrir_tekshir()
     sana = getdate(sana)
     koef = flt(koef)
-    if koef not in (0.0, 1.0):
-        frappe.throw(_("Faqat 0 (kelmadi) yoki 1 (keldi) kiritiladi"))
     if sana > getdate(nowdate()):
         frappe.throw(_("Kelajak kunga yozib bo'lmaydi"))
     _ochiq_tekshir(sana.year, sana.month)
 
     emp = frappe.db.get_value(
         "Employee", xodim,
-        ["name", "employee_name", "company", "date_of_joining", "relieving_date"], as_dict=True
+        ["name", "employee_name", "company", "date_of_joining", "relieving_date",
+         "custom_tolov_turi"], as_dict=True
     )
     if not emp:
         frappe.throw(_("Xodim topilmadi"))
+
+    # Kunbay: faqat 0/1 (keldi/kelmadi). Soatbay: kunlik ishlagan SOATLARI (0-24)
+    if (emp.custom_tolov_turi or "").strip() == "Soatbay":
+        if koef < 0 or koef > 24:
+            frappe.throw(_("Soat 0 dan 24 gacha bo'lishi kerak"))
+    elif koef not in (0.0, 1.0):
+        frappe.throw(_("Faqat 0 (kelmadi) yoki 1 (keldi) kiritiladi"))
     if emp.date_of_joining and sana < getdate(emp.date_of_joining):
         frappe.throw(_("Xodim {0} da ishga kirgan — undan oldingi kunga yozib bo'lmaydi").format(emp.date_of_joining))
     if emp.relieving_date and sana > getdate(emp.relieving_date):
@@ -538,7 +578,7 @@ def set_oylik(xodim, yil, oy, summa):
 
     from_date = oy boshi, shuning uchun qachon o'zgartirilmasin — o'sha oyga
     TO'LIQ amal qiladi (oldingi oylar eski qiymatida qoladi)."""
-    _rol_tekshir()
+    _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
     if summa < 0:
@@ -600,7 +640,7 @@ def set_ish_kuni(xodim, yil, oy, kun):
     Har oyning normasi har xil bo'lishi mumkin (sentabr 26, avgust 5 ...),
     shuning uchun qiymat oyga biriktiriladi. Yozuv bo'lmagan oylarda xodimning
     doimiy normasi (Employee.custom_ish_kuni) yoki default (21/26) amal qiladi."""
-    _rol_tekshir()
+    _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     kun = cint(kun)
     if not (1 <= kun <= 31):
@@ -636,7 +676,7 @@ def set_ish_kuni(xodim, yil, oy, kun):
 @frappe.whitelist()
 def set_bonus(xodim, yil, oy, summa):
     """Oy oxiridagi bonus -> Additional Salary (Bonus komponenti, qoralama)."""
-    _rol_tekshir()
+    _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
     if summa < 0:
@@ -725,7 +765,7 @@ def oy_yop(yil, oy):
     """Oyni yopish: bo'sh kunlar Attendance bilan to'ldiriladi (default),
     hammasi submit bo'ladi, oylik summalar SSA sifatida saqlanadi, tabel qulflanadi.
     Og'ir ish — fonda (background job) bajariladi."""
-    _rol_tekshir()
+    _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     _ochiq_tekshir(yil, oy)
     oy_oxiri = _oy_chegara(yil, oy)[1]
@@ -832,7 +872,7 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
 @frappe.whitelist()
 def oy_och(yil, oy):
     """Yopiq oyni qayta ochish (sahifaga ruxsati bor rollar)."""
-    _rol_tekshir()
+    _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     tabel = _tabel_doc(yil, oy)
     if tabel.holat != "Yopiq":
