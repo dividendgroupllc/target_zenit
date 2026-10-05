@@ -7,7 +7,8 @@ Orqa tomonda HRMS'ning haqiqiy hujjatlari ma'lumot yig'adi:
   - oylik (baza) summa  -> "Tabel Oylik" (HAR OYga alohida qotirilgan qiymat;
     bo'lmasa Salary Structure Assignment, "Target Oylik" strukturasi) —
     bir oyni o'zgartirish boshqa oyga ta'sir qilmaydi
-  - bonus               -> Additional Salary ("Bonus" komponenti)
+  - bonus/jarima        -> Additional Salary (musbat — "Bonus" Earning,
+    manfiy — "Jarima" Deduction komponenti; tabelda jarima ayirib hisoblanadi)
 
 Hisob (Employee.custom_tolov_turi bo'yicha):
   - Kunbay (default): kunlik narx = oylik / SHU OYDAGI norma ish kuni
@@ -37,6 +38,7 @@ from frappe.utils import cint, flt, getdate, now_datetime, nowdate
 SAHIFA = "oylik-tabel"
 STRUKTURA = "Target Oylik"
 BONUS_KOMPONENT = "Bonus"
+JARIMA_KOMPONENT = "Jarima"          # manfiy "bonus" — Deduction komponenti
 
 OY_NOMLARI = {
     1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun",
@@ -243,12 +245,22 @@ def _valyuta(company=None):
 
 
 def _bonus_komponent_ta_minla():
+    """Bonus (Earning) va Jarima (Deduction) komponentlari mavjud bo'lsin.
+    HRMS Additional Salary manfiy summa qabul qilmaydi — shuning uchun jarima
+    alohida Deduction komponentida MUSBAT summa sifatida saqlanadi."""
     if not frappe.db.exists("Salary Component", BONUS_KOMPONENT):
         frappe.get_doc({
             "doctype": "Salary Component",
             "salary_component": BONUS_KOMPONENT,
             "salary_component_abbr": "BON",
             "type": "Earning",
+        }).insert(ignore_permissions=True)
+    if not frappe.db.exists("Salary Component", JARIMA_KOMPONENT):
+        frappe.get_doc({
+            "doctype": "Salary Component",
+            "salary_component": JARIMA_KOMPONENT,
+            "salary_component_abbr": "JAR",
+            "type": "Deduction",
         }).insert(ignore_permissions=True)
 
 
@@ -471,7 +483,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             koef = flt(r.custom_koef) if r.custom_koef is not None else STATUS_KOEF.get(r.status, 1.0)
             davomat[(r.employee, getdate(r.attendance_date).day)] = koef
 
-    # Bonuslar: Additional Salary
+    # Bonus/jarima: Additional Salary (Bonus — qo'shiladi, Jarima — ayriladi)
     bonus_map = {}
     if emp_ids:
         for r in frappe.get_all(
@@ -479,12 +491,13 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             filters={
                 "employee": ["in", emp_ids],
                 "docstatus": ["<", 2],
-                "salary_component": BONUS_KOMPONENT,
+                "salary_component": ["in", [BONUS_KOMPONENT, JARIMA_KOMPONENT]],
                 "payroll_date": ["between", [oy_boshi, oy_oxiri]],
             },
-            fields=["employee", "amount"],
+            fields=["employee", "amount", "salary_component"],
         ):
-            bonus_map[r.employee] = bonus_map.get(r.employee, 0) + flt(r.amount)
+            qiymat = flt(r.amount) if r.salary_component == BONUS_KOMPONENT else -flt(r.amount)
+            bonus_map[r.employee] = bonus_map.get(r.employee, 0) + qiymat
 
     qatorlar = []
     for x in xodimlar:
@@ -797,12 +810,15 @@ def set_ish_kuni(xodim, yil, oy, kun):
 
 @frappe.whitelist()
 def set_bonus(xodim, yil, oy, summa):
-    """Oy oxiridagi bonus -> Additional Salary (Bonus komponenti, qoralama)."""
+    """Oy oxiridagi bonus/jarima -> Additional Salary (qoralama).
+
+    Musbat summa — Bonus (Earning), MANFIY summa — JARIMA: HRMS manfiy
+    Additional Salary'ga yo'l qo'ymagani uchun "Jarima" (Deduction)
+    komponentida musbat summa sifatida saqlanadi; tabel hisobida esa
+    ayirib hisoblanadi. 0 — bonus/jarima olib tashlanadi."""
     _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
-    if summa < 0:
-        frappe.throw(_("Bonus manfiy bo'lmaydi"))
     _ochiq_tekshir(yil, oy)
     oy_boshi, oy_oxiri, _kun = _oy_chegara(yil, oy)
 
@@ -844,13 +860,17 @@ def set_bonus(xodim, yil, oy, summa):
         "Additional Salary",
         filters={
             "employee": xodim,
-            "salary_component": BONUS_KOMPONENT,
+            "salary_component": ["in", [BONUS_KOMPONENT, JARIMA_KOMPONENT]],
             "payroll_date": ["between", [oy_boshi, oy_oxiri]],
             "docstatus": ["<", 2],
         },
-        fields=["name", "docstatus", "amount"],
+        fields=["name", "docstatus", "amount", "salary_component"],
     )
-    eski = sum(flt(r.amount) for r in mavjud) if mavjud else None
+    # eski qiymat tabel ko'rinishida: bonus musbat, jarima manfiy
+    eski = sum(
+        flt(r.amount) if r.salary_component == BONUS_KOMPONENT else -flt(r.amount)
+        for r in mavjud
+    ) if mavjud else None
 
     for r in mavjud:
         doc = frappe.get_doc("Additional Salary", r.name)
@@ -860,24 +880,26 @@ def set_bonus(xodim, yil, oy, summa):
         else:
             frappe.delete_doc("Additional Salary", r.name, ignore_permissions=True, force=True)
 
-    if summa > 0:
+    if summa != 0:
         company = emp.company or _kompaniya()
         doc = frappe.get_doc({
             "doctype": "Additional Salary",
             "employee": xodim,
             "company": company,
-            "salary_component": BONUS_KOMPONENT,
+            # manfiy — jarima: Deduction komponenti, summa musbat saqlanadi
+            "salary_component": BONUS_KOMPONENT if summa > 0 else JARIMA_KOMPONENT,
             "currency": _valyuta(company),
-            "amount": summa,
+            "amount": abs(summa),
             "payroll_date": oy_oxiri,
-            # Bonus "Target Oylik" strukturasiga kirmaydi — u ustidan yozish
-            # emas, QO'SHIMCHA to'lov; aks holda HRMS xato beradi
+            # Bonus/Jarima "Target Oylik" strukturasiga kirmaydi — u ustidan
+            # yozish emas, QO'SHIMCHA qator; aks holda HRMS xato beradi
             "overwrite_salary_structure_amount": 0,
         })
         doc.flags.ignore_permissions = True
         doc.insert(ignore_permissions=True)
 
-    _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Bonus",
+    _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}",
+            "Bonus" if summa >= 0 else "Jarima",
             str(eski) if eski is not None else "", str(summa))
     return {"ok": True, "summa": summa}
 
@@ -1175,12 +1197,12 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
             doc.flags.ignore_permissions = True
             doc.submit()
 
-        # 4) Bonus qoralamalarini submit qilish
+        # 4) Bonus/jarima qoralamalarini submit qilish
         for nom in frappe.get_all(
             "Additional Salary",
             filters={
                 "docstatus": 0,
-                "salary_component": BONUS_KOMPONENT,
+                "salary_component": ["in", [BONUS_KOMPONENT, JARIMA_KOMPONENT]],
                 "payroll_date": ["between", [oy_boshi, oy_oxiri]],
             },
             pluck="name",

@@ -165,7 +165,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			<div class="ot-plitkalar">
 				<div class="ot-plitka"><div class="son">${d.qatorlar.length}</div><div class="nom">Xodimlar</div></div>
 				<div class="ot-plitka"><div class="son">${fmt(d.jami_oylik)}</div><div class="nom">Jami hisoblangan (so'm)</div></div>
-				<div class="ot-plitka"><div class="son">${fmt(d.jami_bonus)}</div><div class="nom">Jami bonus (so'm)</div></div>
+				<div class="ot-plitka"><div class="son">${fmt(d.jami_bonus)}</div><div class="nom">Bonus − jarima (so'm)</div></div>
 			</div>`);
 
 		// jadval
@@ -173,7 +173,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		d.kunlar.forEach((k) => {
 			th += `<th class="${k.yakshanba ? "ot-yak-bosh" : ""}" title="${k.sana}${k.yakshanba ? " (yakshanba)" : ""}">${k.kun}</th>`;
 		});
-		th += `<th>Bonus</th><th class="ot-c-kelgan" title="Yo'qlamada 1 belgilangan kunlar soni">Kelgan kun</th><th>Jami (so'm)</th></tr>`;
+		th += `<th title="Musbat — bonus, manfiy — jarima">Bonus/Jarima</th><th class="ot-c-kelgan" title="Yo'qlamada 1 belgilangan kunlar soni">Kelgan kun</th><th>Jami (so'm)</th></tr>`;
 
 		let rows = "";
 		d.qatorlar.forEach((q, i) => {
@@ -202,7 +202,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 					tr += `<td class="${cls.join(" ")}" data-i="${i}" data-j="${j}" title="${kd.sana} — ${q.tolov_turi === "soat" ? "bosib ishlagan soatini kiriting" : "bosilsa keldi (1) / kelmadi (0) almashadi"}">${koefFmt(kq.koef)}</td>`;
 				}
 			});
-			tr += `<td class="ot-c-bonus" data-i="${i}" title="Bosib o'zgartiring">${q.bonus ? fmt(q.bonus) : "+"}</td>`;
+			tr += `<td class="ot-c-bonus" data-i="${i}" title="Bosib o'zgartiring: musbat — bonus, manfiy — jarima"${q.bonus < 0 ? ' style="color:var(--red-600,#c0392b);font-weight:600"' : ""}>${q.bonus ? fmt(q.bonus) : "+"}</td>`;
 			tr += q.tolov_turi === "soat"
 				? `<td class="ot-c-kelgan" title="Oyda ishlagan soatlari">${koefFmt(q.koef_yigindi)} <small>soat</small></td>`
 				: `<td class="ot-c-kelgan" title="Kelgan kunlari (1 belgilanganlar), norma: ${q.ish_kuni}">${koefFmt(q.koef_yigindi)}</td>`;
@@ -340,10 +340,11 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 
 	function bonusDialog(q) {
 		const dlg = new frappe.ui.Dialog({
-			title: `${q.ismi} — bonus (${holat.data.oy_nomi})`,
+			title: `${q.ismi} — bonus / jarima (${holat.data.oy_nomi})`,
 			fields: [{
-				fieldtype: "Currency", fieldname: "summa", label: "Bonus (so'm)",
-				default: q.bonus, reqd: 1, description: "0 kiritsangiz bonus olib tashlanadi",
+				fieldtype: "Currency", fieldname: "summa", label: "Bonus / jarima (so'm)",
+				default: q.bonus, reqd: 1,
+				description: "Musbat — bonus, MANFIY — jarima (masalan -500000), 0 — olib tashlash",
 			}],
 			primary_action_label: "Saqlash",
 			primary_action: (v) => {
