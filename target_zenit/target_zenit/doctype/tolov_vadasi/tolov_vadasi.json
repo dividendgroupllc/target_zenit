@@ -1,0 +1,168 @@
+{
+ "actions": [],
+ "autoname": "format:PTP-{YYYY}-{#####}",
+ "creation": "2026-10-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "qarz_ishi",
+  "student",
+  "student_name",
+  "aloqa_yozuvi",
+  "masul",
+  "column_break_1",
+  "vada_sana",
+  "vada_summa",
+  "holat",
+  "amal_summa",
+  "tekshirilgan_sana",
+  "izoh"
+ ],
+ "fields": [
+  {
+   "fieldname": "qarz_ishi",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Qarz ishi",
+   "options": "Qarz Ishi",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fetch_from": "qarz_ishi.student",
+   "fieldname": "student",
+   "fieldtype": "Link",
+   "label": "O'quvchi",
+   "options": "Student",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "qarz_ishi.student_name",
+   "fieldname": "student_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "F.I.Sh.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "aloqa_yozuvi",
+   "fieldtype": "Link",
+   "label": "Aloqa yozuvi",
+   "options": "Aloqa Yozuvi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "masul",
+   "fieldtype": "Link",
+   "label": "Menejer",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vada_sana",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Va'da sanasi",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "vada_summa",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Va'da summasi",
+   "reqd": 1
+  },
+  {
+   "default": "Ochiq",
+   "fieldname": "holat",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Holat",
+   "options": "Ochiq\nBajarildi\nQisman\nBuzildi\nBekor"
+  },
+  {
+   "description": "Va'dadan keyin amalda tushgan to'lov",
+   "fieldname": "amal_summa",
+   "fieldtype": "Currency",
+   "label": "Amalda tushgan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tekshirilgan_sana",
+   "fieldtype": "Date",
+   "label": "Tekshirilgan sana",
+   "read_only": 1
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Data",
+   "label": "Izoh"
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Tolov Vadasi",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sotuv meneger"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "investor"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Xojakbar_Operator"
+  }
+ ],
+ "search_fields": "student_name,holat",
+ "sort_field": "vada_sana",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "student_name",
+ "track_changes": 1
+}

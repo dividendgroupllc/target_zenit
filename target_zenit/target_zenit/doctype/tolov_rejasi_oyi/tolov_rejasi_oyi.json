@@ -1,0 +1,91 @@
+{
+ "actions": [],
+ "creation": "2026-10-05 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "oy_label",
+  "due_date",
+  "amount",
+  "paid_amount",
+  "outstanding",
+  "holat",
+  "prorated",
+  "izoh"
+ ],
+ "fields": [
+  {
+   "fieldname": "oy_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Oy",
+   "reqd": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "due_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Muddat",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Summa",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "paid_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "To'langan",
+   "read_only": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "outstanding",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Qoldiq",
+   "read_only": 1,
+   "columns": 2
+  },
+  {
+   "default": "Kutilmoqda",
+   "description": "Kutilmoqda/Muddati keldi/Qisman/To'landi — tizim qo'yadi; Bekor — qo'lda (o'quvchi ketganda)",
+   "fieldname": "holat",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Holat",
+   "options": "Kutilmoqda\nMuddati keldi\nQisman\nTo'landi\nBekor",
+   "columns": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "prorated",
+   "fieldtype": "Check",
+   "label": "Prorate"
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Data",
+   "label": "Izoh"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Tolov Rejasi Oyi",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

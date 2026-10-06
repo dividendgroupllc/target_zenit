@@ -1,0 +1,71 @@
+{
+ "charts": [],
+ "content": "[{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Qarzdorlik CRM</b></span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Qarzdorlik paneli\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Qarz ishlari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"To'lov va'dalari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Aloqa yozuvlari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"To'lov rejalari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Sozlamalar\",\"col\":3}}]",
+ "creation": "2026-10-05 12:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "accounting",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Qarzdorlik CRM",
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Qarzdorlik CRM",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 99.1,
+ "shortcuts": [
+  {
+   "color": "Red",
+   "label": "Qarzdorlik paneli",
+   "type": "Page",
+   "link_to": "qarzdorlik"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Qarz ishlari",
+   "link_to": "Qarz Ishi",
+   "stats_filter": "{\"ishlov_status\":[\"not in\",[\"Yopildi - To'landi\",\"Yopildi - Boshqa\"]]}",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "To'lov va'dalari",
+   "link_to": "Tolov Vadasi",
+   "stats_filter": "{\"holat\":\"Ochiq\"}",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Aloqa yozuvlari",
+   "link_to": "Aloqa Yozuvi",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "To'lov rejalari",
+   "link_to": "Tolov Rejasi",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "label": "Sozlamalar",
+   "link_to": "Qarzdorlik Sozlamalari",
+   "type": "DocType"
+  }
+ ],
+ "title": "Qarzdorlik CRM"
+}

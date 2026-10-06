@@ -1,0 +1,206 @@
+{
+ "actions": [],
+ "autoname": "format:AY-{YYYY}-{######}",
+ "creation": "2026-10-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "qarz_ishi",
+  "student",
+  "student_name",
+  "masul",
+  "vaqt",
+  "column_break_1",
+  "kanal",
+  "aloqa_natijasi",
+  "hisob_natijasi",
+  "section_komment",
+  "komment",
+  "section_keyingi",
+  "keyingi_harakat",
+  "keyingi_sana",
+  "column_break_2",
+  "vada_summa",
+  "vada_sana"
+ ],
+ "fields": [
+  {
+   "fieldname": "qarz_ishi",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Qarz ishi",
+   "options": "Qarz Ishi",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fetch_from": "qarz_ishi.student",
+   "fieldname": "student",
+   "fieldtype": "Link",
+   "label": "O'quvchi",
+   "options": "Student",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "qarz_ishi.student_name",
+   "fieldname": "student_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "F.I.Sh.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "masul",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Menejer",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "default": "Now",
+   "fieldname": "vaqt",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Vaqt"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Qo'ng'iroq",
+   "fieldname": "kanal",
+   "fieldtype": "Select",
+   "label": "Kanal",
+   "options": "Qo'ng'iroq\nSMS\nTelegram\nYuzma-yuz\nBoshqa",
+   "reqd": 1
+  },
+  {
+   "fieldname": "aloqa_natijasi",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Aloqa natijasi",
+   "options": "Gaplashildi\nJavob yo'q\nBand\nQayta qo'ng'iroq so'radi\nO'chirilgan\nNoto'g'ri raqam",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.aloqa_natijasi=='Gaplashildi'",
+   "fieldname": "hisob_natijasi",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Suhbat natijasi",
+   "options": "\nVa'da berdi\nBo'lib to'lashga kelishildi\nE'tiroz-nizo\nTo'laganman deydi\nRad etdi\nMa'lumot oldi"
+  },
+  {
+   "fieldname": "section_komment",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "komment",
+   "fieldtype": "Small Text",
+   "label": "Komment"
+  },
+  {
+   "fieldname": "section_keyingi",
+   "fieldtype": "Section Break",
+   "label": "Keyingi qadam"
+  },
+  {
+   "fieldname": "keyingi_harakat",
+   "fieldtype": "Select",
+   "label": "Keyingi harakat",
+   "options": "Qayta qo'ng'iroq\nVa'dani kutish\nEskalatsiya\nRaqam aniqlash\nBoshqa",
+   "reqd": 1
+  },
+  {
+   "fieldname": "keyingi_sana",
+   "fieldtype": "Date",
+   "label": "Keyingi sana",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.hisob_natijasi==\"Va'da berdi\"",
+   "fieldname": "vada_summa",
+   "fieldtype": "Currency",
+   "label": "Va'da summasi"
+  },
+  {
+   "depends_on": "eval:doc.hisob_natijasi==\"Va'da berdi\"",
+   "fieldname": "vada_sana",
+   "fieldtype": "Date",
+   "label": "Va'da sanasi"
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Aloqa Yozuvi",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sotuv meneger",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "investor"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Xojakbar_Operator",
+   "write": 1,
+   "create": 1
+  }
+ ],
+ "search_fields": "student_name,aloqa_natijasi",
+ "sort_field": "vaqt",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "student_name",
+ "track_changes": 1
+}

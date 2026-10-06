@@ -437,3 +437,4 @@
 .tz-inv .pers-pill.bad { background:var(--bad-wash); color:var(--bad-ink); }
 .tz-inv .pers-bar { height:4px; width:110px; margin-left:auto; border-radius:3px; background:var(--line); margin-top:4px; overflow:hidden; }
 .tz-inv .pers-bar i { display:block; height:100%; background:var(--warn); border-radius:3px; }
+

@@ -1,0 +1,211 @@
+{
+ "actions": [],
+ "autoname": "format:TR-{YYYY}-{#####}",
+ "creation": "2026-10-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "student",
+  "student_name",
+  "sinf",
+  "customer",
+  "column_break_1",
+  "academic_year",
+  "holat",
+  "oylik_tolov",
+  "yakuniy_summa",
+  "section_oylar",
+  "oylar",
+  "section_jami",
+  "jami_hisoblangan",
+  "jami_tolangan",
+  "column_break_2",
+  "qarz_bugun",
+  "eng_eski_muddat",
+  "avans_summa"
+ ],
+ "fields": [
+  {
+   "fieldname": "student",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "O'quvchi",
+   "options": "Student",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fetch_from": "student.student_name",
+   "fieldname": "student_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "F.I.Sh.",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "student.custom_sinf_guruh",
+   "fieldname": "sinf",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Sinf",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "student.customer",
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Mijoz (Customer)",
+   "options": "Customer",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "2026-2027",
+   "fieldname": "academic_year",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "O'quv yili",
+   "reqd": 1
+  },
+  {
+   "default": "Faol",
+   "fieldname": "holat",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Holat",
+   "options": "Faol\nYakunlangan\nBekor"
+  },
+  {
+   "fieldname": "oylik_tolov",
+   "fieldtype": "Currency",
+   "label": "Oylik to'lov"
+  },
+  {
+   "description": "Shartnomadagi yakuniy summa (tekshiruv uchun: oylar yig'indisiga teng bo'lishi kerak)",
+   "fieldname": "yakuniy_summa",
+   "fieldtype": "Currency",
+   "label": "Yakuniy summa (shartnoma)"
+  },
+  {
+   "fieldname": "section_oylar",
+   "fieldtype": "Section Break",
+   "label": "Oylik jadval"
+  },
+  {
+   "fieldname": "oylar",
+   "fieldtype": "Table",
+   "label": "Oylar",
+   "options": "Tolov Rejasi Oyi",
+   "reqd": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_jami",
+   "fieldtype": "Section Break",
+   "label": "Jami (tizim hisoblaydi)"
+  },
+  {
+   "fieldname": "jami_hisoblangan",
+   "fieldtype": "Currency",
+   "label": "Jami hisoblangan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "jami_tolangan",
+   "fieldtype": "Currency",
+   "label": "Jami to'langan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Muddati kelgan oylarning to'lanmagan qoldig'i",
+   "fieldname": "qarz_bugun",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Qarz (bugun)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "eng_eski_muddat",
+   "fieldtype": "Date",
+   "label": "Eng eski to'lanmagan muddat",
+   "read_only": 1
+  },
+  {
+   "fieldname": "avans_summa",
+   "fieldtype": "Currency",
+   "label": "Avans (ortiqcha to'lov)",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Tolov Rejasi",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sotuv meneger"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "investor"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Xojakbar_Operator"
+  }
+ ],
+ "search_fields": "student_name,sinf,academic_year",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "student_name",
+ "track_changes": 1
+}

@@ -1,0 +1,102 @@
+{
+ "actions": [],
+ "creation": "2026-10-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "grace_days",
+  "tolerance",
+  "min_threshold",
+  "column_break_1",
+  "buzilgan_vada_limit",
+  "sla_soat",
+  "default_masul",
+  "section_biriktirish",
+  "biriktirish"
+ ],
+ "fields": [
+  {
+   "default": "3",
+   "description": "Muddat o'tgach necha kun kutib ish ochiladi",
+   "fieldname": "grace_days",
+   "fieldtype": "Int",
+   "label": "Grace (kun)"
+  },
+  {
+   "default": "1000",
+   "description": "Shu summagacha qoldiq «to'langan» hisoblanadi (yaxlitlash farqlari)",
+   "fieldname": "tolerance",
+   "fieldtype": "Currency",
+   "label": "Tolerance (so'm)"
+  },
+  {
+   "default": "10000",
+   "description": "Shundan kichik qarzga ish ochilmaydi",
+   "fieldname": "min_threshold",
+   "fieldtype": "Currency",
+   "label": "Minimal qarz"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "2",
+   "description": "Shuncha va'da buzilsa ish avtomatik eskalatsiyaga o'tadi",
+   "fieldname": "buzilgan_vada_limit",
+   "fieldtype": "Int",
+   "label": "Buzilgan va'da limiti"
+  },
+  {
+   "default": "48",
+   "description": "Yangi ish shu soat ichida birinchi aloqasiz qolsa — bildirishnoma",
+   "fieldname": "sla_soat",
+   "fieldtype": "Int",
+   "label": "SLA (soat)"
+  },
+  {
+   "description": "Sinf shabloni mos kelmasa — shu menejerga biriktiriladi",
+   "fieldname": "default_masul",
+   "fieldtype": "Link",
+   "label": "Default mas'ul",
+   "options": "User"
+  },
+  {
+   "fieldname": "section_biriktirish",
+   "fieldtype": "Section Break",
+   "label": "Sinf bo'yicha avto-biriktirish"
+  },
+  {
+   "fieldname": "biriktirish",
+   "fieldtype": "Table",
+   "label": "Biriktirish qoidalari",
+   "options": "Qarzdorlik Biriktirish"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Qarzdorlik Sozlamalari",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

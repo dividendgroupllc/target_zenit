@@ -1,0 +1,297 @@
+{
+ "actions": [],
+ "autoname": "format:QI-{YYYY}-{#####}",
+ "creation": "2026-10-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_oquvchi",
+  "student",
+  "student_name",
+  "sinf",
+  "customer",
+  "tolov_rejasi",
+  "column_break_1",
+  "payer_name",
+  "payer_phone",
+  "ochilgan_sana",
+  "section_qarz",
+  "qarz_summa",
+  "column_break_2",
+  "eng_eski_muddat",
+  "column_break_3",
+  "aging_bucket",
+  "section_ishlov",
+  "masul",
+  "ishlov_status",
+  "keyingi_aloqa",
+  "column_break_4",
+  "urinishlar_soni",
+  "oxirgi_aloqa",
+  "buzilgan_vadalar",
+  "column_break_5",
+  "aloqa_cheklovi",
+  "nizo_sababi",
+  "section_yopilish",
+  "yopilish_sababi",
+  "yopilgan_sana"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_oquvchi",
+   "fieldtype": "Section Break",
+   "label": "O'quvchi"
+  },
+  {
+   "fieldname": "student",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "O'quvchi",
+   "options": "Student",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fetch_from": "student.student_name",
+   "fieldname": "student_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "F.I.Sh.",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "student.custom_sinf_guruh",
+   "fieldname": "sinf",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Sinf",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "student.customer",
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Mijoz (Customer)",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tolov_rejasi",
+   "fieldtype": "Link",
+   "label": "To'lov rejasi",
+   "options": "Tolov Rejasi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "payer_name",
+   "fieldtype": "Data",
+   "label": "To'lovchi"
+  },
+  {
+   "fieldname": "payer_phone",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "To'lovchi telefoni"
+  },
+  {
+   "fieldname": "ochilgan_sana",
+   "fieldtype": "Date",
+   "label": "Ochilgan sana",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_qarz",
+   "fieldtype": "Section Break",
+   "label": "Qarz (tizim hisoblaydi)"
+  },
+  {
+   "bold": 1,
+   "fieldname": "qarz_summa",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Qarz summasi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "eng_eski_muddat",
+   "fieldtype": "Date",
+   "label": "Eng eski muddat",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "aging_bucket",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Qarz yoshi",
+   "options": "\n1-30\n31-60\n61-90\n90+\nKetgan-qarzli",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_ishlov",
+   "fieldtype": "Section Break",
+   "label": "Ishlov"
+  },
+  {
+   "fieldname": "masul",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Mas'ul menejer",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "default": "Yangi",
+   "fieldname": "ishlov_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Ishlov holati",
+   "options": "Yangi\nUrinilmoqda\nGaplashildi - Va'da\nGaplashildi - Nizo\nBo'lib to'lash\nVa'da buzildi\nAloqa yo'q\nTo'lov tekshirilmoqda\nEskalatsiya\nYopildi - To'landi\nYopildi - Boshqa",
+   "reqd": 1
+  },
+  {
+   "description": "Ochiq ishda majburiy. 'Keyinroq' degan tushuncha yo'q — har doim aniq sana.",
+   "fieldname": "keyingi_aloqa",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Keyingi aloqa",
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "urinishlar_soni",
+   "fieldtype": "Int",
+   "label": "Urinishlar soni",
+   "read_only": 1
+  },
+  {
+   "fieldname": "oxirgi_aloqa",
+   "fieldtype": "Datetime",
+   "label": "Oxirgi aloqa",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "buzilgan_vadalar",
+   "fieldtype": "Int",
+   "label": "Buzilgan va'dalar",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "aloqa_cheklovi",
+   "fieldtype": "Select",
+   "label": "Aloqa cheklovi",
+   "options": "\nFaqat SMS\nQo'ng'iroq mumkin emas"
+  },
+  {
+   "depends_on": "eval:doc.ishlov_status=='Gaplashildi - Nizo'",
+   "fieldname": "nizo_sababi",
+   "fieldtype": "Small Text",
+   "label": "Nizo sababi",
+   "mandatory_depends_on": "eval:doc.ishlov_status=='Gaplashildi - Nizo'"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_yopilish",
+   "fieldtype": "Section Break",
+   "label": "Yopilish"
+  },
+  {
+   "fieldname": "yopilish_sababi",
+   "fieldtype": "Select",
+   "label": "Yopilish sababi",
+   "options": "\nTo'landi\nChegirma berildi\nKetdi\nBoshqa"
+  },
+  {
+   "fieldname": "yopilgan_sana",
+   "fieldtype": "Date",
+   "label": "Yopilgan sana",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Qarz Ishi",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sotuv meneger",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "investor"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Xojakbar_Operator",
+   "write": 1
+  }
+ ],
+ "search_fields": "student_name,sinf,payer_phone,ishlov_status",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "student_name",
+ "track_changes": 1
+}

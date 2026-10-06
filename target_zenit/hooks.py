@@ -159,9 +159,19 @@ doc_events = {
 		"before_insert": "target_zenit.customer.set_customer_defaults",
 		"on_update": "target_zenit.customer.update_kassa_party_name",
 	},
-	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish
+	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish;
+	# ketgan o'quvchining to'lov rejasida kelgusi oylar bekor qilinadi
 	"Student": {
-		"on_update": "target_zenit.student_group_sync.on_student_update",
+		"on_update": [
+			"target_zenit.student_group_sync.on_student_update",
+			"target_zenit.qarzdorlik.engine.on_student_change",
+		],
+	},
+	# To'lov tushishi bilan qarzdorlik qayta hisoblanadi — ota-ona to'lagan
+	# zahoti o'quvchi menejer ro'yxatidan tushadi (ertalabgacha kutilmaydi)
+	"Payment Entry": {
+		"on_submit": "target_zenit.qarzdorlik.engine.on_payment",
+		"on_cancel": "target_zenit.qarzdorlik.engine.on_payment",
 	},
 	# Shartnoma oyligi (custom_oylik, Overview tabida) to'ldirilib saqlansa —
 	# Salary Structure Assignment avto-yaratiladi (oylik tabel/payroll uchun;
@@ -200,7 +210,9 @@ scheduler_events = {
 		"target_zenit.integrations.eduvisit.hourly_attendance"
 	],
 	"daily": [
-		"target_zenit.integrations.eduvisit.daily_sync"
+		"target_zenit.integrations.eduvisit.daily_sync",
+		# Qarzdorlik: rejalarni qayta hisoblash, ish ochish/yopish, PTP/SLA tekshiruvi
+		"target_zenit.qarzdorlik.engine.nightly",
 	],
 	"cron": {
 		# Har yili 1-sentabr 06:00 — hamma faol o'quvchi bir sinf yuqoriga (G4A -> G5A)

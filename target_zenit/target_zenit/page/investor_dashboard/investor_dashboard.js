@@ -54,6 +54,7 @@ class TZInvestorDashboard {
 		this.tabs = [
 			{ key: "overview", label: "Umumiy" },
 			{ key: "cashflow", label: "Kassa va pul oqimi" },
+			{ key: "kunlik", label: "Kunlik kassa" },
 			{ key: "debts", label: "Qarzdorlik" },
 			{ key: "dds", label: "Pul oqimi (DDS)" },
 			{ key: "tuition", label: "O'quvchilar to'lovi" },
@@ -418,9 +419,24 @@ class TZInvestorDashboard {
 	renderTab() {
 		if (!this.data || !this.data.meta) return;
 		const body = this.page.main.find(".tz-body");
-		const fn = { overview: "renderOverview", cashflow: "renderCashflow", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", personal: "renderPersonal", balance: "renderBalance", nach: "renderNach" }[this.active];
+		const fn = { overview: "renderOverview", cashflow: "renderCashflow", kunlik: "renderKunlik", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", personal: "renderPersonal", balance: "renderBalance", nach: "renderNach" }[this.active];
 		body.html(this[fn]());
+		if (this.active === "kunlik") this.mountKunlik(body.find(".tz-kunlik-host"));
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
+	}
+
+	// ============== TAB: Kunlik kassa (mustaqil modul, tzKunlikInit) ==============
+	renderKunlik() {
+		return `<div class="tz-kunlik-host"></div>`;
+	}
+
+	mountKunlik(host) {
+		if (!host.length) return;
+		if (this.kunlikEl) { host.replaceWith(this.kunlikEl); return; }  // tab almashganda holati saqlanadi
+		const el = $("<div></div>");
+		host.replaceWith(el);
+		tzKunlikInit(el);
+		this.kunlikEl = el;
 	}
 
 	// ================= UI atoms =================
@@ -2118,4 +2134,1005 @@ class TZInvestorDashboard {
 		const wh = w.length ? `<b>Diqqat:</b> ${w.map((x) => this.esc(x)).join(" ")} ` : "";
 		return `<div class="note">${wh}Barcha raqamlar real vaqtda ERPNext'dan (GL Entry): kassa — Mode of Payment hisoblari; debitorka/kreditorka va kontragent — Receivable/Payable; foyda — Income/Expense; o'quvchi to'lovi — Education Fees; xodim avansi — Employee Advance. Budjet bo'linishi Chart of Accounts guruhiga tayanadi.</div>`;
 	}
+}
+
+// (investor dashboardga ulangan — pastdagi tzKunlikInit)
+// Dizayn: zamonaviy yorug' fintech-dashboard — ko'k (#2563eb) asosiy aksent,
+// kirim yashil / chiqim qizil (jahon konvensiyasi), oq kartalar, yumshoq
+// soyalar. Ranglar desk mavzusidan MUSTAQIL (qorong'i mavzuda ham yorug').
+
+// ======================================================================
+// KUNLIK KASSA bo'limi — investor dashboard ichida mustaqil modul.
+// Berilgan konteynerga o'z UI'sini quradi (o'z filtrlari, o'z yuklanishi).
+function tzKunlikInit($host) {
+
+	// ---------------------------------------------------------------- dizayn tokenlari
+	const C = {
+		bg: "#f4f6fb", card: "#ffffff", line: "#e6eaf2", lineSoft: "#eef1f7",
+		ink: "#0f172a", muted: "#64748b", faint: "#94a3b8",
+		blue: "#2563eb", blueSoft: "#eff4ff", blueDark: "#1d4ed8",
+		good: "#10b981", goodInk: "#047857", goodSoft: "#ecfdf5",
+		bad: "#f43f5e", badInk: "#be123c", badSoft: "#fff1f2",
+		slate: "#94a3b8", amber: "#f59e0b",
+	};
+
+	if (!document.getElementById("kunlik-kassa-css")) {
+		const css = `
+		.tz-kk { background:${C.bg}; border-radius:18px; padding:20px 22px 34px; margin-top:8px;
+			color:${C.ink}; font-size:13px; -webkit-font-smoothing:antialiased; }
+		.tz-kk * { box-sizing:border-box; }
+		.tz-kk .num { font-variant-numeric:tabular-nums; }
+
+		/* ---- sarlavha ---- */
+		.tz-kk .kk-head { display:flex; align-items:center; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
+		.tz-kk .kk-title { font-size:20px; font-weight:800; letter-spacing:-.3px; color:${C.ink}; }
+		.tz-kk .kk-title small { display:block; font-size:12px; font-weight:500; color:${C.muted}; margin-top:1px; }
+		.tz-kk .kk-head-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+		.tz-kk .kk-asof { font-size:11.5px; color:${C.faint}; }
+		.tz-kk .kk-refresh { border:1px solid ${C.line}; background:${C.card}; color:${C.blue};
+			border-radius:10px; padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer; }
+		.tz-kk .kk-refresh:hover { background:${C.blueSoft}; border-color:${C.blue}; }
+
+		/* ---- filtr paneli ---- */
+		.tz-kk .kk-filters { background:${C.card}; border:1px solid ${C.line}; border-radius:14px;
+			padding:12px 14px; margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+			box-shadow:0 1px 2px rgba(16,24,40,.04); }
+		.tz-kk .kk-seg { display:inline-flex; background:${C.bg}; border-radius:10px; padding:3px; gap:2px; }
+		.tz-kk .kk-seg button { border:0; background:transparent; color:${C.muted}; border-radius:8px;
+			padding:5px 13px; font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap; }
+		.tz-kk .kk-seg button:hover { color:${C.ink}; }
+		.tz-kk .kk-seg button.active { background:${C.card}; color:${C.blue}; box-shadow:0 1px 3px rgba(16,24,40,.12); }
+		.tz-kk input.kk-date { border:1px solid ${C.line}; border-radius:10px; padding:5px 10px;
+			background:${C.card}; color:${C.ink}; width:128px; font-size:12.5px; }
+		.tz-kk input.kk-date:focus { outline:2px solid ${C.blueSoft}; border-color:${C.blue}; }
+		.tz-kk select.kk-sel { border:1px solid ${C.line}; border-radius:10px; padding:5px 10px;
+			background:${C.card}; color:${C.ink}; font-size:12.5px; max-width:210px; cursor:pointer; }
+		.tz-kk select.kk-sel.on { border-color:${C.blue}; background:${C.blueSoft}; color:${C.blueDark}; font-weight:600; }
+		.tz-kk .kk-accs { display:flex; gap:7px; flex-wrap:wrap; }
+		.tz-kk .kk-acc { border:1px solid ${C.line}; background:${C.card}; color:${C.muted}; border-radius:10px;
+			padding:4px 11px; font-size:12px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+		.tz-kk .kk-acc .bal { font-weight:500; color:${C.faint}; font-size:11px; }
+		.tz-kk .kk-acc:hover { border-color:${C.blue}; color:${C.blue}; }
+		.tz-kk .kk-acc.active { background:${C.blueSoft}; border-color:${C.blue}; color:${C.blueDark}; }
+		.tz-kk .kk-acc.active .bal { color:${C.blue}; }
+
+		/* ---- KPI ---- */
+		.tz-kk .kk-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(188px, 1fr)); gap:12px; margin-bottom:16px; }
+		.tz-kk .kk-kpi { background:${C.card}; border:1px solid ${C.line}; border-radius:14px; padding:14px 16px;
+			box-shadow:0 1px 2px rgba(16,24,40,.04); min-height:92px; transition:border-color .12s, box-shadow .12s; }
+		.tz-kk .kk-kpi.click { cursor:pointer; }
+		.tz-kk .kk-kpi.click:hover { border-color:${C.blue}; box-shadow:0 2px 8px rgba(37,99,235,.10); }
+		.tz-kk .kk-kpi.active { border-color:${C.blue}; box-shadow:0 0 0 2px ${C.blueSoft}, 0 2px 8px rgba(37,99,235,.12); background:linear-gradient(180deg, ${C.blueSoft}55, ${C.card}); }
+		.tz-kk .kk-kpi .hint { float:right; font-size:10px; color:${C.faint}; font-weight:600; }
+		.tz-kk .kk-kpi.active .hint { color:${C.blue}; }
+		.tz-kk .kk-kpi .lab { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:${C.faint}; margin-bottom:6px; }
+		.tz-kk .kk-kpi .val { font-size:21px; font-weight:800; letter-spacing:-.4px; line-height:1.1; white-space:nowrap; }
+		.tz-kk .kk-kpi .val small { font-size:11.5px; font-weight:600; color:${C.faint}; margin-left:2px; }
+		.tz-kk .kk-kpi .foot { display:flex; align-items:center; gap:8px; margin-top:8px; min-height:24px; }
+		.tz-kk .kk-kpi .sub { font-size:11.5px; color:${C.muted}; }
+		.tz-kk .kk-delta { font-size:11px; font-weight:700; border-radius:999px; padding:2px 8px; white-space:nowrap; }
+		.tz-kk .kk-delta.up { background:${C.goodSoft}; color:${C.goodInk}; }
+		.tz-kk .kk-delta.dn { background:${C.badSoft}; color:${C.badInk}; }
+		.tz-kk .kk-delta.flat { background:${C.bg}; color:${C.muted}; }
+		.tz-kk .kk-spark { margin-left:auto; flex:none; }
+
+		/* ---- kartalar ---- */
+		.tz-kk .kk-card { background:${C.card}; border:1px solid ${C.line}; border-radius:14px;
+			padding:12px 14px; margin-bottom:12px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+		.tz-kk .kk-card-hd { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+		.tz-kk .kk-card-hd h3 { font-size:13px; font-weight:800; letter-spacing:-.2px; margin:0; color:${C.ink}; }
+		.tz-kk .kk-card-hd .meta { font-size:11.5px; color:${C.muted}; }
+		.tz-kk .kk-card-hd .right { margin-left:auto; }
+		.tz-kk .kk-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+		@media (max-width: 980px) { .tz-kk .kk-grid2 { grid-template-columns:1fr; } }
+
+		.tz-kk .kk-legend { display:flex; gap:16px; flex-wrap:wrap; font-size:11.5px; color:${C.muted}; align-items:center; }
+		.tz-kk .kk-legend b { color:${C.ink}; font-weight:600; }
+		.tz-kk .kk-legend .sw { width:10px; height:10px; border-radius:3px; display:inline-block; margin-right:6px; vertical-align:-1px; }
+		.tz-kk .kk-legend .ln { width:18px; height:0; border-top:2.5px solid ${C.blue}; display:inline-block; margin-right:6px; vertical-align:3px; border-radius:2px; }
+
+		.tz-kk svg { display:block; }
+		.tz-kk svg text { font-family:inherit; }
+		.tz-kk .kk-day-hit { cursor:pointer; }
+		.tz-kk .kk-day-hit:hover rect.hover-bg { fill:${C.blue}; fill-opacity:.07; }
+
+		/* ---- zamonaviy diagramma effektlari ---- */
+		@keyframes kkGrowUp { from { transform:scaleY(0); } to { transform:scaleY(1); } }
+		@keyframes kkPulse { 0% { opacity:.55; transform:scale(1); } 70% { opacity:0; transform:scale(2.6); } 100% { opacity:0; transform:scale(2.6); } }
+		.tz-kk .kk-grow { transform-box:fill-box; transform-origin:center bottom; animation:kkGrowUp .45s cubic-bezier(.22,.9,.35,1) backwards; }
+		.tz-kk .kk-growd { transform-box:fill-box; transform-origin:center top; animation:kkGrowUp .45s cubic-bezier(.22,.9,.35,1) backwards; }
+		.tz-kk .kk-pulse { transform-box:fill-box; transform-origin:center center; animation:kkPulse 2.2s ease-out infinite; }
+		.tz-kk .kk-hbars .hb-track i { transition:width .5s cubic-bezier(.22,.9,.35,1); box-shadow:0 1px 2px rgba(16,24,40,.18); }
+
+		/* ---- kuzatuvchi tooltip (shisha karta) ---- */
+		.kk-tip { position:fixed; z-index:9999; pointer-events:none; min-width:170px; max-width:280px;
+			background:rgba(15,23,42,.92); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+			color:#e2e8f0; border-radius:12px; padding:10px 13px; font-size:12px; line-height:1.55;
+			box-shadow:0 10px 30px rgba(2,6,23,.35), 0 2px 8px rgba(2,6,23,.25);
+			font-variant-numeric:tabular-nums; }
+		.kk-tip .t { font-weight:800; color:#fff; margin-bottom:5px; font-size:12.5px; }
+		.kk-tip .row { display:flex; align-items:center; gap:7px; }
+		.kk-tip .row b { margin-left:auto; color:#fff; font-weight:700; }
+		.kk-tip .row i { width:8px; height:8px; border-radius:3px; flex:none; }
+		.kk-tip .q { margin-top:5px; padding-top:5px; border-top:1px solid rgba(148,163,184,.25); color:#94a3b8; }
+		.kk-tip .q b { color:#dbeafe; }
+
+		/* ---- heatmap ---- */
+		.tz-kk .kk-heat { display:flex; gap:22px; flex-wrap:wrap; }
+		.tz-kk .kk-heat-oy .t { font-size:12px; font-weight:700; margin-bottom:6px; color:${C.ink}; }
+		.tz-kk .kk-heat-grid { display:grid; grid-template-rows:repeat(7, 13px); grid-auto-flow:column; gap:2px; }
+		.tz-kk .kk-heat-cell { width:13px; height:13px; border-radius:3px; background:${C.lineSoft}; cursor:pointer; }
+		.tz-kk .kk-heat-cell.bosh { background:transparent; cursor:default; }
+		.tz-kk .kk-heat-cell:hover { outline:2px solid ${C.blue}; outline-offset:1px; }
+
+		/* ---- joriy vs oldingi davr taqqoslash ---- */
+		.tz-kk .kk-cmp-row { margin-bottom:12px; }
+		.tz-kk .kk-cmp-hd { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; color:${C.ink}; margin-bottom:4px; }
+		.tz-kk .kk-cmp-bar { display:flex; align-items:center; gap:8px; margin-bottom:3px; }
+		.tz-kk .kk-cmp-bar i { display:block; height:14px; border-radius:4px; box-shadow:0 1px 2px rgba(16,24,40,.15);
+			transition:width .5s cubic-bezier(.22,.9,.35,1); }
+		.tz-kk .kk-cmp-bar.old i { height:9px; opacity:.3; box-shadow:none; }
+		.tz-kk .kk-cmp-bar b { font-size:12px; color:${C.ink}; white-space:nowrap; }
+		.tz-kk .kk-cmp-bar.old b { font-size:11px; color:${C.faint}; font-weight:500; }
+
+		/* ---- gorizontal barlar ---- */
+		.tz-kk .kk-hbars .hb { margin-bottom:6px; }
+		.tz-kk .kk-hbars .hb.click { cursor:pointer; border-radius:8px; padding:3px 6px; margin:0 -6px 5px; }
+		.tz-kk .kk-hbars .hb.click:hover { background:${C.blueSoft}; }
+		.tz-kk .kk-hbars .hb.click.active { background:${C.blueSoft}; box-shadow:inset 2px 0 0 ${C.blue}; }
+
+		/* ---- drill-down paneli ---- */
+		.tz-kk .kk-drill { margin-top:12px; }
+		.tz-kk .kk-drill-box { border:1px solid ${C.line}; border-left:3px solid ${C.blue}; border-radius:10px;
+			background:#fafbff; padding:12px 14px; }
+		.tz-kk .kk-drill-hd { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; flex-wrap:wrap; }
+		.tz-kk .kk-drill-hd b { font-size:13px; color:${C.ink}; }
+		.tz-kk .kk-drill-hd .meta { font-size:11.5px; color:${C.muted}; }
+		.tz-kk .kk-drill-x { margin-left:auto; border:0; background:transparent; color:${C.faint};
+			font-size:15px; cursor:pointer; line-height:1; padding:2px 6px; }
+		.tz-kk .kk-drill-x:hover { color:${C.badInk}; }
+		.tz-kk .kk-drill-grid { display:grid; grid-template-columns:3fr 2fr; gap:14px; }
+		@media (max-width: 860px) { .tz-kk .kk-drill-grid { grid-template-columns:1fr; } }
+		.tz-kk .kk-hbars .hb-t { display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px; gap:10px; }
+		.tz-kk .kk-hbars .hb-t > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:${C.ink}; }
+		.tz-kk .kk-hbars .hb-t b { color:${C.ink}; font-weight:700; white-space:nowrap; }
+		.tz-kk .kk-hbars .kum { color:${C.faint}; font-weight:500; font-size:11px; }
+		.tz-kk .kk-hbars .hb-track { height:6px; border-radius:5px; background:${C.lineSoft}; overflow:hidden; }
+		.tz-kk .kk-hbars .hb-track i { display:block; height:100%; border-radius:5px; }
+		.tz-kk .kk-subtitle { font-size:12px; font-weight:800; color:${C.ink}; margin:2px 0 8px; }
+
+		/* ---- jadval ---- */
+		.tz-kk table.kk-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+		.tz-kk table.kk-tbl th { text-align:left; font-size:10.5px; font-weight:700; text-transform:uppercase;
+			letter-spacing:.5px; color:${C.faint}; border-bottom:1px solid ${C.line}; padding:8px 10px; background:${C.card}; }
+		.tz-kk table.kk-tbl td { padding:8px 10px; border-bottom:1px solid ${C.lineSoft}; color:${C.ink}; }
+		.tz-kk table.kk-tbl th.r, .tz-kk table.kk-tbl td.r { text-align:right; }
+		.tz-kk tr.kk-day { cursor:pointer; }
+		.tz-kk tr.kk-day td { font-weight:600; }
+		.tz-kk tr.kk-day:hover td { background:${C.blueSoft}; }
+		.tz-kk tr.kk-day.sel > td:first-child { box-shadow:inset 3px 0 0 ${C.blue}; }
+		.tz-kk tr.kk-day .chev { display:inline-block; width:16px; color:${C.faint}; transition:transform .15s; }
+		.tz-kk tr.kk-day.open .chev { transform:rotate(90deg); color:${C.blue}; }
+		.tz-kk tr.kk-day .hk { color:${C.faint}; font-weight:500; font-size:11.5px; margin-left:4px; }
+		.tz-kk tr.kk-docs > td { background:#fafbfe; padding:10px 14px 14px; }
+		.tz-kk tr.kk-docs table.kk-tbl th { background:transparent; }
+		.tz-kk tr.kk-docs a { color:${C.blue}; font-weight:600; text-decoration:none; }
+		.tz-kk .kk-ichki, .tz-kk .kk-ichki td { color:${C.faint} !important; }
+		.tz-kk tfoot td { font-weight:800 !important; border-top:2px solid ${C.line}; background:${C.card}; }
+		.tz-kk .kk-pos { color:${C.goodInk}; } .tz-kk .kk-neg { color:${C.badInk}; }
+		.tz-kk .kk-badge-n { color:${C.faint}; font-weight:500; }
+
+		.tz-kk .kk-print-btn { border:1px solid ${C.line}; background:${C.card}; color:${C.muted};
+			border-radius:8px; padding:3px 11px; font-size:11px; font-weight:700; cursor:pointer; }
+		.tz-kk .kk-print-btn:hover { border-color:${C.blue}; color:${C.blue}; }
+		.tz-kk .kk-limit { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:${C.muted}; }
+		.tz-kk .kk-limit input { width:130px; border:1px solid ${C.line}; border-radius:8px; padding:3px 9px;
+			background:${C.card}; color:${C.ink}; font-size:12px; text-align:right; }
+		.tz-kk .kk-warn { display:inline-flex; align-items:center; gap:6px; background:${C.badSoft};
+			color:${C.badInk}; border-radius:999px; padding:3px 12px; font-size:11.5px; font-weight:700; }
+		.tz-kk .kk-loader, .tz-kk .kk-empty { padding:36px; text-align:center; color:${C.faint}; font-size:13px; }
+
+		/* ---- kichik ekranlar ---- */
+		@media (max-width: 760px) {
+			.tz-kk { padding:12px 10px 24px; border-radius:12px; }
+			.tz-kk .kk-title { font-size:17px; }
+			.tz-kk .kk-kpi .val { font-size:18px; }
+			.tz-kk .kk-kpis { grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; }
+			.tz-kk .kk-card { padding:12px; }
+			.tz-kk .kk-filters { padding:10px; gap:8px; }
+			.tz-kk .kk-head-right { width:100%; }
+		}
+		`;
+		$("<style>", { id: "kunlik-kassa-css", text: css }).appendTo("head");
+	}
+
+	const $root = $('<div class="tz-kk"><div class="kk-loader">Yuklanyapti…</div></div>').appendTo($host.empty());
+
+	// ---------------------------------------------------------------- holat
+	const st = {
+		from: null, to: null, preset: "oy",
+		currency: "", accounts: null,
+		data: null, dayDocs: {}, selDay: null,
+		tur: "",                      // operatsiya turi: Приход/Расход/Перемещения/Конвертация
+		ptype: "",                    // kontragent turi: Customer/Employee/Supplier/Shareholder/Xarajatlar
+		kat: "", party: "",           // kategoriya / kontragent filtri
+	};
+	presetDates("oy");
+
+	const fmt = (v) => (Number(v) || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+	const m1 = (v) => { const a = Math.abs(v); return a >= 1e9 ? (v / 1e9).toFixed(1) + " mlrd" : a >= 1e6 ? (v / 1e6).toFixed(1) + " mln" : a >= 1e3 ? (v / 1e3).toFixed(0) + " ming" : fmt(v); };
+	const esc = (s) => frappe.utils.escape_html(String(s == null ? "" : s));
+	const dmy = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? `${m[3]}.${m[2]}.${m[1]}` : s; };
+	const HAFTA = ["Yak", "Du", "Se", "Chor", "Pay", "Ju", "Shan"];
+	const OYLAR = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
+	const hk = (s) => { const d = new Date(s + "T00:00:00"); return isNaN(d) ? "" : HAFTA[d.getDay()]; };
+	const pm = (v) => (v < 0 ? "−" + fmt(Math.abs(v)) : "+" + fmt(v));
+	const limitKey = () => "kk_min_limit_" + (st.currency || "UZS");
+	const getLimit = () => { try { return Number(localStorage.getItem(limitKey())) || 0; } catch (e) { return 0; } };
+
+	function presetDates(p) {
+		const t = frappe.datetime.get_today();
+		st.preset = p;
+		if (p === "bugun") { st.from = t; st.to = t; }
+		else if (p === "kecha") { const k = frappe.datetime.add_days(t, -1); st.from = k; st.to = k; }
+		else if (p === "hafta") { st.from = frappe.datetime.add_days(t, -6); st.to = t; }
+		else if (p === "oy") { st.from = t.slice(0, 8) + "01"; st.to = t; }
+		else if (p === "otgan_oy") {
+			const b = frappe.datetime.add_months(t.slice(0, 8) + "01", -1);
+			st.from = b; st.to = frappe.datetime.add_days(t.slice(0, 8) + "01", -1);
+		}
+	}
+
+	// ---------------------------------------------------------------- yuklash
+	function load() {
+		$root.html(`<div class="kk-loader">Yuklanyapti…</div>`);
+		frappe.call({
+			method: "target_zenit.target_zenit.api.kunlik_kassa.get_data",
+			args: {
+				from_date: st.from, to_date: st.to, currency: st.currency,
+				accounts: JSON.stringify(st.accounts || []),
+				kategoriya: st.kat, party: st.party,
+				tur: st.tur, party_type: st.ptype,
+			},
+		}).then((r) => {
+			st.data = r.message || null;
+			st.dayDocs = {};
+			if (st.data) st.currency = st.data.currency;
+			render();
+		}).catch(() => $root.html(`<div class="kk-empty">Ma'lumotni yuklab bo'lmadi.</div>`));
+	}
+
+	// ---------------------------------------------------------------- render
+	function render() {
+		tipHide();
+		const d = st.data;
+		if (!d || d.empty) { $root.html(`<div class="kk-empty">Kassa hujjatlari topilmadi.</div>`); return; }
+		const flowLegend = `<div class="kk-legend right">
+			<span><span class="sw" style="background:${C.good}"></span>Kirim</span>
+			<span><span class="sw" style="background:${C.bad}"></span>Chiqim</span>
+			<span><span class="ln"></span>Sof oqim</span></div>`;
+		const limit = getLimit();
+		const past = limit ? d.days.filter((x) => x.balans < limit).length : 0;
+		const balRight = `<div class="kk-legend right"><span class="kk-limit">min chegara:
+			<input type="text" class="kk-limit-inp num" value="${limit ? fmt(limit) : ""}" placeholder="0"> ${esc(d.currency)}</span>
+			${past ? `<span class="kk-warn">⚠ ${past} kun chegaradan past</span>` : ""}</div>`;
+
+		$root.html(head(d) + filters(d) + kpis(d)
+			+ card("Kunlar kesimi — kassa kitobi",
+				"qatorni bosing — kun hujjatlari ochiladi · КО-4 — chop etiladigan kunlik varaq (doim filtrsiz, to'liq kun)"
+				+ ((st.kat || st.party) ? ` · <b style="color:${C.blueDark}">filtr faol:</b> kirim/chiqim filtrlangan, qoldiq ustunlari umumiy` : ""), ledger(d))
+			+ `<div class="kk-grid2">`
+			+ card("Pul oqimi", (d.days.length > 16 ? "haftalar kesimida" : "kunlar kesimida") + " · chiziq — sof oqim" + (d.days.length > 16 ? "" : " · ustun bosilsa jadvalda kun ochiladi"), flowChart(d), flowLegend)
+			+ card("Qoldiq dinamikasi", "kun oxiridagi qoldiq, ichki o'tkazmalar bilan", balanceChart(d), balRight)
+			+ `</div><div class="kk-grid2">`
+			+ card("Joriy davr vs oldingi davr", "eng muhim uch ko'rsatkich taqqoslamasi", compareChart(d))
+			+ card("Davr waterfall", "boshi → kirimlar → chiqimlar → oxiri · ustun bosilsa tafsilot", waterfall(d) + `<div class="kk-drill"></div>`)
+			+ `</div><div class="kk-grid2">`
+			+ card("Chiqim kategoriyalari", "qatorni bosing — tafsilot pastda ochiladi", pareto(d.chiqim_kat, C.bad, d.kpi.chiqim, "Расход") + `<div class="kk-drill"></div>`)
+			+ card("Kirim manbalari", "qatorni bosing — tafsilot pastda ochiladi", pareto(d.kirim_kat, C.good, d.kpi.kirim, "Приход") + `<div class="kk-drill"></div>`)
+			+ `</div><div class="kk-grid2">`
+			+ card("Top kontragentlar", "qatorni bosing — kontragent tafsiloti pastda ochiladi", topParties(d) + `<div class="kk-drill"></div>`)
+			+ card("Kalendar", "kunlik sof oqim: yashil — plyus, qizil — minus · kunni bosing", heatmap(d))
+			+ `</div>`);
+		wire();
+		if (st.selDay) openDay(st.selDay, true);
+	}
+
+	const card = (t, meta, body, right) => `<div class="kk-card">
+		<div class="kk-card-hd"><h3>${t}</h3><span class="meta">${meta}</span>${right ? `<span class="right">${right}</span>` : ""}</div>${body}</div>`;
+
+	function head(d) {
+		let selAcc = (st.accounts && st.accounts.length)
+			? "faqat: " + st.accounts.map((a) => a.replace(" - TZ", "")).join(", ")
+			: "barcha hisoblar";
+		const TURL = { "Приход": "Kirim", "Расход": "Chiqim", "Перемещения": "Ko'chirma", "Конвертация": "Konvertatsiya" };
+		if (st.tur) selAcc += " · tur: " + (TURL[st.tur] || st.tur);
+		if (st.ptype) selAcc += " · kontragent turi: " + st.ptype;
+		if (st.kat) selAcc += " · kategoriya: " + st.kat;
+		if (st.party) selAcc += " · kontragent: " + st.party;
+		return `<div class="kk-head">
+			<div class="kk-title">Kunlik kassa<small>${dmy(d.from_date)} – ${dmy(d.to_date)} · ${esc(d.currency)} · ${esc(selAcc)}</small></div>
+			<div class="kk-head-right"><span class="kk-asof">yangilangan: ${esc(d.as_of)}</span>
+			<button class="kk-refresh">⟳ Yangilash</button></div></div>`;
+	}
+
+	function filters(d) {
+		const P = [["bugun", "Bugun"], ["kecha", "Kecha"], ["hafta", "7 kun"], ["oy", "Shu oy"], ["otgan_oy", "O'tgan oy"]];
+		const presets = `<div class="kk-seg">` + P.map(([k, l]) =>
+			`<button data-preset="${k}" class="${st.preset === k ? "active" : ""}">${l}</button>`).join("") + `</div>`;
+		const curs = `<div class="kk-seg">` + (d.currencies || []).map((c) =>
+			`<button data-ccy="${esc(c)}" class="${c === d.currency ? "active" : ""}">${esc(c)}</button>`).join("") + `</div>`;
+		const curAccs = (d.accounts || []).filter((a) => a.currency === d.currency);
+		const hammasi = !st.accounts || !st.accounts.length;
+		const accs = `<div class="kk-accs">
+			<span class="kk-acc ${hammasi ? "active" : ""}" data-acc-all title="Barcha ${esc(d.currency)} hisoblari birga">Hammasi</span>`
+			+ curAccs.map((a) => {
+				const act = !hammasi && a.selected;
+				return `<span class="kk-acc ${act ? "active" : ""}" data-acc="${esc(a.account)}"
+					title="Joriy qoldiq: ${fmt(a.balans)} ${esc(a.currency)} · bosing — FAQAT shu hisob · Ctrl+bosish — qo'shish/olib tashlash">${esc(a.account.replace(" - TZ", ""))}<span class="bal num">${m1(a.balans)}</span></span>`;
+			}).join("") + `</div>`;
+		const opt = (v, cur0, lbl) => `<option value="${esc(v)}" ${v === cur0 ? "selected" : ""}>${esc(lbl || v)}</option>`;
+		// Operatsiya turi (kassadagi "kategoriya"): Приход/Расход/Ko'chirma/Konvertatsiya
+		const TURLAR = [["", "Hammasi"], ["Приход", "Kirim"], ["Расход", "Chiqim"],
+			["Перемещения", "Ko'chirma"], ["Конвертация", "Konvert."]];
+		const turSeg = `<div class="kk-seg">` + TURLAR.map(([v, l]) =>
+			`<button data-tur="${esc(v)}" class="${st.tur === v ? "active" : ""}">${l}</button>`).join("") + `</div>`;
+		// Kontragent turi
+		const PTLAR = [["", "Barcha kontragent turi"], ["Customer", "O'quvchi (Customer)"],
+			["Employee", "Xodim (Employee)"], ["Supplier", "Ta'minotchi (Supplier)"],
+			["Shareholder", "Ta'sischi (Shareholder)"], ["Xarajatlar", "Xarajat moddalari"]];
+		const ptSel = `<select class="kk-sel ${st.ptype ? "on" : ""}" data-f="ptype" title="Kontragent turi bo'yicha filtr">
+			${PTLAR.map(([v, l]) => opt(v, st.ptype, l)).join("")}</select>`;
+		const katSel = `<select class="kk-sel ${st.kat ? "on" : ""}" data-f="kat" title="Tahlil kategoriyasi bo'yicha filtr">
+			<option value="">Barcha kategoriya</option>${(d.kategoriyalar || []).map((k) => opt(k, st.kat)).join("")}</select>`;
+		const partySel = `<select class="kk-sel ${st.party ? "on" : ""}" data-f="party" title="Kontragent bo'yicha filtr">
+			<option value="">Barcha kontragent</option>${(d.kontragentlar || []).map((p) => opt(p, st.party)).join("")}</select>`;
+		return `<div class="kk-filters">${presets}
+			<input type="date" class="kk-date" data-d="from" value="${st.from}">
+			<input type="date" class="kk-date" data-d="to" value="${st.to}">
+			${curs}</div>
+			<div class="kk-filters" style="margin-top:-8px">${turSeg}${ptSel}${katSel}${partySel}${accs}</div>`;
+	}
+
+	// ---------------------------------------------------------------- KPI
+	const daysLen = () => (st.data ? st.data.days.length : 0);
+	function delta(cur, prev, teskari) {
+		if (!prev && !cur) return `<span class="kk-delta flat">—</span>`;
+		if (!prev) return `<span class="kk-delta flat" title="Oldingi davrda harakat yo'q">yangi</span>`;
+		const p = (cur - prev) / Math.abs(prev) * 100;
+		const yax = teskari ? p < 0 : p > 0;
+		const cls = Math.abs(p) < 0.5 ? "flat" : (yax ? "up" : "dn");
+		return `<span class="kk-delta ${cls}" title="Oldingi ${daysLen()} kunlik davr: ${fmt(prev)}">${p > 0 ? "↑" : "↓"} ${Math.abs(p).toFixed(0)}%</span>`;
+	}
+
+	// Silliq egri chiziq (overshoot'siz kubik) — [x,y] nuqtalardan path
+	function smoothPath(pts) {
+		if (pts.length < 2) return "";
+		let dd = `M${pts[0][0]},${pts[0][1]}`;
+		for (let i = 1; i < pts.length; i++) {
+			const a = pts[i - 1], b = pts[i], mx = ((a[0] + b[0]) / 2).toFixed(1);
+			dd += ` C${mx},${a[1]} ${mx},${b[1]} ${b[0]},${b[1]}`;
+		}
+		return dd;
+	}
+	const uid = () => "kk" + Math.random().toString(36).slice(2, 8);
+	// Gradient + soya definitsiyalari (har svg uchun unikal id'lar bilan)
+	function defs(u) {
+		return `<defs>
+			<linearGradient id="${u}in" x1="0" y1="0" x2="0" y2="1">
+				<stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+			<linearGradient id="${u}out" x1="0" y1="0" x2="0" y2="1">
+				<stop offset="0%" stop-color="#fb7185"/><stop offset="100%" stop-color="#e11d48"/></linearGradient>
+			<linearGradient id="${u}anchor" x1="0" y1="0" x2="0" y2="1">
+				<stop offset="0%" stop-color="#cbd5e1"/><stop offset="100%" stop-color="#94a3b8"/></linearGradient>
+			<linearGradient id="${u}bal" x1="0" y1="0" x2="0" y2="1">
+				<stop offset="0%" stop-color="${C.blue}" stop-opacity=".28"/>
+				<stop offset="55%" stop-color="${C.blue}" stop-opacity=".10"/>
+				<stop offset="100%" stop-color="${C.blue}" stop-opacity="0"/></linearGradient>
+			<filter id="${u}soft" x="-30%" y="-30%" width="160%" height="170%">
+				<feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#0f172a" flood-opacity=".16"/></filter>
+			<filter id="${u}glow" x="-40%" y="-40%" width="180%" height="180%">
+				<feGaussianBlur stdDeviation="3"/></filter>
+		</defs>`;
+	}
+
+	function spark(vals, color) {
+		if (!vals || vals.length < 2) return "";
+		const W = 76, H = 26, mx = Math.max(...vals.map(Math.abs), 1);
+		const P = vals.map((v, i) => [+(i / (vals.length - 1) * W).toFixed(1), +(H / 2 - v / mx * (H / 2 - 3)).toFixed(1)]);
+		const dd = smoothPath(P);
+		return `<svg class="kk-spark" width="${W}" height="${H}">
+			<line x1="0" y1="${H / 2}" x2="${W}" y2="${H / 2}" stroke="${C.lineSoft}"/>
+			<path d="${dd} L${W},${H} L0,${H} Z" fill="${color}" opacity=".10" stroke="none"/>
+			<path d="${dd}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+			<circle cx="${P[P.length - 1][0]}" cy="${P[P.length - 1][1]}" r="2.6" fill="${color}" stroke="#fff" stroke-width="1.2"/></svg>`;
+	}
+
+	// ---- kuzatuvchi tooltip ----
+	let $tip = null;
+	function tipShow(html, ev) {
+		if (!$tip) $tip = $('<div class="kk-tip" style="display:none"></div>').appendTo(document.body);
+		$tip.html(html).show();
+		tipMove(ev);
+	}
+	function tipMove(ev) {
+		if (!$tip || !$tip.is(":visible")) return;
+		const w = $tip.outerWidth() || 200, h = $tip.outerHeight() || 90;
+		let x = ev.clientX + 16, y = ev.clientY + 16;
+		if (x + w > window.innerWidth - 8) x = ev.clientX - w - 14;
+		if (y + h > window.innerHeight - 8) y = ev.clientY - h - 12;
+		$tip.css({ left: x + "px", top: y + "px" });
+	}
+	function tipHide() { if ($tip) $tip.hide(); }
+	function dayTip(x) {
+		return `<div class="t">${dmy(x.sana)} · ${hk(x.sana)}</div>
+			<div class="row"><i style="background:${C.good}"></i>Kirim <b>${fmt(x.kirim)}</b></div>
+			<div class="row"><i style="background:${C.bad}"></i>Chiqim <b>${fmt(x.chiqim)}</b></div>
+			<div class="row"><i style="background:${C.blue}"></i>Sof oqim <b>${pm(x.net)}</b></div>
+			<div class="q">Kun oxiri qoldiq: <b>${fmt(x.balans)}</b> · ${x.n} hujjat</div>`;
+	}
+
+	function kpis(d) {
+		const k = d.kpi, cur = d.currency, L = k.largest;
+		// kirim/chiqim kartalari KASSA KITOBI jadvalini filtrlaydi (tur filtri bilan bir)
+		const kpi = (lab, val, foot, click, act) => `<div class="kk-kpi ${click ? "click" : "noclick"} ${act ? "active" : ""}" ${click || ""}>
+			<div class="lab">${lab}${click ? `<span class="hint">${act ? "✕ filtrni yopish" : "filtr ▾"}</span>` : ""}</div>
+			<div class="val num">${val}</div><div class="foot">${foot || ""}</div></div>`;
+		return `<div class="kk-kpis">
+			${kpi("Yakuniy qoldiq", `<span style="color:${C.blueDark}">${fmt(k.closing)}</span> <small>${esc(cur)}</small>`,
+				`<span class="sub">boshi: ${fmt(k.opening)}</span>`)}
+			${kpi("Davr sof oqimi", `<span class="${k.net < 0 ? "kk-neg" : "kk-pos"}">${pm(k.net)}</span>`,
+				`${delta(k.net, k.prev.net, false)}${spark(d.days.map((x) => (x.kirim0 != null ? x.kirim0 - x.chiqim0 : x.net)), C.blue)}`)}
+			${kpi("Kirim", `<span class="kk-pos">${fmt(k.kirim)}</span>`,
+				`${delta(k.kirim, k.prev.kirim, false)}${spark(d.days.map((x) => (x.kirim0 != null ? x.kirim0 : x.kirim)), C.good)}`,
+				'data-kpi-tur="Приход"', st.tur === "Приход")}
+			${kpi("Chiqim", `<span class="kk-neg">${fmt(k.chiqim)}</span>`,
+				`${delta(k.chiqim, k.prev.chiqim, true)}${spark(d.days.map((x) => (x.chiqim0 != null ? x.chiqim0 : x.chiqim)), C.bad)}`,
+				'data-kpi-tur="Расход"', st.tur === "Расход")}
+			${kpi("Runway", k.runway ? `≈ ${Math.round(k.runway)} <small>kun</small>` : "—",
+				`<span class="sub">${k.avg_chiqim > 0 ? "o'rtacha kunlik chiqim: " + m1(k.avg_chiqim) : "chiqim yo'q"}</span>`)}
+			${kpi("Eng katta tranzaksiya", L ? `<span class="${L.tur === "Приход" ? "kk-pos" : "kk-neg"}">${m1(L.amount)}</span>` : "—",
+				`<span class="sub">${L ? `${dmy(L.sana)} · ${esc((L.party_name || L.kategoriya || "").slice(0, 26))}` : "davrda harakat yo'q"}</span>`,
+				L ? `data-kpi-day="${L.sana}"` : "")}
+		</div>`;
+	}
+
+	// Kunlik mini-bar diagramma (drill-down va KPI tafsilotlari uchun)
+	function miniBars(days, val, color, signli) {
+		const n = days.length;
+		if (!n) return `<div class="kk-empty" style="padding:14px">Ma'lumot yo'q.</div>`;
+		const u = uid();
+		const W = 640, H = 120, pL = 52, pR = 8, pT = 8, pB = 20;
+		const vals = days.map(val);
+		const mx = Math.max(1, ...vals.map(Math.abs));
+		const y0 = signli ? pT + (H - pT - pB) / 2 : H - pB;
+		const scale = (H - pT - pB) / (signli ? 2 : 1);
+		const slot = (W - pL - pR) / n, bw = Math.max(2.5, Math.min(22, slot * 0.62));
+		const step = n <= 16 ? 1 : Math.ceil(n / 12);
+		const fillOf = (v) => {
+			if (signli) return v >= 0 ? `url(#${u}in)` : `url(#${u}out)`;
+			if (color === C.good) return `url(#${u}in)`;
+			if (color === C.bad) return `url(#${u}out)`;
+			return color;
+		};
+		let bars = "", labs = "";
+		days.forEach((x, i) => {
+			const v = vals[i], cx = pL + slot * i + slot / 2;
+			if (Math.abs(v) > 0.5) {
+				const h = Math.max(2.5, Math.abs(v) / mx * scale);
+				const y = v >= 0 ? y0 - h : y0;
+				bars += `<rect class="${v >= 0 ? "kk-grow" : "kk-growd"}" style="animation-delay:${Math.min(0.3, i * 0.012).toFixed(2)}s"
+					x="${(cx - bw / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3.5"
+					fill="${fillOf(v)}" filter="url(#${u}soft)"><title>${esc(dmy(x.sana))}: ${fmt(v)}</title></rect>`;
+			}
+			if (i % step === 0) labs += `<text x="${cx}" y="${H - 7}" font-size="10" fill="${C.faint}" text-anchor="middle">${Number(x.sana.slice(8, 10))}</text>`;
+		});
+		return `<svg width="100%" viewBox="0 0 ${W} ${H}">${defs(u)}
+			<line x1="${pL}" y1="${y0}" x2="${W - pR}" y2="${y0}" stroke="${C.line}"/>
+			<text x="${pL - 7}" y="${pT + 6}" font-size="10" fill="${C.faint}" text-anchor="end">${m1(mx)}</text>
+			${bars}${labs}</svg>`;
+	}
+
+	// ---------------------------------------------------------------- oqim diagrammasi
+	// Davr 16 kundan uzun bo'lsa HAFTALARGA yig'iladi (Xero/QuickBooks andozasi:
+	// 30 ta ingichka ustun o'rniga 4-5 ta aniq taqqoslanadigan ustun)
+	function flowBuckets(days) {
+		if (days.length <= 16) {
+			return days.map((x) => ({ ...x, dan: x.sana, gacha: x.sana, hafta: false }));
+		}
+		const map = new Map();
+		days.forEach((x) => {
+			const dt = new Date(x.sana + "T00:00:00");
+			const ws = new Date(dt); ws.setDate(dt.getDate() - (dt.getDay() + 6) % 7);
+			const key = `${ws.getFullYear()}-${String(ws.getMonth() + 1).padStart(2, "0")}-${String(ws.getDate()).padStart(2, "0")}`;
+			let b = map.get(key);
+			if (!b) { b = { sana: key, dan: x.sana, gacha: x.sana, kirim: 0, chiqim: 0, net: 0, n: 0, balans: 0, hafta: true }; map.set(key, b); }
+			b.kirim += x.kirim; b.chiqim += x.chiqim; b.net += x.net; b.n += x.n;
+			b.gacha = x.sana; b.balans = x.balans;
+		});
+		return [...map.values()];
+	}
+
+	function flowChart(d) {
+		const days = d.days;
+		if (!days.length) return `<div class="kk-empty">Ma'lumot yo'q.</div>`;
+		const B = flowBuckets(days);
+		st.flowBuckets = B;
+		const haftalik = B.length && B[0].hafta;
+		const n = B.length, u = uid();
+		const W = 600, H = 190, pL = 56, pR = 10, pT = 10, pB = 24;
+		const maxK = Math.max(1, ...B.map((x) => x.kirim));
+		const maxC = Math.max(1, ...B.map((x) => x.chiqim));
+		const span = maxK + maxC;
+		const y0 = pT + (H - pT - pB) * (maxK / span);
+		const yV = (v) => y0 - v / span * (H - pT - pB);
+		const slot = (W - pL - pR) / n, bw = Math.max(6, Math.min(54, slot * 0.58));
+		let bars = "", labs = "";
+		B.forEach((x, i) => {
+			const cx = pL + slot * i + slot / 2;
+			const dl = Math.min(0.3, i * 0.04).toFixed(2);
+			bars += `<g class="kk-day-hit" data-bucket="${i}" ${x.hafta ? "" : `data-day="${x.sana}"`}>
+				<rect class="hover-bg" x="${(cx - slot / 2).toFixed(1)}" y="${pT}" width="${slot.toFixed(1)}" height="${H - pT - pB}" rx="6" fill="transparent"/>
+				${x.kirim ? `<rect class="kk-grow" style="animation-delay:${dl}s" x="${(cx - bw / 2).toFixed(1)}" y="${yV(x.kirim).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2.5, y0 - yV(x.kirim) - 1).toFixed(1)}" rx="4" fill="url(#${u}in)" filter="url(#${u}soft)"/>` : ""}
+				${x.chiqim ? `<rect class="kk-growd" style="animation-delay:${dl}s" x="${(cx - bw / 2).toFixed(1)}" y="${(y0 + 2).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2.5, yV(-x.chiqim) - y0 - 2).toFixed(1)}" rx="4" fill="url(#${u}out)" filter="url(#${u}soft)"/>` : ""}
+			</g>`;
+			const lbl = x.hafta ? `${Number(x.dan.slice(8, 10))}–${Number(x.gacha.slice(8, 10))}` : Number(x.sana.slice(8, 10));
+			labs += `<text x="${cx}" y="${H - 9}" font-size="10" fill="${C.faint}" text-anchor="middle">${lbl}</text>`;
+		});
+		const P = B.map((x, i) => [+(pL + slot * i + slot / 2).toFixed(1), +yV(x.net).toFixed(1)]);
+		const netPath = smoothPath(P);
+		const gl = (v, strong) => `<line x1="${pL}" y1="${yV(v)}" x2="${W - pR}" y2="${yV(v)}" stroke="${strong ? C.line : C.lineSoft}" ${strong ? "" : 'stroke-dasharray="1 4" stroke-linecap="round"'}/>
+			<text x="${pL - 7}" y="${yV(v) + 3.5}" font-size="10" fill="${C.faint}" text-anchor="end">${v ? m1(v) : "0"}</text>`;
+		const last = P[P.length - 1];
+		return `<svg width="100%" viewBox="0 0 ${W} ${H}">${defs(u)}
+			${gl(maxK)}${gl(0, true)}${gl(-maxC)}
+			${bars}
+			<path d="${netPath}" fill="none" stroke="${C.blue}" stroke-width="5" opacity=".2" filter="url(#${u}glow)"/>
+			<path d="${netPath}" fill="none" stroke="${C.blue}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+			<circle class="kk-pulse" cx="${last[0]}" cy="${last[1]}" r="4.5" fill="${C.blue}"/>
+			<circle cx="${last[0]}" cy="${last[1]}" r="3.6" fill="${C.blue}" stroke="#fff" stroke-width="1.6"/>
+			${labs}</svg>`;
+	}
+
+	// Joriy davr vs oldingi davr — eng kerakli uch ko'rsatkichni yonma-yon
+	// taqqoslash (ERP snapshot andozasi: Xero Business Snapshot uslubi)
+	function compareChart(d) {
+		const k = d.kpi, p = k.prev || {};
+		const rows = [
+			{ label: "Kirim", cur: k.kirim, old: p.kirim || 0, color: C.good, teskari: false },
+			{ label: "Chiqim", cur: k.chiqim, old: p.chiqim || 0, color: C.bad, teskari: true },
+			{ label: "Sof oqim", cur: k.net, old: p.net || 0, color: C.blue, teskari: false },
+		];
+		const mx = Math.max(1, ...rows.flatMap((r) => [Math.abs(r.cur), Math.abs(r.old)]));
+		return `<div class="kk-cmp">` + rows.map((r) => `
+			<div class="kk-cmp-row">
+				<div class="kk-cmp-hd"><span>${r.label}</span>${delta(r.cur, r.old, r.teskari)}</div>
+				<div class="kk-cmp-bar"><i style="width:${Math.max(1.5, Math.abs(r.cur) / mx * 100)}%;background:${r.color}"></i>
+					<b class="num ${r.cur < 0 ? "kk-neg" : ""}">${fmt(r.cur)}</b></div>
+				<div class="kk-cmp-bar old"><i style="width:${Math.max(1.5, Math.abs(r.old) / mx * 100)}%;background:${r.color}"></i>
+					<b class="num">${fmt(r.old)}</b></div>
+			</div>`).join("") + `
+			<div class="kk-legend" style="margin-top:8px">
+				<span><span class="sw" style="background:${C.ink};opacity:.85"></span>joriy davr (${d.days.length} kun)</span>
+				<span><span class="sw" style="background:${C.ink};opacity:.3"></span>oldingi ${d.days.length} kun</span></div></div>`;
+	}
+
+	// ---------------------------------------------------------------- qoldiq diagrammasi
+	function balanceChart(d) {
+		const days = d.days, n = days.length;
+		if (!n) return `<div class="kk-empty">Ma'lumot yo'q.</div>`;
+		const limit = getLimit();
+		const W = 600, H = 180, pL = 62, pR = 10, pT = 12, pB = 22;
+		const vals = days.map((x) => x.balans).concat([d.kpi.opening]);
+		if (limit) vals.push(limit);
+		let lo = Math.min(...vals), hi = Math.max(...vals);
+		if (hi === lo) hi = lo + 1;
+		const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+		const yV = (v) => pT + (hi - v) / (hi - lo) * (H - pT - pB);
+		const xV = (i) => pL + (n === 1 ? (W - pL - pR) / 2 : i * (W - pL - pR) / (n - 1));
+		const pts = days.map((x, i) => `${xV(i).toFixed(1)},${yV(x.balans).toFixed(1)}`);
+		const area = `${pts.join(" ")} ${xV(n - 1).toFixed(1)},${(H - pB).toFixed(1)} ${xV(0).toFixed(1)},${(H - pB).toFixed(1)}`;
+		const grid = [hi - pad, (hi + lo) / 2, lo + pad].map((v) =>
+			`<line x1="${pL}" y1="${yV(v)}" x2="${W - pR}" y2="${yV(v)}" stroke="${C.lineSoft}"/>
+			 <text x="${pL - 8}" y="${yV(v) + 3.5}" font-size="10.5" fill="${C.faint}" text-anchor="end">${m1(v)}</text>`).join("");
+		const limitLine = limit ? `<line x1="${pL}" y1="${yV(limit)}" x2="${W - pR}" y2="${yV(limit)}" stroke="${C.bad}" stroke-width="1.6" stroke-dasharray="6 4"/>
+			<text x="${W - pR}" y="${yV(limit) - 5}" font-size="10.5" font-weight="700" fill="${C.badInk}" text-anchor="end">min ${m1(limit)}</text>` : "";
+		const dots = days.map((x, i) => (limit && x.balans < limit)
+			? `<circle cx="${xV(i)}" cy="${yV(x.balans)}" r="3.6" fill="${C.bad}" stroke="#fff" stroke-width="1.4"/>` : "").join("");
+		const step = n <= 12 ? 1 : Math.ceil(n / 8);
+		const labs = days.map((x, i) => i % step === 0 ? `<text x="${xV(i)}" y="${H - 7}" font-size="10.5" fill="${C.faint}" text-anchor="middle">${Number(x.sana.slice(8, 10))}</text>` : "").join("");
+		const u = uid();
+		const PP = days.map((x, i) => [+xV(i).toFixed(1), +yV(x.balans).toFixed(1)]);
+		const dd = smoothPath(PP);
+		const areaPath = `${dd} L${xV(n - 1).toFixed(1)},${(H - pB).toFixed(1)} L${xV(0).toFixed(1)},${(H - pB).toFixed(1)} Z`;
+		// har kun uchun ko'rinmas ustun — hover tooltip + bosilsa jadvalda kun ochiladi
+		const hits = days.map((x, i) => `<rect class="kk-day-hit hover-bg" data-day="${x.sana}"
+			x="${(xV(i) - (n > 1 ? (xV(1) - xV(0)) / 2 : 20)).toFixed(1)}" y="${pT}" width="${(n > 1 ? xV(1) - xV(0) : 40).toFixed(1)}" height="${H - pT - pB}" fill="transparent"/>`).join("");
+		const lastVal = days[n - 1].balans;
+		const chipW = Math.max(60, String(m1(lastVal)).length * 7.5 + 18);
+		const chipX = Math.min(PP[n - 1][0] + 10, W - pR - chipW);
+		const chipY = Math.max(pT, PP[n - 1][1] - 26);
+		return `<svg width="100%" viewBox="0 0 ${W} ${H}">${defs(u)}
+			${grid}
+			<path d="${areaPath}" fill="url(#${u}bal)" stroke="none"/>
+			<path d="${dd}" fill="none" stroke="${C.blue}" stroke-width="6" opacity=".18" filter="url(#${u}glow)"/>
+			<path d="${dd}" fill="none" stroke="${C.blue}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+			<circle class="kk-pulse" cx="${PP[n - 1][0]}" cy="${PP[n - 1][1]}" r="5" fill="${C.blue}"/>
+			<circle cx="${PP[n - 1][0]}" cy="${PP[n - 1][1]}" r="4" fill="${C.blue}" stroke="#fff" stroke-width="1.8"/>
+			<g filter="url(#${u}soft)"><rect x="${chipX.toFixed(1)}" y="${chipY.toFixed(1)}" width="${chipW.toFixed(1)}" height="20" rx="10" fill="${C.blueDark}"/>
+			<text x="${(chipX + chipW / 2).toFixed(1)}" y="${(chipY + 13.5).toFixed(1)}" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">${m1(lastVal)}</text></g>
+			${limitLine}${dots}${hits}${labs}</svg>`;
+	}
+
+	// ---------------------------------------------------------------- heatmap
+	function heatmap(d) {
+		const days = d.days;
+		if (!days.length) return `<div class="kk-empty">Ma'lumot yo'q.</div>`;
+		const maxAbs = Math.max(1, ...days.map((x) => Math.abs(x.net)));
+		const oylar = {};
+		days.forEach((x) => { const k = x.sana.slice(0, 7); (oylar[k] = oylar[k] || []).push(x); });
+		return `<div class="kk-heat">` + Object.keys(oylar).sort().map((ok) => {
+			const list = oylar[ok];
+			const first = new Date(list[0].sana + "T00:00:00");
+			const pad = (first.getDay() + 6) % 7;
+			let cells = "";
+			for (let i = 0; i < pad; i++) cells += `<span class="kk-heat-cell bosh"></span>`;
+			list.forEach((x) => {
+				let style = "";
+				if (x.n && Math.abs(x.net) > 0.5) {
+					const op = (0.3 + 0.7 * Math.abs(x.net) / maxAbs).toFixed(2);
+					style = `background:${x.net > 0 ? C.good : C.bad};opacity:${op};`;
+				} else if (x.n) style = `background:${C.slate};opacity:.5;`;
+				cells += `<span class="kk-heat-cell" data-day="${x.sana}" style="${style}"></span>`;
+			});
+			const m = Number(ok.slice(5, 7));
+			return `<div class="kk-heat-oy"><div class="t">${OYLAR[m - 1]} ${ok.slice(0, 4)}</div><div class="kk-heat-grid">${cells}</div></div>`;
+		}).join("") + `</div>
+		<div class="kk-legend" style="margin-top:10px">
+			<span><span class="sw" style="background:${C.good}"></span>plyus kun</span>
+			<span><span class="sw" style="background:${C.bad}"></span>minus kun</span>
+			<span><span class="sw" style="background:${C.slate};opacity:.5"></span>sof ≈ 0</span>
+			<span><span class="sw" style="background:${C.lineSoft}"></span>harakat yo'q</span></div>`;
+	}
+
+	// ---------------------------------------------------------------- waterfall
+	function waterfall(d) {
+		const TOP = 5;
+		const squash = (list) => {
+			const a = list.slice(0, TOP), rest = list.slice(TOP);
+			if (rest.length) a.push({ label: `Boshqa (${rest.length})`, summa: rest.reduce((s, x) => s + x.summa, 0) });
+			return a.filter((x) => x.summa > 0.5);
+		};
+		const kir = squash(d.kirim_kat), chi = squash(d.chiqim_kat);
+		const steps = [{ label: "Boshi", v: d.kpi.opening, tip: "anchor" }]
+			.concat(kir.map((x) => ({ label: x.label, v: x.summa, tip: "in" })))
+			.concat(chi.map((x) => ({ label: x.label, v: -x.summa, tip: "out" })))
+			.concat([{ label: "Oxiri", v: d.kpi.closing, tip: "anchor" }]);
+		let run = d.kpi.opening, lo = Math.min(0, d.kpi.opening), hi = Math.max(0, d.kpi.opening);
+		const pos = steps.map((s) => {
+			if (s.tip === "anchor") { lo = Math.min(lo, s.v, 0); hi = Math.max(hi, s.v); return { ...s, a: 0, b: s.v }; }
+			const a = run; run += s.v; const b = run;
+			lo = Math.min(lo, a, b); hi = Math.max(hi, a, b);
+			return { ...s, a, b };
+		});
+		if (hi === lo) hi = lo + 1;
+		const u = uid();
+		const W = 600, H = 200, pL = 62, pR = 8, pT = 14, pB = 50;
+		const yV = (v) => pT + (hi - v) / (hi - lo) * (H - pT - pB);
+		const n = pos.length, slot = (W - pL - pR) / n, bw = Math.min(48, slot * 0.68);
+		let out = "", conns = "", prevX = null, prevY = null;
+		pos.forEach((s, i) => {
+			const x = pL + slot * i + (slot - bw) / 2;
+			const yA = yV(Math.max(s.a, s.b)), hB = Math.max(3, Math.abs(yV(s.a) - yV(s.b)));
+			const fill = s.tip === "anchor" ? `url(#${u}anchor)` : (s.tip === "in" ? `url(#${u}in)` : `url(#${u}out)`);
+			const drill = (s.tip !== "anchor" && !/^Boshqa \(/.test(s.label))
+				? ` data-tur="${s.tip === "in" ? "Приход" : "Расход"}" data-kat="${esc(s.label)}" style="cursor:pointer"` : "";
+			out += `<g class="kk-wf-hit"${drill}><title>${esc(s.label)}: ${fmt(Math.abs(s.tip === "anchor" ? s.b : s.v))}${drill ? " — bosing, tafsilot ochiladi" : ""}</title>
+				<rect class="kk-grow" style="animation-delay:${(i * 0.05).toFixed(2)}s" x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${bw.toFixed(1)}" height="${hB.toFixed(1)}" rx="5" fill="${fill}" filter="url(#${u}soft)"/></g>
+				<text x="${(x + bw / 2).toFixed(1)}" y="${(yA - 6).toFixed(1)}" font-size="9.5" font-weight="700" fill="${C.ink}" text-anchor="middle">${m1(s.tip === "anchor" ? s.b : Math.abs(s.v))}</text>`;
+			const lbl = s.label.length > 14 ? s.label.slice(0, 13) + "…" : s.label;
+			out += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 42}" font-size="9.5" fill="${C.muted}" text-anchor="end" transform="rotate(-30 ${(x + bw / 2).toFixed(1)} ${H - 42})">${esc(lbl)}</text>`;
+			const edgeY = yV(s.b).toFixed(1);
+			if (prevX != null) conns += `<line x1="${prevX}" y1="${prevY}" x2="${x.toFixed(1)}" y2="${prevY}" stroke="${C.slate}" stroke-width="1" stroke-dasharray="2 3" opacity=".7"/>`;
+			prevX = (x + bw).toFixed(1); prevY = edgeY;
+		});
+		return `<svg width="100%" viewBox="0 0 ${W} ${H}">${defs(u)}
+			<line x1="${pL}" y1="${yV(0)}" x2="${W - pR}" y2="${yV(0)}" stroke="${C.line}"/>${conns}${out}</svg>`;
+	}
+
+	// ---------------------------------------------------------------- pareto / top
+	function pareto(list, color, total, tur) {
+		if (!list || !list.length) return `<div class="kk-empty">Davrda harakat yo'q.</div>`;
+		const mx = Math.max(1, ...list.map((x) => x.summa));
+		let kum = 0;
+		return `<div class="kk-hbars">` + list.slice(0, 8).map((x) => {
+			kum += x.summa;
+			const ulush = total ? (x.summa / total * 100) : 0;
+			const click = tur ? ` click" data-tur="${esc(tur)}" data-kat="${esc(x.label)}" title="Bosing — kategoriya tafsiloti pastda ochiladi` : "";
+			return `<div class="hb${click}"><div class="hb-t">
+				<span title="${esc(x.label)}">${esc(x.label)}</span>
+				<b class="num">${fmt(x.summa)} <span class="kum">${ulush.toFixed(0)}% · kum. ${total ? (kum / total * 100).toFixed(0) : 0}%</span></b></div>
+				<div class="hb-track"><i style="width:${Math.max(2, x.summa / mx * 100)}%;background:${color}"></i></div></div>`;
+		}).join("") + `</div>`;
+	}
+
+	function topParties(d) {
+		const blok = (title, list, color, tur) => {
+			const mx = Math.max(1, ...list.map((y) => y.summa));
+			return `<div style="margin-bottom:12px"><div class="kk-subtitle">${title}</div>`
+				+ (list.length ? `<div class="kk-hbars">` + list.map((x) =>
+					`<div class="hb click" data-tur="${esc(tur)}" data-party="${esc(x.label)}" title="Bosing — kontragent tafsiloti pastda ochiladi">
+					<div class="hb-t"><span title="${esc(x.label)}">${esc(x.label)}</span><b class="num">${fmt(x.summa)}</b></div>
+					<div class="hb-track"><i style="width:${Math.max(2, x.summa / mx * 100)}%;background:${color}"></i></div></div>`).join("") + `</div>`
+					: `<div class="kk-empty" style="padding:8px">yo'q</div>`) + `</div>`;
+		};
+		return blok("Kirim — top 5", d.top_kirim || [], C.good, "Приход")
+			+ blok("Chiqim — top 5", d.top_chiqim || [], C.bad, "Расход");
+	}
+
+	// ---------------------------------------------------------------- ledger
+	function ledger(d) {
+		// Har kunning BOSHIDAGI qoldig'i — oldingi kunning oxirgi qoldig'i
+		// (kassa kitobi mantiqi: boshi -> kirim -> chiqim -> sof -> oxiri)
+		const boshi = {};
+		let prev = d.kpi.opening;
+		d.days.forEach((x) => { boshi[x.sana] = prev; prev = x.balans; });
+
+		const rows = d.days.filter((x) => x.n).slice().reverse().map((x) => `
+			<tr class="kk-day" data-day="${x.sana}">
+				<td><span class="chev">▸</span>${dmy(x.sana)}<span class="hk">${hk(x.sana)}</span></td>
+				<td class="r num" style="color:${C.muted}">${fmt(boshi[x.sana])}</td>
+				<td class="r num kk-pos">${x.kirim ? "+" + fmt(x.kirim) : "—"}</td>
+				<td class="r num kk-neg">${x.chiqim ? "(" + fmt(x.chiqim) + ")" : "—"}</td>
+				<td class="r num ${x.net < 0 ? "kk-neg" : "kk-pos"}">${pm(x.net)}</td>
+				<td class="r num" style="color:${C.blueDark};font-weight:800">${fmt(x.balans)}</td>
+				<td class="r num kk-badge-n">${x.n}</td>
+				<td class="r"><button class="kk-print-btn" data-ko4="${x.sana}" title="КО-4 uslubidagi kunlik kassa varag'i">КО-4</button></td>
+			</tr>
+			<tr class="kk-docs" data-docs="${x.sana}" style="display:none"><td colspan="8"><div class="kk-loader" style="padding:10px">…</div></td></tr>`).join("");
+		if (!rows) return `<div class="kk-empty">Davrda kassa harakati yo'q.</div>`;
+		const k = d.kpi;
+		return `<div style="overflow-x:auto"><table class="kk-tbl">
+			<thead><tr><th>Sana</th><th class="r">Kun boshi</th><th class="r">Kirim (+)</th><th class="r">Chiqim (−)</th><th class="r">Sof oqim</th><th class="r">Kun oxiri</th><th class="r">Hujjat</th><th></th></tr></thead>
+			<tbody>${rows}</tbody>
+			<tfoot><tr><td>JAMI — ${d.days.length} kun (${k.faol_kun} faol)</td>
+				<td class="r num" style="color:${C.muted}">${fmt(k.opening)}</td>
+				<td class="r num kk-pos">+${fmt(k.kirim)}</td>
+				<td class="r num kk-neg">(${fmt(k.chiqim)})</td>
+				<td class="r num ${k.net < 0 ? "kk-neg" : "kk-pos"}">${pm(k.net)}</td>
+				<td class="r num" style="color:${C.blueDark}">${fmt(k.closing)}</td>
+				<td class="r num">${k.n}</td><td></td></tr></tfoot>
+		</table></div>`;
+	}
+
+	function docsHtml(day, res) {
+		const list = res.rows || [];
+		const faol = [st.tur && "tur", st.ptype && "kontragent turi", st.kat && "kategoriya", st.party && "kontragent"].filter(Boolean);
+		const filtrIzoh = faol.length ? " · filtr faol: " + faol.join(", ") : "";
+		const rows = list.map((r) => `
+			<tr class="${r.ichki ? "kk-ichki" : ""}">
+				<td class="num">${esc(r.vaqt)}</td>
+				<td><a href="/app/kassa/${encodeURIComponent(r.name)}" target="_blank">${esc(r.name)}</a></td>
+				<td>${esc((r.usul || r.hisob || "").replace(" - TZ", ""))}</td>
+				<td>${esc(r.kontragent || "—")}</td>
+				<td>${esc(r.kategoriya)}${r.oy ? ` <span style="color:${C.faint}">(${esc(r.oy)})</span>` : ""}</td>
+				<td class="r num ${r.ichki ? "" : (r.summa < 0 ? "kk-neg" : "kk-pos")}" style="font-weight:700">
+					${r.summa < 0 ? "(" + fmt(Math.abs(r.summa)) + ")" : fmt(r.summa)}</td>
+				<td style="color:${C.muted};max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.izoh)}">${esc(r.izoh)}</td>
+			</tr>`).join("");
+		return `<table class="kk-tbl" style="font-size:12px">
+			<thead><tr><th>Vaqt</th><th>Hujjat</th><th>Kassa</th><th>Kontragent</th><th>Kategoriya</th><th class="r">Summa</th><th>Izoh</th></tr></thead>
+			<tbody>${rows || `<tr><td colspan="7" class="kk-empty">Hujjat yo'q</td></tr>`}</tbody></table>
+			<div style="font-size:11.5px;color:${C.muted};margin-top:6px">Kun boshi: <b class="num">${fmt(res.opening)}</b> · kun oxiri: <b class="num" style="color:${C.blueDark}">${fmt(res.closing)}</b> ${esc(res.currency)} · kulrang qatorlar — ichki ko'chirma (oqimga kirmaydi)${filtrIzoh}</div>`;
+	}
+
+	function openDay(day, scroll) {
+		const $tr = $root.find(`tr.kk-day[data-day="${day}"]`);
+		if (!$tr.length) return;
+		$root.find("tr.kk-day").removeClass("sel");
+		$tr.addClass("sel open");
+		const $docs = $root.find(`tr[data-docs="${day}"]`);
+		$docs.show();
+		if (scroll && $tr[0] && $tr[0].scrollIntoView) $tr[0].scrollIntoView({ behavior: "smooth", block: "center" });
+		if (st.dayDocs[day]) { $docs.children("td").html(docsHtml(day, st.dayDocs[day])); return; }
+		frappe.call({
+			method: "target_zenit.target_zenit.api.kunlik_kassa.get_day_docs",
+			args: { sana: day, currency: st.currency, accounts: JSON.stringify(st.accounts || []),
+				kategoriya: st.kat, party: st.party, tur: st.tur, party_type: st.ptype },
+		}).then((r) => {
+			st.dayDocs[day] = r.message || { rows: [] };
+			$docs.children("td").html(docsHtml(day, st.dayDocs[day]));
+		});
+	}
+
+	// ---------------------------------------------------------------- КО-4 print
+	function printKo4(day) {
+		const go = (res) => {
+			const rows = (res.rows || []).map((r, i) => `
+				<tr><td>${i + 1}</td><td>${esc(r.name)}</td>
+				<td>${esc(r.kontragent || r.kategoriya)}${r.izoh ? ` — ${esc(r.izoh)}` : ""}</td>
+				<td>${esc(r.kategoriya)}</td>
+				<td class="r">${r.summa > 0 ? fmt(r.summa) : ""}</td>
+				<td class="r">${r.summa < 0 ? fmt(Math.abs(r.summa)) : ""}</td></tr>`).join("");
+			const tk = (res.rows || []).reduce((s, r) => s + (r.summa > 0 ? r.summa : 0), 0);
+			const tc = (res.rows || []).reduce((s, r) => s + (r.summa < 0 ? -r.summa : 0), 0);
+			const w = window.open("", "_blank");
+			w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Kassa varag'i ${dmy(day)}</title><style>
+				body{font-family:Arial,sans-serif;font-size:12px;margin:28px;color:#000}
+				h2{text-align:center;margin:4px 0} .sub{text-align:center;margin-bottom:14px}
+				table{width:100%;border-collapse:collapse;margin:10px 0}
+				th,td{border:1px solid #000;padding:4px 6px} th{background:#f0f0f0}
+				td.r{text-align:right;font-variant-numeric:tabular-nums} tr.b td{font-weight:bold}
+				.sign{display:flex;justify-content:space-between;margin-top:36px;font-size:12px}
+				.sign div{width:45%} .sign .l{border-bottom:1px solid #000;height:22px;margin-top:14px}
+				@media print{button{display:none}}</style></head><body>
+				<h2>KASSA VARAG'I (КО-4 uslubida)</h2>
+				<div class="sub">Sana: <b>${dmy(day)} (${hk(day)})</b> · Valyuta: <b>${esc(res.currency)}</b> · Hisoblar: ${esc((st.accounts && st.accounts.length ? st.accounts : ["hammasi"]).join(", ").replace(/ - TZ/g, ""))}</div>
+				<table><tr class="b"><td colspan="4">Kun boshidagi qoldiq</td><td class="r" colspan="2">${fmt(res.opening)}</td></tr></table>
+				<table><thead><tr><th>№</th><th>Hujjat</th><th>Kimdan olindi / kimga berildi</th><th>Kategoriya</th><th>Kirim</th><th>Chiqim</th></tr></thead>
+				<tbody>${rows || "<tr><td colspan=6>Harakat yo'q</td></tr>"}</tbody>
+				<tfoot><tr class="b"><td colspan="4">Kun bo'yicha jami</td><td class="r">${fmt(tk)}</td><td class="r">${fmt(tc)}</td></tr>
+				<tr class="b"><td colspan="4">Kun oxiridagi qoldiq</td><td class="r" colspan="2">${fmt(res.closing)}</td></tr></tfoot></table>
+				<div>Hujjatlar soni: kirim — ${(res.rows || []).filter((r) => r.summa > 0 && !r.ichki).length} ta, chiqim — ${(res.rows || []).filter((r) => r.summa < 0 && !r.ichki).length} ta</div>
+				<div class="sign"><div>Kassir: _______________<div class="l"></div>(F.I.Sh, imzo)</div>
+				<div>Buxgalter: _______________<div class="l"></div>(F.I.Sh, imzo)</div></div>
+				<button onclick="window.print()" style="margin-top:20px;padding:6px 18px">Chop etish</button>
+				</body></html>`);
+			w.document.close();
+		};
+		// КО-4 — RASMIY kunlik varaq: kategoriya/kontragent filtrisiz, to'liq kun
+		const key = "ko4|" + day;
+		if (st.dayDocs[key]) go(st.dayDocs[key]);
+		else frappe.call({
+			method: "target_zenit.target_zenit.api.kunlik_kassa.get_day_docs",
+			args: { sana: day, currency: st.currency, accounts: JSON.stringify(st.accounts || []) },
+		}).then((r) => { st.dayDocs[key] = r.message || { rows: [] }; go(st.dayDocs[key]); });
+	}
+
+	// ---------------------------------------------------------------- drill-down
+	function loadDrill(tur, kat, party, $host) {
+		if (!$host || !$host.length) return;
+		$host.html(`<div class="kk-drill-box"><div class="kk-loader" style="padding:14px">Yuklanyapti…</div></div>`);
+		frappe.call({
+			method: "target_zenit.target_zenit.api.kunlik_kassa.get_breakdown",
+			args: {
+				from_date: st.from, to_date: st.to, currency: st.currency,
+				accounts: JSON.stringify(st.accounts || []),
+				tur: tur, kategoriya: kat, party: party,
+			},
+		}).then((r) => {
+			const res = r.message || {};
+			const color = tur === "Приход" ? C.good : C.bad;
+			const nom = party || kat;
+			const mx = Math.max(1, ...(res.top || []).map((x) => x.summa));
+			const top = (res.top || []).length ? `<div class="kk-hbars">` + res.top.map((x) =>
+				`<div class="hb"><div class="hb-t"><span title="${esc(x.label)}">${esc(x.label)}</span><b class="num">${fmt(x.summa)}</b></div>
+				<div class="hb-track"><i style="width:${Math.max(2, x.summa / mx * 100)}%;background:${color}"></i></div></div>`).join("") + `</div>`
+				: `<div class="kk-empty" style="padding:8px">yo'q</div>`;
+			$host.html(`<div class="kk-drill-box">
+				<div class="kk-drill-hd"><b>${esc(nom)}</b>
+				<span class="meta">${tur === "Приход" ? "kirim" : "chiqim"} · jami <b class="num">${fmt(res.jami)}</b> · ${res.n || 0} hujjat</span>
+				<button class="kk-drill-x" data-drill-close title="Yopish">✕</button></div>
+				<div class="kk-drill-grid"><div>${miniBars(res.days || [], (x) => x.summa, color)}</div>
+				<div><div class="kk-subtitle">${kat ? "Kontragentlar" : "Kategoriyalar"}</div>${top}</div></div></div>`);
+			if ($host[0] && $host[0].scrollIntoView) $host[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+		}).catch(() => $host.html(`<div class="kk-drill-box"><div class="kk-empty">Tafsilotni yuklab bo'lmadi.</div></div>`));
+	}
+
+	// ---------------------------------------------------------------- hodisalar
+	function wire() {
+		$root.off(".kk");          // har render'da delegated handlerlar dublikat bo'lmasin
+		// KPI kartalari — Kirim/Chiqim kassa kitobi jadvalini filtrlaydi
+		$root.find("[data-kpi-tur]").on("click", function () {
+			const t = String($(this).attr("data-kpi-tur"));
+			st.tur = st.tur === t ? "" : t;
+			st.selDay = null; load();
+		});
+		$root.find("[data-kpi-day]").on("click", function () {
+			const day = String($(this).attr("data-kpi-day") || "");
+			if (day) { st.selDay = day; openDay(day, true); }
+		});
+		// Operatsiya turi segmenti (filtr panelida)
+		$root.find(".kk-seg button[data-tur]").on("click", function () {
+			st.tur = String($(this).attr("data-tur") || "");
+			st.selDay = null; load();
+		});
+		// Diagramma elementlari — bosilganda shu karta ichida tafsilot ochiladi
+		$root.on("click.kk", ".hb.click, .kk-wf-hit[data-kat]", function () {
+			const $el = $(this);
+			const tur = String($el.attr("data-tur") || "");
+			const kat = String($el.attr("data-kat") || "");
+			const party = String($el.attr("data-party") || "");
+			if (!tur || (!kat && !party)) return;
+			const $card = $el.closest(".kk-card");
+			$card.find(".hb.click").removeClass("active");
+			if ($el.hasClass("hb")) $el.addClass("active");
+			loadDrill(tur, kat, party, $card.find(".kk-drill").first());
+		});
+		$root.on("click.kk", "[data-drill-close]", function (e) {
+			e.stopPropagation();
+			const $card = $(this).closest(".kk-card");
+			$card.find(".kk-drill").first().empty();
+			$card.find(".hb.click").removeClass("active");
+		});
+		$root.find("[data-preset]").on("click", function () {
+			presetDates(String($(this).data("preset"))); st.selDay = null; load();
+		});
+		$root.find("input.kk-date").on("change", function () {
+			const k = $(this).data("d") === "from" ? "from" : "to";
+			st[k] = $(this).val(); st.preset = ""; st.selDay = null; load();
+		});
+		$root.find("[data-ccy]").on("click", function () {
+			st.currency = String($(this).data("ccy")); st.accounts = null; st.selDay = null; load();
+		});
+		$root.find("[data-acc-all]").on("click", function () {
+			st.accounts = null; st.selDay = null; load();
+		});
+		// Hisob chiplari — ODDIY bosish bilan ko'p tanlov: "Hammasi" holatida
+		// birinchi bosish faqat o'shani tanlaydi, keyingilari qo'shadi/olib tashlaydi
+		$root.find("[data-acc]").on("click", function () {
+			const a = String($(this).attr("data-acc"));
+			const hamma = (st.data.accounts || []).filter((x) => x.currency === st.data.currency).map((x) => x.account);
+			if (!st.accounts || !st.accounts.length) {
+				st.accounts = [a];                       // hammasidan -> faqat shu
+			} else {
+				const sel = st.accounts.slice();
+				const i = sel.indexOf(a);
+				if (i === -1) sel.push(a); else sel.splice(i, 1);
+				st.accounts = (!sel.length || sel.length === hamma.length) ? null : sel;
+			}
+			st.selDay = null; load();
+		});
+		// Kontragent turi / kategoriya / kontragent filtrlari
+		$root.find("select.kk-sel").on("change", function () {
+			const f = String($(this).data("f"));
+			const v = String($(this).val());
+			if (f === "kat") st.kat = v;
+			else if (f === "ptype") st.ptype = v;
+			else st.party = v;
+			st.selDay = null; load();
+		});
+		$root.find(".kk-limit-inp").on("change", function () {
+			const v = Number(String($(this).val()).replace(/[^\d.-]/g, "")) || 0;
+			try { localStorage.setItem(limitKey(), String(v)); } catch (e) { /* xotira yopiq */ }
+			render();
+		});
+		$root.find(".kk-refresh").on("click", () => { st.dayDocs = {}; load(); });
+		$root.on("click.kk", "tr.kk-day", function (e) {
+			if ($(e.target).closest("[data-ko4]").length) return;
+			const day = String($(this).data("day"));
+			const $docs = $root.find(`tr[data-docs="${day}"]`);
+			if ($docs.is(":visible")) { $docs.hide(); $(this).removeClass("open sel"); return; }
+			openDay(day, false);
+		});
+		$root.on("click.kk", "[data-ko4]", function (e) {
+			e.stopPropagation(); printKo4(String($(this).attr("data-ko4")));
+		});
+		$root.on("click.kk", ".kk-day-hit, .kk-heat-cell[data-day]", function () {
+			const day = String($(this).data("day") || $(this).attr("data-day") || "");
+			if (day) { tipHide(); st.selDay = day; openDay(day, true); }
+		});
+		// Kuzatuvchi tooltip — oqim (kun/hafta), qoldiq ustunlari va heatmap kataklari
+		$root.on("mousemove.kk", ".kk-day-hit, .kk-heat-cell[data-day]", function (ev) {
+			const bi = $(this).attr("data-bucket");
+			if (bi !== undefined && st.flowBuckets) {
+				const b = st.flowBuckets[Number(bi)];
+				if (b) {
+					const title = b.hafta ? `${dmy(b.dan)} – ${dmy(b.gacha)} (hafta)` : `${dmy(b.dan)} · ${hk(b.dan)}`;
+					tipShow(`<div class="t">${title}</div>
+						<div class="row"><i style="background:${C.good}"></i>Kirim <b>${fmt(b.kirim)}</b></div>
+						<div class="row"><i style="background:${C.bad}"></i>Chiqim <b>${fmt(b.chiqim)}</b></div>
+						<div class="row"><i style="background:${C.blue}"></i>Sof oqim <b>${pm(b.net)}</b></div>
+						<div class="q">Oxiridagi qoldiq: <b>${fmt(b.balans)}</b> · ${b.n} hujjat</div>`, ev);
+					return;
+				}
+			}
+			const day = String($(this).attr("data-day") || "");
+			const x = ((st.data && st.data.days) || []).find((q) => q.sana === day);
+			if (x) tipShow(dayTip(x), ev);
+		});
+		$root.on("mouseleave.kk", ".kk-day-hit, .kk-heat-cell[data-day]", tipHide);
+	}
+
+	load();
 }

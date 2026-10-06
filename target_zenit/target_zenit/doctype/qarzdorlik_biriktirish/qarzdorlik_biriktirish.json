@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "creation": "2026-10-05 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sinf_pattern",
+  "masul"
+ ],
+ "fields": [
+  {
+   "description": "Ro'yxatdan sinf (Student Group) tanlang yoki shablon yozing: 7*  yoki  G1*,G2*",
+   "fieldname": "sinf_pattern",
+   "fieldtype": "Autocomplete",
+   "in_list_view": 1,
+   "label": "Sinf / shablon",
+   "reqd": 1
+  },
+  {
+   "fieldname": "masul",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Mas'ul menejer",
+   "options": "User",
+   "reqd": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Qarzdorlik Biriktirish",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
