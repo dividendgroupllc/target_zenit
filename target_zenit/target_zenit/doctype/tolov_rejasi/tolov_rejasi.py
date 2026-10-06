@@ -32,9 +32,12 @@ class TolovRejasi(Document):
 			)
 
 	def _check_sums(self):
-		"""Yakuniy summa bilan oylar yig'indisi mos kelmasa — ogohlantirish (bloklamaydi)."""
-		total = sum(r.amount or 0 for r in self.oylar if r.holat != "Bekor")
-		self.jami_hisoblangan = total
+		"""Yakuniy summa bilan O'QISH PULI oylari yig'indisi mos kelmasa — ogohlantirish
+		(bloklamaydi). Nachisleniya qatorlari (manba_hujjat bor) shartnomaga kirmaydi."""
+		total = sum(
+			r.amount or 0 for r in self.oylar if r.holat != "Bekor" and not r.manba_hujjat
+		)
+		self.jami_hisoblangan = sum(r.amount or 0 for r in self.oylar if r.holat != "Bekor")
 		if self.yakuniy_summa and abs(total - self.yakuniy_summa) > 1:
 			frappe.msgprint(
 				_("Diqqat: oylar yig'indisi ({0}) shartnoma yakuniy summasiga ({1}) teng emas.").format(

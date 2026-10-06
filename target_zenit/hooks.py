@@ -189,6 +189,9 @@ doc_events = {
 	},
 	"Sales Invoice": {
 		"validate": "target_zenit.journal_entry.sync_month_from_posting_date",
+		# Nachisleniya (Kitob/Forma...) o'zgarsa qarzdorlik qayta hisoblanadi
+		"on_submit": "target_zenit.qarzdorlik.engine.on_invoice",
+		"on_cancel": "target_zenit.qarzdorlik.engine.on_invoice",
 	},
 	# Kurs faqat USD→UZS yo'nalishida kiritiladi; teskari yozuv avto-yaratiladi.
 	# Aks holda ikki yo'nalishdagi kurslar mos kelmay, sun'iy gain/loss chiqadi.

@@ -11,6 +11,7 @@
   "buzilgan_vada_limit",
   "sla_soat",
   "default_masul",
+  "istisno_itemlar",
   "section_biriktirish",
   "biriktirish"
  ],
@@ -60,6 +61,13 @@
    "fieldtype": "Link",
    "label": "Default mas'ul",
    "options": "User"
+  },
+  {
+   "default": "O'qitish xizmati",
+   "description": "Sales Invoice'dan rejaga OLINMAYDIGAN itemlar (vergul bilan) — o'qish puli oylik qatorlarda allaqachon bor",
+   "fieldname": "istisno_itemlar",
+   "fieldtype": "Data",
+   "label": "Istisno itemlar (SI sinxron)"
   },
   {
    "fieldname": "section_biriktirish",

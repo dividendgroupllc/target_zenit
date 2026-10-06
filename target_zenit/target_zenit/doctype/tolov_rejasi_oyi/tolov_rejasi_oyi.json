@@ -12,7 +12,8 @@
   "outstanding",
   "holat",
   "prorated",
-  "izoh"
+  "izoh",
+  "manba_hujjat"
  ],
  "fields": [
   {
@@ -75,6 +76,13 @@
    "fieldname": "izoh",
    "fieldtype": "Data",
    "label": "Izoh"
+  },
+  {
+   "description": "Sales Invoice'dan sinxronlangan qator uchun hujjat raqami (tizim yuritadi)",
+   "fieldname": "manba_hujjat",
+   "fieldtype": "Data",
+   "label": "Manba hujjat",
+   "read_only": 1
   }
  ],
  "istable": 1,

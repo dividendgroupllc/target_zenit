@@ -18,6 +18,7 @@ class TZQarzPanel {
 		this.fManager = "";     // keyin load()da: o'zi menejer bo'lsa — o'zi
 		this.fBucket = "";
 		this.fStatus = "";
+		this.fSinf = "";        // sinf (guruh) filtri
 		this.fQueue = "all";    // all | today | overdue
 		this.make_skeleton();
 		this.load(true);
@@ -46,10 +47,16 @@ class TZQarzPanel {
 		}[st] || "mut";
 		return `<span class="pill st-${cls}">${this.esc(st)}</span>`;
 	}
-	bucketPill(b) {
+	// Kechikish belgisi: necha kun to'lanmay turganini ko'rsatadi (rang — bucket bo'yicha)
+	bucketPill(b, eng_eski) {
 		if (!b) return "";
 		const cls = { "1-30": "b1", "31-60": "b2", "61-90": "b3", "90+": "b4", "Ketgan-qarzli": "b4" }[b] || "b1";
-		return `<span class="pill bk-${cls}">${this.esc(b)}</span>`;
+		let text = b;
+		if (b !== "Ketgan-qarzli" && eng_eski) {
+			const days = frappe.datetime.get_day_diff(this.today(), eng_eski);
+			if (days > 0) text = `${days} kun`;
+		}
+		return `<span class="pill bk-${cls}" title="Eng eski to'lanmagan muddat: ${this.dmy(eng_eski)}">${this.esc(text)}</span>`;
 	}
 
 	// ================= load =================
@@ -85,6 +92,12 @@ class TZQarzPanel {
 	}
 
 	// ================= filter =================
+	// Ochiq ishlardagi sinflar ro'yxati (tabiiy tartib: 1 A, 2 A, ... 10 A, 11 B)
+	sinflar() {
+		const set = new Set((this.data.cases || []).map((c) => c.sinf).filter(Boolean));
+		return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+	}
+
 	filtered() {
 		const q = this.q.trim().toLowerCase();
 		const today = this.today();
@@ -92,6 +105,8 @@ class TZQarzPanel {
 			if (this.fManager && c.masul !== this.fManager) return false;
 			if (this.fBucket && c.aging_bucket !== this.fBucket) return false;
 			if (this.fStatus && c.ishlov_status !== this.fStatus) return false;
+			if (this.fSinf === "__none" && c.sinf) return false;
+			if (this.fSinf && this.fSinf !== "__none" && c.sinf !== this.fSinf) return false;
 			if (this.fQueue === "today" && !(c.keyingi_aloqa && c.keyingi_aloqa <= today)) return false;
 			if (this.fQueue === "overdue" && !(c.keyingi_aloqa && c.keyingi_aloqa < today)) return false;
 			if (q) {
@@ -144,6 +159,12 @@ class TZQarzPanel {
 					${(this.data.managers || []).map((m) =>
 						`<option value="${this.esc(m.name)}" ${this.fManager === m.name ? "selected" : ""}>${this.esc(m.full_name)}</option>`).join("")}
 				</select>
+				<select class="fsinf">
+					<option value="">Barcha sinflar</option>
+					<option value="__none" ${this.fSinf === "__none" ? "selected" : ""}>Sinfsiz</option>
+					${this.sinflar().map((s) =>
+						`<option value="${this.esc(s)}" ${this.fSinf === s ? "selected" : ""}>${this.esc(s)}</option>`).join("")}
+				</select>
 				<select class="fstatus">
 					<option value="">Barcha statuslar</option>
 					${["Yangi", "Urinilmoqda", "Gaplashildi - Va'da", "Gaplashildi - Nizo", "Bo'lib to'lash",
@@ -169,7 +190,7 @@ class TZQarzPanel {
 		const today = this.today();
 		const html = rows.length
 			? `<table class="tbl">
-				<thead><tr><th>O'quvchi</th><th>Sinf</th><th class="r">Qarz</th><th>Yoshi</th><th>Status</th><th>Keyingi</th><th>Mas'ul</th></tr></thead>
+				<thead><tr><th>O'quvchi / to'lovchi</th><th>Sinf</th><th class="r">Qarz (so'm)</th><th>Kechikish</th><th>Ishlov holati</th><th>Keyingi aloqa</th><th>Menejer</th></tr></thead>
 				<tbody>
 				${rows.map((c) => `
 					<tr data-case="${this.esc(c.name)}" class="${this.selected === c.name ? "sel" : ""} ${c.keyingi_aloqa && c.keyingi_aloqa < today ? "late" : ""}">
@@ -177,7 +198,7 @@ class TZQarzPanel {
 							<div class="mini">${this.esc(c.payer_name || "")} ${this.tel(c.payer_phone)}</div></td>
 						<td>${this.esc(c.sinf || "—")}</td>
 						<td class="r money">${this.fmt(c.qarz_summa)}</td>
-						<td>${this.bucketPill(c.aging_bucket)}</td>
+						<td>${this.bucketPill(c.aging_bucket, c.eng_eski_muddat)}</td>
 						<td>${this.statusPill(c.ishlov_status)}</td>
 						<td class="${c.keyingi_aloqa && c.keyingi_aloqa < today ? "red" : ""}">${this.dmy(c.keyingi_aloqa)}</td>
 						<td class="mini">${this.esc((this.data.managers.find((m) => m.name === c.masul) || {}).full_name || c.masul || "")}</td>
@@ -249,7 +270,7 @@ class TZQarzPanel {
 				</div>
 				<div class="d-debt">
 					<div class="d-sum">${this.fmt(c.qarz_summa)} <span class="cur">so'm</span></div>
-					<div>${this.bucketPill(c.aging_bucket)} ${this.statusPill(c.ishlov_status)}</div>
+					<div>${this.bucketPill(c.aging_bucket, c.eng_eski_muddat)} ${this.statusPill(c.ishlov_status)}</div>
 				</div>
 			</div>
 			${cheklov}
@@ -271,6 +292,7 @@ class TZQarzPanel {
 		this.body.find(".q").on("input", frappe.utils.debounce((e) => { this.q = e.target.value; this.render_list(); }, 250));
 		this.body.find(".fmanager").on("change", (e) => { this.fManager = e.target.value; this.render_list(); });
 		this.body.find(".fstatus").on("change", (e) => { this.fStatus = e.target.value; this.render_list(); });
+		this.body.find(".fsinf").on("change", (e) => { this.fSinf = e.target.value; this.render_list(); });
 		this.body.find(".chips .chip").on("click", (e) => {
 			const b = $(e.currentTarget).data("b");
 			this.fBucket = this.fBucket === b ? "" : b;

@@ -135,7 +135,8 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Qarz yoshi",
+   "description": "Eng eski to'lanmagan muddatdan beri necha kun o'tgani (kun oralig'i)",
+   "label": "Kechikish (kun)",
    "options": "\n1-30\n31-60\n61-90\n90+\nKetgan-qarzli",
    "read_only": 1
   },
@@ -232,7 +233,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-06 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Qarz Ishi",
