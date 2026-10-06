@@ -50,10 +50,16 @@ def generate(payload: dict,
     revenue_rows = payload.get("revenue_rows") or []
     cogs_rows    = payload.get("cogs_rows") or []
     opex_rows    = payload.get("opex_rows") or []
+    # Guruhlar: [{"label", "jami": [v..], "rows": [(label, [v..]), ...]}] —
+    # sarlavha + ichida a'zo hisoblar alohida (jami'ga BIR marta qo'shiladi)
+    opex_groups  = payload.get("opex_groups") or []
 
     revenue = _vsum(revenue_rows, n)
     cogs    = _vsum(cogs_rows, n)
     opex    = _vsum(opex_rows, n)
+    for g in opex_groups:
+        for i in range(n):
+            opex[i] += float(g["jami"][i]) if i < len(g["jami"]) else 0.0
 
     gross      = [revenue[i] - cogs[i] for i in range(n)]
     net_profit = [gross[i] - opex[i] for i in range(n)]
@@ -88,7 +94,15 @@ def generate(payload: dict,
     for label, vals in opex_rows:
         rows.append({"style": "data", "label": label,
                      "values": vals, "fmt": "num"})
-    rows.append({"style": "itogo", "label": "Итого операционные расходы",
+    # Jamlama guruhlar: yengil fonli bold sarlavha (guruh jami) + a'zo
+    # hisoblar ichkarida
+    for g in opex_groups:
+        rows.append({"style": "itogo_soft", "label": g["label"],
+                     "values": g["jami"], "fmt": "num"})
+        for label, vals in g["rows"]:
+            rows.append({"style": "data", "label": "        " + label,
+                         "values": vals, "fmt": "num"})
+    rows.append({"style": "itogo_soft", "label": "Итого операционные расходы",
                  "values": opex, "fmt": "num"})
     rows.append({"style": "spacer"})
 

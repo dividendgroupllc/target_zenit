@@ -64,6 +64,61 @@ def _section_rows(leaves, vals, abbr, n_cols, skip_zero=True):
     return out
 
 
+# PDF'da BITTA qator ostida JAMLANADIGAN hisob guruhlari (buxgalteriya
+# talabi). Nomlar qisman, kichik harfda solishtiriladi — hisob nomi sal
+# o'zgarsa ham ("Bank foiz"/"Bank foize") ushlab qolsin. Guruh qatorlari
+# opex ro'yxatining ENG OXIRIDA, shu tartibda chiqadi.
+JAMLAMA_GURUHLAR = [
+    (("exchange gain/loss", "bank foiz", "bank komissiya"),
+     "Курсовая разница и банковские расходы"),
+    # Kommunal xarajatlar: "Kommunal (elektr, gaz, suv, chiqindi)" +
+    # "Kamunalka musir" + "Kamunalka kanalizatsiya" — ikki xil imlo
+    # ("kamunal"/"kommunal") ikkalasi ham ushlanadi.
+    (("kamunal", "kommunal"),
+     "Kommunal xarajatlar"),
+    # Soliqlar: Boshqa soliqlar + Ijtimoiy soliq + Pensiya jamg'arma +
+    # Soliqlar (band qilish). "pensiya jamg" — apostrof variantlaridan
+    # ta'sirlanmasin; "daromad soliq" ATAYLAB kiritilmagan (alohida qoladi).
+    # Soliqlar guruhi ro'yxatning ENG OXIRIDA turadi.
+    (("boshqa soliq", "ijtimoiy soliq", "pensiya jamg", "band qilish"),
+     "Soliqlar"),
+]
+
+
+def _jamlama_idx(account_name):
+    """Hisob qaysi jamlama guruhga tegishli (hech biriga bo'lmasa None)."""
+    n = (account_name or "").strip().lower()
+    for i, (kalitlar, _lbl) in enumerate(JAMLAMA_GURUHLAR):
+        if any(k in n for k in kalitlar):
+            return i
+    return None
+
+
+def _merge_jamlama(leaves, vals, abbr, n_cols):
+    """Opex leaflarini ikkiga ajratadi: (oddiy_qatorlar, guruhlar).
+
+    Guruh PDF'da KATEGORIYA bo'lib chiqadi: bold sarlavha (guruh jami
+    bilan) + ichida har bir hisob ALOHIDA qator — nimadan tashkil
+    topgani ko'rinib turadi."""
+    qolgan = []
+    azolar = [[] for _ in JAMLAMA_GURUHLAR]
+    for acc in leaves:
+        gi = _jamlama_idx(acc.account_name)
+        if gi is None:
+            qolgan.append(acc)
+        else:
+            azolar[gi].append(acc)
+    rows = _section_rows(qolgan, vals, abbr, n_cols)
+    groups = []
+    for gi, (_kalitlar, label) in enumerate(JAMLAMA_GURUHLAR):
+        g_rows = _section_rows(azolar[gi], vals, abbr, n_cols)  # nol a'zolar tushib qoladi
+        if not g_rows:
+            continue
+        jami = [sum(r[1][i] for r in g_rows) for i in range(n_cols)]
+        groups.append({"label": label, "jami": jami, "rows": g_rows})
+    return rows, groups
+
+
 @frappe.whitelist()
 def generate_pl_pdf(filters):
     if isinstance(filters, str):
@@ -111,12 +166,15 @@ def generate_pl_pdf(filters):
         opex_leaves = [a for a in accounts
                        if not a.is_group and a.root_type == "Expense"
                        and a.name not in direct_names]
-    opex_rows = _section_rows(opex_leaves, vals, abbr, n_cols)
+    # Jamlama guruhlar (kurs farqi+bank; soliqlar) — ro'yxat oxirida
+    # kategoriya bo'lib chiqadi: sarlavha (jami) + a'zo hisoblar alohida
+    opex_rows, opex_groups = _merge_jamlama(opex_leaves, vals, abbr, n_cols)
 
     payload = {
         "revenue_rows": revenue_rows,
         "cogs_rows":    cogs_rows,
         "opex_rows":    opex_rows,
+        "opex_groups":  opex_groups,
     }
 
     from target_zenit.target_zenit.pdf_engine.pl_pdf import generate

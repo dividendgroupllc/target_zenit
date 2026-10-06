@@ -57,6 +57,9 @@ C_YELLOW     = Color(1.0, 0.8510, 0.4)
 C_PEACH      = Color(1.0, 0.9490, 0.8)
 C_GRAY_SUB   = Color(0.8510, 0.8510, 0.8510)
 C_ZEBRA      = Color(0.9529, 0.9529, 0.9529)
+# Yengil ko'k-kulrang fon — jami/guruh qatorlari uchun: ajralib tursin,
+# lekin to'q bo'lib ketmasin (zebra'dan sal quyuqroq)
+C_SOFT_BG    = Color(0.9059, 0.9255, 0.9569)
 
 FS = 6.9          # standart shrift o'lchami (armada 6.88–6.9)
 ROW_H = 11.6      # qator balandligi
@@ -91,6 +94,9 @@ _S = {
     "label_only": (None,       "Rubik",        C_BLACK,     FS,
                    "Rubik",        C_BLACK,     "red"),
     "itogo":      (None,       "Rubik-Bold",   None,        FS,
+                   "Rubik-Bold",   None,        "red"),
+    # itogo'ning yengil fonli varianti — guruh sarlavhalari va bo'lim jamisi
+    "itogo_soft": (C_SOFT_BG,  "Rubik-Bold",   None,        FS,
                    "Rubik-Bold",   None,        "red"),
     "pct":        (None,       "Rubik-Italic", C_BLACK,     FS,
                    "Rubik-Italic", C_BLACK,     "red"),
@@ -183,7 +189,7 @@ def render_table(output_filename, title, company, period_label,
             lfont, lclr, vclr = cat_lfont, cat_lclr, \
                 (C_DARK_GRAY if variant == "pl" else C_BLACK)
             vfont = "Rubik-Bold"
-        elif style == "itogo":
+        elif style in ("itogo", "itogo_soft"):
             lclr = vclr = itogo_clr
 
         label = row.get("label", "")
