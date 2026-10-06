@@ -69,7 +69,7 @@ def _section_rows(leaves, vals, abbr, n_cols, skip_zero=True):
 # o'zgarsa ham ("Bank foiz"/"Bank foize") ushlab qolsin. Guruh qatorlari
 # opex ro'yxatining ENG OXIRIDA, shu tartibda chiqadi.
 JAMLAMA_GURUHLAR = [
-    (("exchange gain/loss", "bank foiz", "bank komissiya"),
+    (("exchange gain/loss", "bank foiz", "bank komissiya", "valyuta farqi"),
      "Курсовая разница и банковские расходы"),
     # Kommunal xarajatlar: "Kommunal (elektr, gaz, suv, chiqindi)" +
     # "Kamunalka musir" + "Kamunalka kanalizatsiya" — ikki xil imlo
@@ -77,10 +77,10 @@ JAMLAMA_GURUHLAR = [
     (("kamunal", "kommunal"),
      "Kommunal xarajatlar"),
     # Soliqlar: Boshqa soliqlar + Ijtimoiy soliq + Pensiya jamg'arma +
-    # Soliqlar (band qilish). "pensiya jamg" — apostrof variantlaridan
-    # ta'sirlanmasin; "daromad soliq" ATAYLAB kiritilmagan (alohida qoladi).
-    # Soliqlar guruhi ro'yxatning ENG OXIRIDA turadi.
-    (("boshqa soliq", "ijtimoiy soliq", "pensiya jamg", "band qilish"),
+    # Soliqlar (band qilish) + Daromad soliq. "pensiya jamg" — apostrof
+    # variantlaridan ta'sirlanmasin. Guruh ro'yxatning ENG OXIRIDA turadi.
+    (("boshqa soliq", "ijtimoiy soliq", "pensiya jamg", "band qilish",
+      "daromad soliq"),
      "Soliqlar"),
 ]
 
