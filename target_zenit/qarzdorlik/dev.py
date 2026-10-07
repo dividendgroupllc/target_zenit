@@ -139,7 +139,7 @@ def check_user_access(user="xojakbar@gmail.com", page="xodim-qarzdorlik"):
 	try:
 		from frappe.desk.desk_page import getpage
 
-		doc = getpage(page)
+		getpage(page)
 		print("getpage: OK")
 	except Exception as e:
 		print("getpage XATO:", type(e).__name__, e)
