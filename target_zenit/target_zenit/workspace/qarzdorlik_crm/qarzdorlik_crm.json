@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Qarzdorlik CRM</b></span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Qarzdorlik paneli\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Qarz ishlari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"To'lov va'dalari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Aloqa yozuvlari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"To'lov rejalari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Sozlamalar\",\"col\":3}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Qarzdorlik CRM</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Qarzdorlik paneli\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Xodimlar qarzdorligi\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Qarz ishlari\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"To'lov va'dalari\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Aloqa yozuvlari\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"To'lov rejalari\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sozlamalar\", \"col\": 3}}]",
  "creation": "2026-10-05 12:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -12,7 +12,7 @@
  "is_hidden": 0,
  "label": "Qarzdorlik CRM",
  "links": [],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-06 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Qarzdorlik CRM",
@@ -29,6 +29,12 @@
    "label": "Qarzdorlik paneli",
    "type": "Page",
    "link_to": "qarzdorlik"
+  },
+  {
+   "color": "Blue",
+   "label": "Xodimlar qarzdorligi",
+   "type": "Page",
+   "link_to": "xodim-qarzdorlik"
   },
   {
    "color": "Orange",

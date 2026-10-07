@@ -1,0 +1,156 @@
+/* Qarzdorlik paneli — target_zenit. Sotuv paneli palitrasi, light/dark. */
+/* To'liq ekran: standart desk konteyner cheklovlarini olib tashlaymiz */
+.tz-fullbleed-wrap { padding:0 !important; }
+.tz-container-fluid { max-width:none !important; width:100% !important; padding-left:0 !important; padding-right:0 !important; }
+
+.tz-qarz {
+  --page:#eef1f6; --card:#ffffff; --card-2:#f7f9fc; --ink:#131a29; --ink-2:#566175;
+  --muted:#8a93a6; --line:#e3e8f0; --line-strong:#d3dae6;
+  --brand:#0e7c86; --brand-ink:#0a5c64; --brand-wash:#e4f2f3;
+  --good:#12a150; --good-ink:#0b7f3f; --good-wash:#e5f5ec;
+  --bad:#d8443c; --bad-ink:#b93129; --bad-wash:#fbeae9;
+  --warn:#dd9a1f; --warn-ink:#a8730b; --warn-wash:#fbf1dc;
+  --blue:#2a78d6; --blue-wash:#e7f0fb;
+  --shadow:0 1px 2px rgba(19,26,41,.05), 0 8px 24px -12px rgba(19,26,41,.14);
+  --radius:14px;
+  color:var(--ink);
+  display:block; width:100%;
+  padding:20px clamp(14px,2.5vw,32px) 48px;
+  min-height:calc(100vh - 62px);
+}
+[data-theme="dark"] .tz-qarz {
+  --page:#0d131f; --card:#161e2c; --card-2:#111827; --ink:#eef1f7; --ink-2:#9aa6ba;
+  --muted:#6f7c92; --line:#243044; --line-strong:#2e3b52;
+  --brand:#25b3bf; --brand-ink:#7fd8df; --brand-wash:#0e2e33;
+  --good:#31c06d; --good-ink:#6fe0a0; --good-wash:#0e2c1c;
+  --bad:#f0685f; --bad-ink:#ff9c95; --bad-wash:#2e1614;
+  --warn:#efb63f; --warn-ink:#ffd77e; --warn-wash:#2c2210;
+  --blue:#5b9bea; --blue-wash:#13263d;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+}
+
+.tz-qarz .loading, .tz-qarz .empty { padding:40px; text-align:center; color:var(--muted); }
+
+/* topbar */
+.tz-qarz .topbar { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+.tz-qarz .topbar h1 { font-size:20px; font-weight:700; margin:0; }
+.tz-qarz .topbar .sub { color:var(--ink-2); font-size:13px; margin-top:4px; }
+.tz-qarz .spacer { flex:1; }
+.tz-qarz .badge-qarz { background:var(--bad-wash); color:var(--bad-ink); border:1px solid var(--bad);
+  border-radius:999px; padding:4px 12px; font-size:13px; }
+.tz-qarz .refresh { background:var(--card); border:1px solid var(--line-strong); border-radius:10px;
+  padding:7px 14px; font-size:13px; cursor:pointer; color:var(--ink); }
+.tz-qarz .refresh .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--good); margin-right:6px; }
+
+/* kpi */
+.tz-qarz .grid { display:grid; gap:12px; }
+.tz-qarz .grid.cols-5 { grid-template-columns:repeat(5, 1fr); }
+.tz-qarz .mb { margin-bottom:14px; }
+.tz-qarz .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
+.tz-qarz .kpi { padding:12px 14px; }
+.tz-qarz .kpi.click { cursor:pointer; }
+.tz-qarz .kpi.sel { outline:2px solid var(--brand); }
+.tz-qarz .kpi .lab { font-size:12px; color:var(--ink-2); display:flex; align-items:center; gap:6px; }
+.tz-qarz .kpi .val { font-size:22px; font-weight:700; margin-top:4px; }
+.tz-qarz .kpi .val .cur { font-size:13px; color:var(--muted); font-weight:500; }
+.tz-qarz .kpi .sub { font-size:11px; color:var(--muted); margin-top:2px; }
+.tz-qarz .pin { width:8px; height:8px; border-radius:3px; background:var(--brand); display:inline-block; }
+.tz-qarz .pin.g { background:var(--good); } .tz-qarz .pin.r { background:var(--bad); }
+.tz-qarz .pin.b { background:var(--blue); } .tz-qarz .pin.y { background:var(--warn); }
+
+/* controls */
+.tz-qarz .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.tz-qarz .controls .q { flex:1; min-width:220px; background:var(--card); color:var(--ink);
+  border:1px solid var(--line-strong); border-radius:10px; padding:8px 12px; font-size:13px; }
+.tz-qarz .controls select { background:var(--card); color:var(--ink); border:1px solid var(--line-strong);
+  border-radius:10px; padding:8px 10px; font-size:13px; }
+.tz-qarz .chips { display:flex; gap:6px; }
+.tz-qarz .chip { background:var(--card); border:1px solid var(--line-strong); border-radius:999px;
+  padding:6px 12px; font-size:12px; cursor:pointer; color:var(--ink-2); }
+.tz-qarz .chip.on { background:var(--brand-wash); border-color:var(--brand); color:var(--brand-ink); font-weight:600; }
+.tz-qarz .chip .n { opacity:.7; }
+
+/* split */
+.tz-qarz .split { display:grid; grid-template-columns: minmax(420px, 55fr) minmax(360px, 45fr); gap:14px; align-items:start; }
+.tz-qarz .list { overflow-x:auto; }
+
+/* moslashuvchanlik: har xil ekranlar */
+@media (max-width: 1500px) { .tz-qarz .grid.cols-5 { grid-template-columns:repeat(5, 1fr); } }
+@media (max-width: 1250px) { .tz-qarz .grid.cols-5 { grid-template-columns:repeat(3, 1fr); } }
+@media (max-width: 1100px) {
+  .tz-qarz .split { grid-template-columns:1fr; }
+  .tz-qarz .detail { position:static; max-height:none; }
+}
+@media (max-width: 760px) {
+  .tz-qarz { padding:12px 10px 40px; }
+  .tz-qarz .grid.cols-5 { grid-template-columns:repeat(2, 1fr); }
+  .tz-qarz .controls { gap:6px; }
+  .tz-qarz .controls .q { min-width:140px; }
+  .tz-qarz .tbl th, .tz-qarz .tbl td { padding:7px 8px; }
+  .tz-qarz .d-head { flex-direction:column; }
+  .tz-qarz .d-debt { text-align:left; }
+}
+
+/* table */
+.tz-qarz .tbl { width:100%; border-collapse:collapse; font-size:13px; }
+.tz-qarz .tbl th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.3px;
+  color:var(--muted); padding:10px 12px; border-bottom:1px solid var(--line-strong); }
+.tz-qarz .tbl td { padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+.tz-qarz .tbl .r { text-align:right; }
+.tz-qarz .tbl tbody tr { cursor:pointer; }
+.tz-qarz .tbl tbody tr:hover { background:var(--card-2); }
+.tz-qarz .tbl tbody tr.sel { background:var(--brand-wash); }
+.tz-qarz .tbl tbody tr.late .red { color:var(--bad-ink); font-weight:700; }
+.tz-qarz .tbl .nm { font-weight:600; }
+.tz-qarz .mini { font-size:11px; color:var(--muted); }
+.tz-qarz .money { font-weight:700; font-variant-numeric:tabular-nums; }
+.tz-qarz .mini-tbl td, .tz-qarz .mini-tbl th { padding:5px 8px; font-size:12px; }
+.tz-qarz .mini-tbl tbody tr { cursor:default; }
+.tz-qarz .tel { color:var(--blue); text-decoration:none; }
+
+/* pills */
+.tz-qarz .pill { display:inline-block; border-radius:999px; padding:2px 9px; font-size:11px; font-weight:600; white-space:nowrap; }
+.tz-qarz .st-new { background:var(--blue-wash); color:var(--blue); }
+.tz-qarz .st-try { background:var(--card-2); color:var(--ink-2); border:1px solid var(--line-strong); }
+.tz-qarz .st-ok  { background:var(--good-wash); color:var(--good-ink); }
+.tz-qarz .st-warn{ background:var(--warn-wash); color:var(--warn-ink); }
+.tz-qarz .st-bad { background:var(--bad-wash); color:var(--bad-ink); }
+.tz-qarz .st-blue{ background:var(--blue-wash); color:var(--blue); }
+.tz-qarz .st-mut { background:var(--card-2); color:var(--muted); border:1px solid var(--line); }
+.tz-qarz .bk-b1 { background:var(--warn-wash); color:var(--warn-ink); }
+.tz-qarz .bk-b2 { background:var(--warn-wash); color:var(--warn-ink); border:1px solid var(--warn); }
+.tz-qarz .bk-b3 { background:var(--bad-wash); color:var(--bad-ink); }
+.tz-qarz .bk-b4 { background:var(--bad); color:#fff; }
+
+/* detail */
+.tz-qarz .detail { padding:14px; position:sticky; top:60px; max-height:calc(100vh - 80px); overflow:auto; }
+.tz-qarz .d-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.tz-qarz .d-name { font-size:16px; font-weight:700; }
+.tz-qarz .d-name a { color:var(--ink); }
+.tz-qarz .d-phones { margin-top:6px; font-size:13px; color:var(--ink-2); }
+.tz-qarz .d-debt { text-align:right; }
+.tz-qarz .d-sum { font-size:20px; font-weight:800; color:var(--bad-ink); font-variant-numeric:tabular-nums; }
+.tz-qarz .d-sum .cur { font-size:12px; color:var(--muted); font-weight:500; }
+.tz-qarz .alert-cheklov { margin-top:10px; background:var(--warn-wash); color:var(--warn-ink);
+  border:1px solid var(--warn); border-radius:10px; padding:8px 12px; font-size:13px; }
+.tz-qarz .d-actions { display:flex; gap:8px; margin:12px 0; flex-wrap:wrap; }
+.tz-qarz .btn-call { background:var(--brand); color:#fff; border:none; border-radius:10px;
+  padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; }
+.tz-qarz .btn-call:hover { background:var(--brand-ink); }
+.tz-qarz .btn-doc, .tz-qarz .btn-reassign { background:var(--card); border:1px solid var(--line-strong);
+  border-radius:10px; padding:9px 14px; font-size:13px; cursor:pointer; color:var(--ink); text-decoration:none; }
+.tz-qarz .box { margin-top:12px; border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:var(--card-2); }
+.tz-qarz .box-t { font-size:11px; text-transform:uppercase; letter-spacing:.3px; color:var(--muted); margin-bottom:6px; font-weight:700; }
+.tz-qarz .sib { font-size:13px; padding:3px 0; }
+.tz-qarz .mh-To\'landi td { color:var(--muted); }
+.tz-qarz .tl-item { border-left:2px solid var(--line-strong); padding:6px 0 6px 12px; margin-left:4px; }
+.tz-qarz .tl-head { font-size:13px; }
+.tz-qarz .tl-body { font-size:13px; color:var(--ink-2); margin-top:2px; white-space:pre-wrap; }
+.tz-qarz .tl-ptp { font-size:12px; color:var(--good-ink); margin-top:2px; font-weight:600; }
+
+/* xodim-qarzdorlik qo'shimchalari */
+.tz-qarz .grid.cols-3 { grid-template-columns:repeat(3, 1fr); }
+@media (max-width: 900px) { .tz-qarz .grid.cols-3 { grid-template-columns:1fr; } }
+.tz-qarz .red2 { color:var(--bad-ink); }
+.tz-qarz .blue2 { color:var(--blue); }
+.tz-qarz .slink { color:var(--ink); }
