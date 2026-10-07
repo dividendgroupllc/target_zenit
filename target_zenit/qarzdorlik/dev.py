@@ -151,3 +151,48 @@ def check_user_access(user="xojakbar@gmail.com", page="xodim-qarzdorlik"):
 	except Exception as e:
 		print("get_data XATO:", type(e).__name__, e)
 	frappe.set_user("Administrator")
+
+
+def check_sotuv_access(user="sotuv_menejer@gmail.com"):
+	"""Sotuv menejer: qarzdorlik sahifasi, endpointlar va workspace ko'rinishi."""
+	from frappe.desk.desk_page import getpage
+
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as qp
+
+	frappe.set_user(user)
+	print("roles:", sorted(frappe.get_roles()))
+	for nom, fn in [
+		("getpage(qarzdorlik)", lambda: getpage("qarzdorlik")),
+		("get_data", qp.get_data),
+	]:
+		try:
+			res = fn()
+			qo = len(res["cases"]) if isinstance(res, dict) and "cases" in res else "OK"
+			print(f"{nom}: OK ({qo})")
+		except Exception as e:
+			print(f"{nom} XATO:", type(e).__name__, e)
+	try:
+		case = frappe.db.get_value("Qarz Ishi", {}, "name")
+		d = qp.get_case(case)
+		print("get_case: OK, oylar:", len(d["months"]), "| to'lovlar:", len(d["payments"]))
+	except Exception as e:
+		print("get_case XATO:", type(e).__name__, e)
+	ws = [
+		w.name
+		for w in frappe.get_all("Workspace", fields=["name"])
+		if frappe.has_permission("Workspace", doc=w.name)
+	]
+	print("ko'rinadigan workspace'lar:", [w for w in ws if "arz" in w or "otuv" in w])
+	frappe.set_user("Administrator")
+
+
+def check_sotuv_perms(user="sotuv_menejer@gmail.com"):
+	"""Sotuv menejer qo'ng'iroq yozuvi qila oladimi (yaratish/yozish huquqlari)."""
+	frappe.set_user(user)
+	for dt, ptype in [
+		("Aloqa Yozuvi", "create"), ("Aloqa Yozuvi", "write"),
+		("Qarz Ishi", "write"), ("Qarz Ishi", "read"),
+		("Tolov Rejasi", "read"), ("Tolov Vadasi", "read"),
+	]:
+		print(f"{dt} / {ptype}:", frappe.has_permission(dt, ptype))
+	frappe.set_user("Administrator")
