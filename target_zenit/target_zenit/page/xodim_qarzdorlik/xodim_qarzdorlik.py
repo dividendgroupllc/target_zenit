@@ -15,7 +15,7 @@ from frappe.utils import flt
 
 ALLOWED_ROLES = [
 	"System Manager", "Sales Manager", "HR Manager", "HR User",
-	"Accounts Manager", "Accounts User", "investor",
+	"Accounts Manager", "Accounts User", "investor", "Xojakbar_Operator",
 ]
 
 JALILOV_PREFIX = "Jalilov B /"

@@ -130,3 +130,24 @@ def set_test_tariffs():
 		)
 	frappe.db.commit()
 	print("OK:", TEST_STUDENTS)
+
+
+def check_user_access(user="xojakbar@gmail.com", page="xodim-qarzdorlik"):
+	"""Diagnostika: foydalanuvchi sahifani ocha oladimi va endpoint ishlaydimi."""
+	frappe.set_user(user)
+	print("roles:", sorted(frappe.get_roles()))
+	try:
+		from frappe.desk.desk_page import getpage
+
+		doc = getpage(page)
+		print("getpage: OK")
+	except Exception as e:
+		print("getpage XATO:", type(e).__name__, e)
+	try:
+		from target_zenit.target_zenit.page.xodim_qarzdorlik import xodim_qarzdorlik as xq
+
+		d = xq.get_data()
+		print("get_data: OK, qatorlar:", len(d["rows"]), "| stats:", d["stats"])
+	except Exception as e:
+		print("get_data XATO:", type(e).__name__, e)
+	frappe.set_user("Administrator")

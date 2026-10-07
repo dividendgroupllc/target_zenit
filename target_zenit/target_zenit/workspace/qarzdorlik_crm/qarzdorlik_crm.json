@@ -12,7 +12,7 @@
  "is_hidden": 0,
  "label": "Qarzdorlik CRM",
  "links": [],
- "modified": "2026-10-06 13:00:00.000000",
+ "modified": "2026-10-07 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Qarzdorlik CRM",
@@ -21,7 +21,32 @@
  "parent_page": "",
  "public": 1,
  "quick_lists": [],
- "roles": [],
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Sales Manager"
+  },
+  {
+   "role": "Sales User"
+  },
+  {
+   "role": "Sotuv meneger"
+  },
+  {
+   "role": "investor"
+  },
+  {
+   "role": "Xojakbar_Operator"
+  },
+  {
+   "role": "HR Manager"
+  },
+  {
+   "role": "Accounts Manager"
+  }
+ ],
  "sequence_id": 99.1,
  "shortcuts": [
   {
