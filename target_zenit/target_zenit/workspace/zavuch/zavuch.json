@@ -2,27 +2,131 @@
  "charts": [],
  "content": "[{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Zavuch paneli</b></span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Yo'qlama\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dars jadvali\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Mening jadvalim\",\"col\":3}},{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5\\\">Jadval tuzish</span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Jadval versiyalari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Jadval yozuvlari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dars bloklari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Qo'ng'iroq jadvali\",\"col\":3}},{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5\\\">Ma'lumotnoma</span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'qituvchilar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Fanlar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Sinflar va guruhlar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Xonalar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'quvchilar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dars kunlari (Course Schedule)\",\"col\":3}}]",
  "creation": "2026-10-08 20:00:00.000000",
- "custom_blocks": [], "docstatus": 0, "doctype": "Workspace", "for_user": "", "hide_custom": 0,
- "icon": "education", "idx": 0, "is_hidden": 0, "label": "Zavuch", "links": [],
- "modified": "2026-10-08 20:00:00.000000", "modified_by": "Administrator", "module": "target_zenit",
- "name": "Zavuch", "number_cards": [], "owner": "Administrator", "parent_page": "", "public": 1,
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "education",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Zavuch",
+ "links": [],
+ "modified": "2026-10-08 21:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Zavuch",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
  "quick_lists": [],
- "roles": [{"role": "Zavuch"}, {"role": "System Manager"}, {"role": "Academics User"}, {"role": "Education Manager"}],
- "sequence_id": 99.3,
+ "roles": [
+  {
+   "role": "Zavuch"
+  },
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Academics User"
+  },
+  {
+   "role": "Education Manager"
+  },
+  {
+   "role": "Xojakbar_Operator"
+  }
+ ],
+ "sequence_id": 1.5,
  "shortcuts": [
-  {"color": "Green", "label": "Yo'qlama", "type": "Page", "link_to": "yoqlama"},
-  {"color": "Blue", "label": "Dars jadvali", "type": "Page", "link_to": "dars-jadvali"},
-  {"color": "Grey", "label": "Mening jadvalim", "type": "Page", "link_to": "mening-jadvalim"},
-  {"color": "Orange", "doc_view": "List", "label": "Jadval versiyalari", "link_to": "Jadval Versiyasi", "type": "DocType"},
-  {"color": "Grey", "doc_view": "List", "label": "Jadval yozuvlari", "link_to": "Jadval Yozuvi", "type": "DocType"},
-  {"color": "Grey", "doc_view": "List", "label": "Dars bloklari", "link_to": "Dars Bloki", "type": "DocType"},
-  {"color": "Grey", "label": "Qo'ng'iroq jadvali", "link_to": "Qongiroq Jadvali", "type": "DocType"},
-  {"color": "Grey", "doc_view": "List", "label": "O'qituvchilar", "link_to": "Instructor", "type": "DocType"},
-  {"color": "Grey", "doc_view": "List", "label": "Fanlar", "link_to": "Course", "type": "DocType"},
-  {"color": "Grey", "doc_view": "List", "label": "Sinflar va guruhlar", "link_to": "Student Group", "type": "DocType"},
-  {"color": "Grey", "doc_view": "List", "label": "Xonalar", "link_to": "Room", "type": "DocType"},
-  {"color": "Grey", "doc_view": "List", "label": "O'quvchilar", "link_to": "Student", "type": "DocType"},
-  {"color": "Grey", "doc_view": "List", "label": "Dars kunlari (Course Schedule)", "link_to": "Course Schedule", "type": "DocType"}
+  {
+   "color": "Green",
+   "label": "Yo'qlama",
+   "type": "Page",
+   "link_to": "yoqlama"
+  },
+  {
+   "color": "Blue",
+   "label": "Dars jadvali",
+   "type": "Page",
+   "link_to": "dars-jadvali"
+  },
+  {
+   "color": "Grey",
+   "label": "Mening jadvalim",
+   "type": "Page",
+   "link_to": "mening-jadvalim"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Jadval versiyalari",
+   "link_to": "Jadval Versiyasi",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Jadval yozuvlari",
+   "link_to": "Jadval Yozuvi",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Dars bloklari",
+   "link_to": "Dars Bloki",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "label": "Qo'ng'iroq jadvali",
+   "link_to": "Qongiroq Jadvali",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "O'qituvchilar",
+   "link_to": "Instructor",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Fanlar",
+   "link_to": "Course",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Sinflar va guruhlar",
+   "link_to": "Student Group",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Xonalar",
+   "link_to": "Room",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "O'quvchilar",
+   "link_to": "Student",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Dars kunlari (Course Schedule)",
+   "link_to": "Course Schedule",
+   "type": "DocType"
+  }
  ],
  "title": "Zavuch"
 }

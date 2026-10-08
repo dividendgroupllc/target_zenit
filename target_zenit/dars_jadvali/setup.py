@@ -135,6 +135,7 @@ def sinf_guruhlarini_belgila():
 
 def hammasi():
 	zavuch_roli()
+	operator_ruxsatlari()
 	custom_fieldlar()
 	qongiroqlar()
 	sinf_guruhlarini_belgila()
@@ -255,3 +256,39 @@ def after_migrate():
 		hammasi()
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "dars_jadvali setup after_migrate")
+
+
+# Xojakbar_Operator — yo'qlama va dars jadvali bo'yicha TO'LIQ huquq
+OPERATOR = "Xojakbar_Operator"
+OPERATOR_PERMS = {
+	"Attendance": (1, 1, 1, 1),
+	"Jadval Versiyasi": (1, 1, 1, 1),
+	"Jadval Yozuvi": (1, 1, 1, 1),
+	"Dars Bloki": (1, 1, 1, 1),
+	"Qongiroq Jadvali": (1, 1, 1, 1),
+	"Student Group": (1, 1, 1, 0),
+	"Course": (1, 1, 1, 0),
+	"Instructor": (1, 1, 1, 0),
+	"Course Schedule": (1, 1, 1, 1),
+	"Room": (1, 1, 1, 0),
+}
+
+
+def operator_ruxsatlari():
+	"""Operatorga yo'qlama/jadval bo'yicha to'liq huquq (o'qish-yozish-o'chirish)."""
+	from frappe.permissions import add_permission, update_permission_property
+
+	if not frappe.db.exists("Role", OPERATOR):
+		print(f"{OPERATOR} roli yo'q — o'tkazib yuborildi")
+		return
+	for dt, (r, w, c, d) in OPERATOR_PERMS.items():
+		if not frappe.db.exists("DocType", dt):
+			continue
+		bor = frappe.db.exists("Custom DocPerm", {"parent": dt, "role": OPERATOR, "permlevel": 0}) \
+			or frappe.db.exists("DocPerm", {"parent": dt, "role": OPERATOR, "permlevel": 0})
+		if not bor:
+			add_permission(dt, OPERATOR, 0)
+		for prop, val in (("read", r), ("write", w), ("create", c), ("delete", d),
+						  ("report", 1), ("export", 1), ("print", 1), ("share", 1)):
+			update_permission_property(dt, OPERATOR, 0, prop, val, validate=False)
+	print(f"{OPERATOR} ruxsatlari: {len(OPERATOR_PERMS)} doctype")

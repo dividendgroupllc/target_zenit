@@ -334,3 +334,73 @@ def test_yoqlama_yozish(user="zavuch_test@target.local"):
 											   "docstatus": ["<", 2]}, "name")
 	print("  Bazada qolgan yozuv:", qolgan or "yo'q (tozalandi) ✓")
 	frappe.db.commit()
+
+
+def test_zavuch_sidebar(user="zavuch_test@target.local"):
+	"""Zavuch yon panelida qaysi workspace'lar ko'rinadi?"""
+	from frappe.desk.desktop import get_workspace_sidebar_items
+
+	frappe.set_user(user)
+	try:
+		items = get_workspace_sidebar_items().get("pages", [])
+		print("ko'rinadigan workspace'lar:", [p.get("name") for p in items])
+	except Exception as e:
+		print("XATO:", type(e).__name__, e)
+	ws = frappe.get_doc("Workspace", "Zavuch")
+	print("Zavuch ruxsati (has_permission):", frappe.has_permission("Workspace", doc=ws))
+	frappe.set_user("Administrator")
+
+
+def test_operator_yoqlama(user="xojakbar@gmail.com"):
+	"""Operator: yo'qlama to'liq huquq bilan ishlaydimi?"""
+	from frappe.desk.desk_page import getpage
+	from frappe.utils import nowdate
+
+	from target_zenit import yoqlama
+
+	frappe.set_user(user)
+	try:
+		getpage("yoqlama")
+		print("  sahifa: OCHILADI")
+	except Exception as e:
+		print("  sahifa XATO:", type(e).__name__)
+	try:
+		d = yoqlama.get_data()
+		print(f"  get_data: OK — {len(d['qatorlar'])} xodim")
+	except Exception as e:
+		print("  get_data XATO:", type(e).__name__, e)
+	emp = frappe.db.get_value("Instructor", {"employee": ["is", "set"]}, "employee")
+	try:
+		print("  belgila(Keldi):", yoqlama.belgila(emp, nowdate(), "Keldi"))
+		print("  belgila(tozalash):", yoqlama.belgila(emp, nowdate(), "tozalash"))
+	except Exception as e:
+		print("  belgila XATO:", type(e).__name__, e)
+	for dt in ("Attendance", "Jadval Yozuvi", "Course Schedule"):
+		print(f"  {dt:16} o'qish={frappe.has_permission(dt,'read')} yozish={frappe.has_permission(dt,'write')} "
+			  f"yaratish={frappe.has_permission(dt,'create')} o'chirish={frappe.has_permission(dt,'delete')}")
+	frappe.set_user("Administrator")
+	frappe.db.commit()
+
+
+def test_kim_yoqlamaga_kiradi():
+	"""Yo'qlamaga kim kira oladi — xojakbar@gmail.com (Xojakbar_Operator) vs
+	operator@gmail.com (Operator). Faqat birinchisiga ruxsat berilgan."""
+	from frappe.desk.desk_page import getpage
+
+	from target_zenit import yoqlama
+
+	for user in ("xojakbar@gmail.com", "operator@gmail.com"):
+		frappe.set_user(user)
+		rollar = [r for r in frappe.get_roles() if "perator" in r or "avuch" in r]
+		try:
+			getpage("yoqlama")
+			sahifa = "OCHILADI"
+		except Exception:
+			sahifa = "yopiq"
+		try:
+			d = yoqlama.get_data()
+			api = f"OK ({len(d['qatorlar'])} xodim)"
+		except Exception as e:
+			api = f"yopiq ({type(e).__name__})"
+		print(f"{user:24} rollari={rollar} | sahifa: {sahifa} | API: {api}")
+	frappe.set_user("Administrator")

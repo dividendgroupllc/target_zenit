@@ -12,7 +12,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
-ROLLAR = ["System Manager", "Zavuch", "HR Manager", "HR User"]
+ROLLAR = ["System Manager", "Zavuch", "Xojakbar_Operator", "HR Manager", "HR User"]
 HAFTA = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"]
 
 
