@@ -1,0 +1,77 @@
+/* Dars jadvali — target_zenit. Qarzdorlik paneli palitrasi, light/dark. */
+.tz-fullbleed-wrap { padding:0 !important; }
+.tz-container-fluid { max-width:none !important; width:100% !important; padding-left:0 !important; padding-right:0 !important; }
+
+.tz-jadval {
+  --page:#eef1f6; --card:#ffffff; --card-2:#f7f9fc; --ink:#131a29; --ink-2:#566175;
+  --muted:#8a93a6; --line:#e3e8f0; --line-strong:#d3dae6;
+  --brand:#0e7c86; --brand-ink:#0a5c64; --brand-wash:#e4f2f3;
+  --good:#12a150; --bad:#d8443c; --bad-ink:#b93129; --warn:#dd9a1f; --warn-ink:#a8730b;
+  --blue:#2a78d6;
+  --shadow:0 1px 2px rgba(19,26,41,.05), 0 8px 24px -12px rgba(19,26,41,.14);
+  --radius:14px;
+  color:var(--ink); display:block; width:100%;
+  padding:18px clamp(12px,2vw,28px) 48px; min-height:calc(100vh - 62px);
+}
+[data-theme="dark"] .tz-jadval {
+  --page:#0d131f; --card:#161e2c; --card-2:#111827; --ink:#eef1f7; --ink-2:#9aa6ba;
+  --muted:#6f7c92; --line:#243044; --line-strong:#2e3b52;
+  --brand:#25b3bf; --brand-ink:#7fd8df; --brand-wash:#0e2e33;
+  --good:#31c06d; --bad:#f0685f; --bad-ink:#ff9c95; --warn:#efb63f; --warn-ink:#ffd77e;
+  --blue:#5b9bea; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+}
+.tz-jadval .loading { padding:40px; text-align:center; color:var(--muted); }
+.tz-jadval .topbar { display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+.tz-jadval .topbar h1 { font-size:20px; font-weight:700; margin:0; }
+.tz-jadval .topbar .sub { color:var(--ink-2); font-size:12px; margin-top:4px; }
+.tz-jadval .spacer { flex:1; }
+.tz-jadval .refresh, .tz-jadval select { background:var(--card); border:1px solid var(--line-strong);
+  border-radius:10px; padding:7px 12px; font-size:13px; cursor:pointer; color:var(--ink); }
+.tz-jadval .refresh .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--good); margin-right:6px; }
+.tz-jadval .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.tz-jadval .mb { margin-bottom:12px; }
+.tz-jadval .chips { display:flex; gap:6px; flex-wrap:wrap; }
+.tz-jadval .chip { background:var(--card); border:1px solid var(--line-strong); border-radius:999px;
+  padding:6px 14px; font-size:13px; cursor:pointer; color:var(--ink-2); }
+.tz-jadval .chip.on { background:var(--brand-wash); border-color:var(--brand); color:var(--brand-ink); font-weight:600; }
+.tz-jadval .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
+.tz-jadval .scroll-x { overflow-x:auto; border-radius:var(--radius); }
+
+/* to'r */
+.tz-jadval table.grid { border-collapse:separate; border-spacing:0; width:100%; font-size:12px; }
+.tz-jadval table.grid th { position:sticky; top:0; z-index:2; background:var(--card-2); color:var(--ink);
+  border-bottom:1px solid var(--line-strong); border-right:1px solid var(--line);
+  padding:7px 6px; font-size:12px; font-weight:700; text-align:center; white-space:nowrap; }
+.tz-jadval table.grid th span { display:block; font-size:9px; font-weight:400; color:var(--muted); }
+.tz-jadval table.grid th.dars-no { left:0; z-index:3; min-width:60px; }
+.tz-jadval table.grid td { border-bottom:1px solid var(--line); border-right:1px solid var(--line);
+  padding:3px; vertical-align:top; min-width:112px; }
+.tz-jadval table.grid tbody th.dars-no { position:sticky; left:0; z-index:1; background:var(--card-2);
+  text-align:center; padding:6px; }
+.tz-jadval table.grid tbody th.dars-no b { font-size:14px; }
+.tz-jadval table.grid tbody th.dars-no span { display:block; font-size:9px; color:var(--muted); font-weight:400; }
+.tz-jadval td.bosh { background:repeating-linear-gradient(45deg, transparent, transparent 6px, var(--card-2) 6px, var(--card-2) 12px); }
+
+.tz-jadval .lesson { border-radius:7px; padding:4px 6px; margin-bottom:3px; cursor:pointer;
+  background:hsl(var(--h) 62% 94%); border-left:3px solid hsl(var(--h) 55% 48%); }
+[data-theme="dark"] .tz-jadval .lesson { background:hsl(var(--h) 40% 18%); border-left-color:hsl(var(--h) 60% 55%); }
+.tz-jadval .lesson:last-child { margin-bottom:0; }
+.tz-jadval .lesson:hover { filter:brightness(.96); }
+.tz-jadval .lesson .fan { font-weight:700; font-size:11px; color:hsl(var(--h) 60% 28%); }
+[data-theme="dark"] .tz-jadval .lesson .fan { color:hsl(var(--h) 70% 78%); }
+.tz-jadval .lesson .oqit { font-size:10px; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tz-jadval .lesson .bk { font-size:9px; opacity:.75; font-weight:600; }
+.tz-jadval td.multi { background:var(--card-2); }
+
+/* dialog jadvali */
+.tz-jadval .tbl { width:100%; border-collapse:collapse; font-size:13px; }
+.tz-jadval .tbl th { text-align:left; font-size:11px; text-transform:uppercase; color:var(--muted);
+  padding:6px 8px; border-bottom:1px solid var(--line-strong); }
+.tz-jadval .tbl td { padding:5px 8px; border-bottom:1px solid var(--line); }
+.tz-jadval .tbl .r { text-align:right; }
+.tz-jadval .ogoh { color:var(--bad-ink); font-weight:700; }
+
+@media (max-width: 900px) {
+  .tz-jadval { padding:12px 8px 40px; }
+  .tz-jadval table.grid td { min-width:96px; }
+}

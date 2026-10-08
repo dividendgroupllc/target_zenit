@@ -1,0 +1,107 @@
+{
+ "charts": [],
+ "content": "[{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dars jadvali</b></span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dars jadvali (to'r)\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Mening jadvalim\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Jadval versiyalari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Jadval yozuvlari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dars bloklari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'qish guruhlari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'qituvchilar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Qo'ng'iroq jadvali\",\"col\":3}}]",
+ "creation": "2026-10-08 12:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "calendar",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Jadval boshqaruvi",
+ "links": [],
+ "modified": "2026-10-08 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Jadval boshqaruvi",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Academics User"
+  },
+  {
+   "role": "Education Manager"
+  },
+  {
+   "role": "Instructor"
+  },
+  {
+   "role": "Sales Manager"
+  },
+  {
+   "role": "investor"
+  },
+  {
+   "role": "Xojakbar_Operator"
+  },
+  {
+   "role": "Zavuch"
+  }
+ ],
+ "sequence_id": 99.2,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "label": "Dars jadvali (to'r)",
+   "type": "Page",
+   "link_to": "dars-jadvali"
+  },
+  {
+   "color": "Green",
+   "label": "Mening jadvalim",
+   "type": "Page",
+   "link_to": "mening-jadvalim"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Jadval versiyalari",
+   "link_to": "Jadval Versiyasi",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Jadval yozuvlari",
+   "link_to": "Jadval Yozuvi",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Dars bloklari",
+   "link_to": "Dars Bloki",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "O'qish guruhlari",
+   "link_to": "Student Group",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "O'qituvchilar",
+   "link_to": "Instructor",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "label": "Qo'ng'iroq jadvali",
+   "link_to": "Qongiroq Jadvali",
+   "type": "DocType"
+  }
+ ],
+ "title": "Jadval boshqaruvi"
+}

@@ -1,0 +1,219 @@
+{
+ "actions": [],
+ "autoname": "format:JY-{#####}",
+ "creation": "2026-10-08 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "versiya",
+  "kun",
+  "dars_raqami",
+  "kun_raqami",
+  "column_break_1",
+  "guruh",
+  "guruh_nomi",
+  "fan",
+  "section_1",
+  "oqituvchi",
+  "oqituvchi_nomi",
+  "column_break_2",
+  "blok",
+  "xona",
+  "section_2",
+  "boshlanish",
+  "tugash",
+  "column_break_3",
+  "sinflar",
+  "izoh"
+ ],
+ "fields": [
+  {
+   "fieldname": "versiya",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Jadval versiyasi",
+   "options": "Jadval Versiyasi",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "kun",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kun",
+   "options": "Dushanba\nSeshanba\nChorshanba\nPayshanba\nJuma\nShanba",
+   "reqd": 1
+  },
+  {
+   "fieldname": "dars_raqami",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Dars №",
+   "reqd": 1
+  },
+  {
+   "fieldname": "kun_raqami",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Kun raqami",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "guruh",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "O'qish guruhi",
+   "options": "Student Group",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fetch_from": "guruh.student_group_name",
+   "fieldname": "guruh_nomi",
+   "fieldtype": "Data",
+   "label": "Guruh nomi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fan",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Fan",
+   "options": "Course",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "oqituvchi",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "O'qituvchi",
+   "options": "Instructor"
+  },
+  {
+   "fetch_from": "oqituvchi.instructor_name",
+   "fieldname": "oqituvchi_nomi",
+   "fieldtype": "Data",
+   "label": "O'qituvchi nomi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "blok",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Dars bloki",
+   "options": "Dars Bloki"
+  },
+  {
+   "fieldname": "xona",
+   "fieldtype": "Link",
+   "label": "Xona (ixtiyoriy)",
+   "options": "Room"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_2",
+   "fieldtype": "Section Break",
+   "label": "Hisoblanadigan"
+  },
+  {
+   "fieldname": "boshlanish",
+   "fieldtype": "Time",
+   "label": "Boshlanish",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tugash",
+   "fieldtype": "Time",
+   "label": "Tugash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Guruhga kiruvchi sinflar (blokdan yoki guruhning o'zidan)",
+   "fieldname": "sinflar",
+   "fieldtype": "Small Text",
+   "label": "Sinflar",
+   "read_only": 1
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Data",
+   "label": "Izoh"
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-08 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Jadval Yozuvi",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Academics User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Instructor"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Zavuch",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "guruh_nomi,fan,oqituvchi_nomi",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "guruh_nomi",
+ "track_changes": 1
+}

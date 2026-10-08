@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:nomi",
+ "creation": "2026-10-08 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "nomi",
+  "sinf_pattern",
+  "column_break_1",
+  "tartib",
+  "faol",
+  "section_1",
+  "qatorlar"
+ ],
+ "fields": [
+  {
+   "fieldname": "nomi",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Nomi",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "Qaysi sinflarga amal qiladi. fnmatch shablon, vergul bilan: 1 *,2 *,3 *,4 *,5 A*  |  hammasi uchun: *",
+   "fieldname": "sinf_pattern",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Sinf shabloni",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "10",
+   "description": "Kichik raqam oldin tekshiriladi (birinchi mos kelgani ishlatiladi)",
+   "fieldname": "tartib",
+   "fieldtype": "Int",
+   "label": "Tartib"
+  },
+  {
+   "default": "1",
+   "fieldname": "faol",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Faol"
+  },
+  {
+   "fieldname": "section_1",
+   "fieldtype": "Section Break",
+   "label": "Dars vaqtlari"
+  },
+  {
+   "fieldname": "qatorlar",
+   "fieldtype": "Table",
+   "label": "Qatorlar",
+   "options": "Qongiroq Qatori",
+   "reqd": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-08 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Qongiroq Jadvali",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Academics User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Instructor"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Zavuch",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "tartib",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

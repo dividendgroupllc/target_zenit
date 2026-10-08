@@ -1,0 +1,133 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:nomi",
+ "creation": "2026-10-08 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "nomi",
+  "fan",
+  "column_break_1",
+  "academic_year",
+  "faol",
+  "section_1",
+  "sinflar",
+  "section_2",
+  "guruhlar"
+ ],
+ "fields": [
+  {
+   "description": "Masalan: MATH 8-9",
+   "fieldname": "nomi",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Nomi",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "fan",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Fan",
+   "options": "Course"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "academic_year",
+   "fieldtype": "Link",
+   "label": "O'quv yili",
+   "options": "Academic Year"
+  },
+  {
+   "default": "1",
+   "fieldname": "faol",
+   "fieldtype": "Check",
+   "label": "Faol"
+  },
+  {
+   "description": "Bu vaqtda birga dars qiladigan sinflar",
+   "fieldname": "section_1",
+   "fieldtype": "Section Break",
+   "label": "Blokka kiruvchi sinflar"
+  },
+  {
+   "fieldname": "sinflar",
+   "fieldtype": "Table",
+   "label": "Sinflar",
+   "options": "Dars Bloki Sinfi",
+   "reqd": 1
+  },
+  {
+   "description": "Sinflar shu guruhlarga qayta taqsimlanadi (High/Middle/Low yoki tanlov)",
+   "fieldname": "section_2",
+   "fieldtype": "Section Break",
+   "label": "Daraja / tanlov guruhlari"
+  },
+  {
+   "fieldname": "guruhlar",
+   "fieldtype": "Table",
+   "label": "Guruhlar",
+   "options": "Dars Bloki Guruhi",
+   "reqd": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-08 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Dars Bloki",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Academics User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Instructor"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Zavuch",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

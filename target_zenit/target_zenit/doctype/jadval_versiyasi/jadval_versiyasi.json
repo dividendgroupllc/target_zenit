@@ -1,0 +1,140 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:nomi",
+ "creation": "2026-10-08 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "nomi",
+  "academic_year",
+  "holat",
+  "column_break_1",
+  "amal_boshlanishi",
+  "amal_tugashi",
+  "section_1",
+  "izoh",
+  "yozuvlar_soni"
+ ],
+ "fields": [
+  {
+   "fieldname": "nomi",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Nomi",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "academic_year",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "O'quv yili",
+   "options": "Academic Year",
+   "reqd": 1
+  },
+  {
+   "default": "Qoralama",
+   "description": "Qoralama — ishlanmoqda, hech kim ko'rmaydi. Faol — amal qiladi. Arxiv — tarix.",
+   "fieldname": "holat",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Holat",
+   "options": "Qoralama\nFaol\nArxiv",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amal_boshlanishi",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Amal boshlanishi",
+   "reqd": 1
+  },
+  {
+   "description": "Bo'sh = muddatsiz (keyingi versiya Faol bo'lguncha)",
+   "fieldname": "amal_tugashi",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Amal tugashi"
+  },
+  {
+   "fieldname": "section_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Small Text",
+   "label": "Izoh (nima o'zgardi)"
+  },
+  {
+   "fieldname": "yozuvlar_soni",
+   "fieldtype": "Int",
+   "label": "Jadval yozuvlari",
+   "read_only": 1
+  }
+ ],
+ "links": [
+  {
+   "link_doctype": "Jadval Yozuvi",
+   "link_fieldname": "versiya"
+  }
+ ],
+ "modified": "2026-10-08 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Jadval Versiyasi",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Academics User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Instructor"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Zavuch",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "amal_boshlanishi",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
