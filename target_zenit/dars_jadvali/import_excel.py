@@ -90,11 +90,53 @@ TOLIQ_ISM = {
 VAKANTLAR = {"AI VACANT", "Chess vakant", "Music vakant", "TUTOR", "Personal Development"}
 
 
+
+def _fayl_yoli(path: str) -> str:
+	"""Fayl yo'lini aniqlaydi. Uch xil ko'rinishni qabul qiladi:
+	  - to'liq yo'l: /home/user/Downloads/Umumiy_dars_jadvali.xlsx
+	  - Frappe File URL: /files/Umumiy_dars_jadvali.xlsx yoki /private/files/...
+	  - faqat fayl nomi: Umumiy_dars_jadvali.xlsx  (File doctype'dan topiladi)
+	Shu sababli serverga SSH bilan fayl ko'chirish shart emas — Desk'dan
+	(/app/file) yuklab, nomini berish kifoya."""
+	import os
+
+	if path.startswith("/files/"):
+		return frappe.get_site_path("public", "files", os.path.basename(path))
+	if path.startswith("/private/files/"):
+		return frappe.get_site_path("private", "files", os.path.basename(path))
+	if os.path.isabs(path) and os.path.exists(path):
+		return path
+
+	# fayl nomi bo'yicha File doctype'dan qidirish (eng oxirgi yuklangani).
+	# DIQQAT: Frappe bir xil nomli fayl bo'lsa nomiga hash qo'shadi
+	# (Umumiy_dars_jadvali7735ee.xlsx) — shuning uchun LIKE bilan qidiramiz.
+	nom = os.path.basename(path)
+	asos, kengaytma = os.path.splitext(nom)
+	f = frappe.db.get_value(
+		"File", {"file_name": nom}, ["file_url", "is_private"], order_by="creation desc", as_dict=True
+	)
+	if not f:
+		f = frappe.db.get_value(
+			"File",
+			{"file_name": ["like", f"{asos}%{kengaytma}"]},
+			["file_url", "is_private"],
+			order_by="creation desc",
+			as_dict=True,
+		)
+	if not f:
+		frappe.throw(
+			f"Fayl topilmadi: {nom}. Uni Desk'da /app/file sahifasidan yuklang "
+			"yoki to'liq yo'lini bering."
+		)
+	papka = "private" if f.is_private else "public"
+	return frappe.get_site_path(papka, "files", os.path.basename(f.file_url))
+
+
 # ------------------------------------------------------------------ o'qish
 def _oqish(path: str):
 	import openpyxl
 
-	wb = openpyxl.load_workbook(path, data_only=True)
+	wb = openpyxl.load_workbook(_fayl_yoli(path), data_only=True)
 	ws = wb["Umumiy jadval"]
 	sinflar = [ws.cell(4, c).value for c in range(4, ws.max_column + 1)]
 	yacheykalar = []

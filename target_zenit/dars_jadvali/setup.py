@@ -231,3 +231,15 @@ def zavuch_test(user="zavuch_test@target.local"):
 	for dt in ("Jadval Yozuvi", "Student Group", "Course Schedule", "Instructor"):
 		print(f"  {dt}: read={frappe.has_permission(dt, 'read')} write={frappe.has_permission(dt, 'write')}")
 	frappe.set_user("Administrator")
+
+
+def fayl_royxatdan_otkaz(nom="Umumiy_dars_jadvali.xlsx"):
+	"""Test: sites/.../public/files ichidagi faylni File doctype'ga ro'yxatdan o'tkazish."""
+	if frappe.db.exists("File", {"file_name": nom}):
+		print("File yozuvi bor edi")
+		return
+	frappe.get_doc(
+		{"doctype": "File", "file_name": nom, "file_url": f"/files/{nom}", "is_private": 0}
+	).insert(ignore_permissions=True)
+	frappe.db.commit()
+	print("File yozuvi yaratildi:", nom)
