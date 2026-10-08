@@ -2862,3 +2862,203 @@ def get_nachisleniya(from_date=None, to_date=None, limit=500):
         res["credit"] = {"rows": [], "total_by_ccy": [], "cats": [], "groups": [], "accts": [],
                        "sinfs": [], "positions": [], "dkinds": [], "count": 0, "truncated": 0}
     return res
+
+
+# ===========================================================================
+# Sotuv bo'limi nazorati (kontrol-list)
+# Manba: Aloqa Yozuvi + Qarz Ishi + Tolov Vadasi + Payment Entry — jonli hisob.
+# Qarorlar (2026-10-08, foydalanuvchi): norma yo'q; to'lov JORIY MAS'ULGA
+# yoziladi; qo'ng'iroq davomiyligi yuritilmaydi.
+# ===========================================================================
+SOTUV_YOPIQ = ("Yopildi - To'landi", "Yopildi - Boshqa")
+
+
+def _oz_ishini_korsin() -> bool:
+    """Sotuv menejeri faqat o'z statistikasini ko'radi; rahbar/investor — hammani."""
+    roles = {r.lower() for r in frappe.get_roles()}
+    rahbar = {"system manager", "sales manager", "investor", "xojakbar_operator",
+              "accounts manager", "operator"}
+    return not (rahbar & roles)
+
+
+@frappe.whitelist()
+def get_sotuv_nazorati(from_date=None, to_date=None, masul=None, limit=500):
+    """Menejerlar kesimi (leaderboard) + qo'ng'iroqlar lentasi (kontrol-list)."""
+    _guard()
+    to_date = to_date or today()
+    from_date = from_date or add_days(to_date, -30)
+
+    faqat_ozi = _oz_ishini_korsin()
+    if faqat_ozi:
+        masul = frappe.session.user
+
+    shart, params = ["ay.creation BETWEEN %(f)s AND %(t)s"], {
+        "f": f"{from_date} 00:00:00", "t": f"{to_date} 23:59:59"}
+    if masul:
+        shart.append("ay.masul = %(m)s")
+        params["m"] = masul
+    where = " AND ".join(shart)
+
+    # --- qo'ng'iroqlar lentasi ---
+    aloqalar = frappe.db.sql(
+        f"""SELECT ay.name, ay.creation, ay.vaqt, ay.owner, ay.masul, ay.kanal,
+                   ay.aloqa_natijasi, ay.hisob_natijasi, ay.komment,
+                   ay.keyingi_harakat, ay.keyingi_sana, ay.vada_summa, ay.vada_sana,
+                   ay.qarz_ishi, ay.student_name,
+                   qi.sinf, qi.payer_name, qi.payer_phone, qi.qarz_summa,
+                   TIMESTAMPDIFF(MINUTE, ay.vaqt, ay.creation) kechikish_min,
+                   (ay.modified > DATE_ADD(ay.creation, INTERVAL 1 MINUTE)) tahrirlangan
+            FROM `tabAloqa Yozuvi` ay
+            LEFT JOIN `tabQarz Ishi` qi ON qi.name = ay.qarz_ishi
+            WHERE {where}
+            ORDER BY ay.creation DESC
+            LIMIT {int(limit)}""",
+        params, as_dict=True)
+
+    user_nomlari = {u.name: (u.full_name or u.name) for u in frappe.get_all(
+        "User", fields=["name", "full_name"], limit_page_length=0)}
+
+    for a in aloqalar:
+        a["masul_nomi"] = user_nomlari.get(a.masul, a.masul)
+        a["boshqa_kiritdi"] = 1 if (a.owner and a.masul and a.owner != a.masul) else 0
+        # Sifat: izoh bor va mazmunli + keyingi sana bor
+        a["sifatli"] = 1 if (a.komment or "").strip().__len__() >= 10 and a.keyingi_sana else 0
+        # "Keyin kiritilgan": hodisa vaqti bilan yozuv vaqti orasida 2+ soat
+        a["kech_kiritilgan"] = 1 if flt(a.kechikish_min) >= 120 else 0
+
+    # --- menejerlar kesimi ---
+    jadval = _sotuv_leaderboard(from_date, to_date, masul)
+
+    jami = {
+        "qongiroq": len(aloqalar),
+        "gaplashildi": sum(1 for a in aloqalar if a.aloqa_natijasi == "Gaplashildi"),
+        "ota_onalar": len({a.payer_phone or a.qarz_ishi for a in aloqalar
+                           if a.aloqa_natijasi == "Gaplashildi"}),
+        "vada_soni": sum(1 for a in aloqalar if a.hisob_natijasi == "Va'da berdi"),
+        "vada_summa": sum(flt(a.vada_summa) for a in aloqalar),
+        "yigildi": sum(flt(m["yigildi"]) for m in jadval),
+        "sifatsiz": sum(1 for a in aloqalar if not a["sifatli"]),
+    }
+    return {
+        "from_date": from_date, "to_date": to_date,
+        "faqat_ozi": faqat_ozi,
+        "jami": jami,
+        "menejerlar": jadval,
+        "aloqalar": aloqalar,
+        "ochiq_ishlar": frappe.db.count(
+            "Qarz Ishi", {"ishlov_status": ["not in", list(SOTUV_YOPIQ)]}),
+    }
+
+
+def _sotuv_leaderboard(from_date, to_date, masul=None):
+    """Menejerlar kesimi: faollik + natija yonma-yon (jahon amaliyoti)."""
+    m_shart = " AND ay.masul = %(m)s" if masul else ""
+    params = {"f": f"{from_date} 00:00:00", "t": f"{to_date} 23:59:59", "m": masul}
+
+    # 1) Faollik: qo'ng'iroqlar, ulanish, noyob ota-onalar, sifat
+    faollik = frappe.db.sql(
+        f"""SELECT ay.masul,
+                   COUNT(*) qongiroq,
+                   SUM(ay.aloqa_natijasi = 'Gaplashildi') ulandi,
+                   COUNT(DISTINCT CASE WHEN ay.aloqa_natijasi='Gaplashildi'
+                         THEN COALESCE(NULLIF(qi.payer_phone,''), ay.qarz_ishi) END) ota_onalar,
+                   SUM(ay.hisob_natijasi = 'Va''da berdi') vada_soni,
+                   COALESCE(SUM(ay.vada_summa), 0) vada_summa,
+                   SUM(CHAR_LENGTH(COALESCE(ay.komment,'')) >= 10
+                       AND ay.keyingi_sana IS NOT NULL) sifatli,
+                   MAX(ay.creation) oxirgi_faollik
+            FROM `tabAloqa Yozuvi` ay
+            LEFT JOIN `tabQarz Ishi` qi ON qi.name = ay.qarz_ishi
+            WHERE ay.creation BETWEEN %(f)s AND %(t)s {m_shart}
+            GROUP BY ay.masul""",
+        params, as_dict=True)
+
+    # 2) Ochiq ishlar, qamrov, kechikkanlar — joriy mas'ul bo'yicha
+    ishlar = frappe.db.sql(
+        f"""SELECT qi.masul,
+                   COUNT(*) ochiq_ish,
+                   SUM(qi.keyingi_aloqa < %(bugun)s) kechikkan,
+                   SUM(qi.urinishsiz) tegilmagan,
+                   COALESCE(SUM(qi.qarz_summa), 0) qarz
+            FROM (SELECT masul, keyingi_aloqa, qarz_summa,
+                         (urinishlar_soni = 0) urinishsiz
+                  FROM `tabQarz Ishi`
+                  WHERE ishlov_status NOT IN ('Yopildi - To''landi', 'Yopildi - Boshqa')
+                  {' AND masul = %(m)s' if masul else ''}) qi
+            GROUP BY qi.masul""",
+        {"bugun": today(), "m": masul}, as_dict=True)
+
+    # 3) Va'dalar bajarilishi — va'da SANASI davrga tushganlar bo'yicha
+    vadalar = frappe.db.sql(
+        f"""SELECT tv.masul,
+                   COUNT(*) vada_muddati_keldi,
+                   SUM(tv.holat = 'Bajarildi') bajarildi,
+                   SUM(tv.holat = 'Buzildi') buzildi
+            FROM `tabTolov Vadasi` tv
+            WHERE tv.vada_sana BETWEEN %(f)s AND %(t)s
+              AND tv.holat != 'Bekor' {' AND tv.masul = %(m)s' if masul else ''}
+            GROUP BY tv.masul""",
+        {"f": from_date, "t": to_date, "m": masul}, as_dict=True)
+
+    # 4) Yig'ilgan to'lov — ishning JORIY mas'uliga yoziladi (kelishilgan qoida)
+    yigildi = frappe.db.sql(
+        f"""SELECT qi.masul, COALESCE(SUM(
+                     CASE WHEN pe.paid_from_account_currency = 'UZS' THEN pe.paid_amount
+                          WHEN pe.paid_to_account_currency = 'UZS' THEN pe.received_amount
+                          ELSE 0 END), 0) summa
+            FROM `tabPayment Entry` pe
+            JOIN `tabQarz Ishi` qi ON qi.customer = pe.party
+            WHERE pe.docstatus = 1 AND pe.payment_type = 'Receive'
+              AND pe.party_type = 'Customer'
+              AND pe.posting_date BETWEEN %(f)s AND %(t)s
+              {' AND qi.masul = %(m)s' if masul else ''}
+            GROUP BY qi.masul""",
+        {"f": from_date, "t": to_date, "m": masul}, as_dict=True)
+
+    user_nomlari = {u.name: (u.full_name or u.name) for u in frappe.get_all(
+        "User", fields=["name", "full_name", "enabled"], limit_page_length=0)}
+    faol_userlar = {u.name: u.enabled for u in frappe.get_all(
+        "User", fields=["name", "enabled"], limit_page_length=0)}
+
+    qator = {}
+
+    def olish(user):
+        if user not in qator:
+            qator[user] = {
+                "masul": user, "nomi": user_nomlari.get(user, user),
+                "faol": bool(faol_userlar.get(user, 0)),
+                "qongiroq": 0, "ulandi": 0, "ota_onalar": 0, "vada_soni": 0,
+                "vada_summa": 0.0, "sifatli": 0, "oxirgi_faollik": None,
+                "ochiq_ish": 0, "kechikkan": 0, "tegilmagan": 0, "qarz": 0.0,
+                "vada_muddati_keldi": 0, "bajarildi": 0, "buzildi": 0, "yigildi": 0.0,
+            }
+        return qator[user]
+
+    for r in faollik:
+        q = olish(r.masul)
+        q.update({k: r[k] for k in ("qongiroq", "ulandi", "ota_onalar", "vada_soni",
+                                    "sifatli", "oxirgi_faollik")})
+        q["vada_summa"] = flt(r.vada_summa)
+    for r in ishlar:
+        q = olish(r.masul)
+        q.update({"ochiq_ish": cint(r.ochiq_ish), "kechikkan": cint(r.kechikkan),
+                  "tegilmagan": cint(r.tegilmagan), "qarz": flt(r.qarz)})
+    for r in vadalar:
+        q = olish(r.masul)
+        q.update({"vada_muddati_keldi": cint(r.vada_muddati_keldi),
+                  "bajarildi": cint(r.bajarildi), "buzildi": cint(r.buzildi)})
+    for r in yigildi:
+        olish(r.masul)["yigildi"] = flt(r.summa)
+
+    out = []
+    for q in qator.values():
+        q["ulanish_foiz"] = round(q["ulandi"] / q["qongiroq"] * 100) if q["qongiroq"] else 0
+        q["vada_foiz"] = round(q["vada_soni"] / q["ulandi"] * 100) if q["ulandi"] else 0
+        q["kept_foiz"] = (round(q["bajarildi"] / q["vada_muddati_keldi"] * 100)
+                          if q["vada_muddati_keldi"] else None)
+        q["qamrov_foiz"] = (round((q["ochiq_ish"] - q["tegilmagan"]) / q["ochiq_ish"] * 100)
+                            if q["ochiq_ish"] else None)
+        q["sifat_foiz"] = round(q["sifatli"] / q["qongiroq"] * 100) if q["qongiroq"] else None
+        out.append(q)
+    out.sort(key=lambda x: (-x["qongiroq"], -x["yigildi"]))
+    return out

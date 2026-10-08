@@ -61,8 +61,12 @@ class TZInvestorDashboard {
 			{ key: "personal", label: "Personal" },
 			{ key: "balance", label: "Balans" },
 			{ key: "nach", label: "Nachisleniya" },
+			{ key: "sotuv", label: "Sotuv nazorati" },
 		];
 		this.nach = null;           // nachisleniya ma'lumoti (kesh)
+		this.sotuv = null;          // sotuv nazorati ma'lumoti (kesh)
+		this.sotuvMasul = "";       // menejer filtri ("" = hammasi)
+		this.sotuvFiltr = "";       // lenta filtri: "" | "vada" | "sifatsiz" | "gaplashildi"
 		this.nachSide = "debit";    // "debit" (kirim) | "credit" (chiqim)
 		this.nachGroups = [];       // tanlangan guruhlar (bo'sh = hammasi)
 		this.nachCats = [];         // tanlangan toifalar (bo'sh = hammasi)
@@ -419,7 +423,7 @@ class TZInvestorDashboard {
 	renderTab() {
 		if (!this.data || !this.data.meta) return;
 		const body = this.page.main.find(".tz-body");
-		const fn = { overview: "renderOverview", cashflow: "renderCashflow", kunlik: "renderKunlik", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", personal: "renderPersonal", balance: "renderBalance", nach: "renderNach" }[this.active];
+		const fn = { overview: "renderOverview", cashflow: "renderCashflow", kunlik: "renderKunlik", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", personal: "renderPersonal", balance: "renderBalance", nach: "renderNach", sotuv: "renderSotuv" }[this.active];
 		body.html(this[fn]());
 		if (this.active === "kunlik") this.mountKunlik(body.find(".tz-kunlik-host"));
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
@@ -1906,6 +1910,162 @@ class TZInvestorDashboard {
 
 	// ================= TAB: Balans (Balance Sheet) =================
 	// ================= Nachisleniya tab =================
+	// ================== Sotuv nazorati (kontrol-list) ==================
+	renderSotuv() {
+		let h = this.sec("Sotuv bo'limi nazorati",
+			`${this.data.meta.period.label} · menejerlar qaysi ota-onalar bilan gaplashgan — qo'ng'iroqlar, natijalar, vaqt va izohlar`);
+		h += this.card(`
+			<div class="hd"><div><h3>Menejerlar kesimi</h3>
+				<div class="meta">Faollik (qo'ng'iroq, noyob ota-ona, qamrov) va natija (ulanish, va'da, va'da bajarilishi, yig'ilgan pul) yonma-yon</div></div></div>
+			<div class="tz-sotuv-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb");
+		setTimeout(() => { if (this.sotuv) this.paintSotuv(); else this.loadSotuv(); }, 0);
+		return h + this.note();
+	}
+
+	loadSotuv() {
+		const body = this.page.main.find(".tz-sotuv-body");
+		if (!body.length) return;
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_sotuv_nazorati",
+			args: { from_date: this.state.from_date, to_date: this.state.to_date, masul: this.sotuvMasul || null },
+		}).then((r) => { this.sotuv = r.message || null; this.paintSotuv(); })
+			.catch(() => body.html(`<div class="empty-hint">Ma'lumotni yuklab bo'lmadi.</div>`));
+	}
+
+	paintSotuv() {
+		const body = this.page.main.find(".tz-sotuv-body");
+		if (!body.length) return;
+		body.html(this.renderSotuvBody());
+		body.find("[data-sotuv-masul]").on("click", (e) => {
+			const v = String($(e.currentTarget).data("sotuv-masul"));
+			this.sotuvMasul = this.sotuvMasul === v ? "" : v;
+			this.sotuv = null; this.loadSotuv();
+		});
+		body.find("[data-sotuv-filtr]").on("click", (e) => {
+			const v = String($(e.currentTarget).data("sotuv-filtr"));
+			this.sotuvFiltr = this.sotuvFiltr === v ? "" : v;
+			this.paintSotuv();
+		});
+		body.find("[data-sotuv-csv]").on("click", () => this.sotuvCsv());
+	}
+
+	sotuvAloqalar() {
+		const a = (this.sotuv && this.sotuv.aloqalar) || [];
+		if (this.sotuvFiltr === "vada") return a.filter((x) => x.hisob_natijasi === "Va'da berdi");
+		if (this.sotuvFiltr === "sifatsiz") return a.filter((x) => !x.sifatli);
+		if (this.sotuvFiltr === "gaplashildi") return a.filter((x) => x.aloqa_natijasi === "Gaplashildi");
+		return a;
+	}
+
+	renderSotuvBody() {
+		const d = this.sotuv;
+		if (!d) return `<div class="tz-loader">Yuklanyapti…</div>`;
+		const j = d.jami || {};
+		const esc = (x) => frappe.utils.escape_html(String(x == null ? "" : x));
+		const dt = (x) => (x ? frappe.datetime.str_to_user(String(x).slice(0, 16)) : "—");
+		const pct = (v) => (v === null || v === undefined ? "—" : `${v}%`);
+
+		// --- tepa kartalar ---
+		const kpi = `
+			<div class="tz-sotuv-kpi">
+				<div class="k"><span class="l">Qo'ng'iroqlar</span><span class="v">${this.fmt(j.qongiroq)}</span>
+					<span class="s">${this.fmt(j.gaplashildi)} ta ulandi</span></div>
+				<div class="k"><span class="l">Gaplashilgan ota-onalar</span><span class="v">${this.fmt(j.ota_onalar)}</span>
+					<span class="s">noyob (takror sanalmaydi)</span></div>
+				<div class="k"><span class="l">Olingan va'dalar</span><span class="v">${this.fmt(j.vada_soni)}</span>
+					<span class="s">${this.kc(j.vada_summa)}</span></div>
+				<div class="k"><span class="l">Davrda tushgan to'lov</span><span class="v">${this.kc(j.yigildi)}</span>
+					<span class="s">menejerlarga biriktirilgan o'quvchilardan</span></div>
+			</div>`;
+
+		// --- menejerlar jadvali ---
+		const mrows = (d.menejerlar || []).map((m) => `
+			<tr class="${this.sotuvMasul === m.masul ? "on" : ""}" data-sotuv-masul="${esc(m.masul)}" style="cursor:pointer">
+				<td><b>${esc(m.nomi)}</b>${m.faol ? "" : ` <span class="tz-chip">nofaol</span>`}
+					<div class="tz-sub">${this.fmt(m.ochiq_ish)} ochiq ish · ${this.kc(m.qarz)}</div></td>
+				<td class="r">${this.fmt(m.qongiroq)}</td>
+				<td class="r">${this.fmt(m.ulandi)} <span class="tz-sub">${pct(m.ulanish_foiz)}</span></td>
+				<td class="r">${this.fmt(m.ota_onalar)}</td>
+				<td class="r">${this.fmt(m.vada_soni)}<div class="tz-sub">${this.kc(m.vada_summa)}</div></td>
+				<td class="r ${m.kept_foiz !== null && m.kept_foiz < 50 ? "neg" : ""}">${pct(m.kept_foiz)}
+					<div class="tz-sub">${this.fmt(m.bajarildi)}/${this.fmt(m.vada_muddati_keldi)}</div></td>
+				<td class="r">${this.kc(m.yigildi)}</td>
+				<td class="r ${m.qamrov_foiz !== null && m.qamrov_foiz < 50 ? "neg" : ""}">${pct(m.qamrov_foiz)}
+					<div class="tz-sub">${this.fmt(m.tegilmagan)} tegilmagan</div></td>
+				<td class="r ${m.kechikkan ? "neg" : ""}">${this.fmt(m.kechikkan)}</td>
+				<td class="r">${pct(m.sifat_foiz)}</td>
+				<td>${dt(m.oxirgi_faollik)}</td>
+			</tr>`).join("");
+
+		const jadval = `
+			<div class="tbl-wrap"><table class="tz-sotuv-tbl">
+				<thead><tr>
+					<th>Menejer</th><th class="r">Qo'ng'iroq</th><th class="r">Ulandi</th>
+					<th class="r">Ota-onalar</th><th class="r">Va'dalar</th><th class="r">Va'da bajarildi</th>
+					<th class="r">Tushgan to'lov</th><th class="r">Qamrov</th><th class="r">Kechikkan</th>
+					<th class="r">Sifat</th><th>Oxirgi faollik</th>
+				</tr></thead>
+				<tbody>${mrows || `<tr><td colspan="11" class="empty-hint">Menejer topilmadi</td></tr>`}</tbody>
+			</table></div>`;
+
+		// --- qo'ng'iroqlar lentasi ---
+		const list = this.sotuvAloqalar();
+		const lenta = list.map((a) => {
+			const belgilar = [
+				a.kech_kiritilgan ? `<span class="tz-chip warn" title="Hodisa vaqtidan ancha keyin kiritilgan">⏱ keyin kiritilgan</span>` : "",
+				a.boshqa_kiritdi ? `<span class="tz-chip warn" title="Boshqa foydalanuvchi kiritgan">👤 ${esc(a.owner)}</span>` : "",
+				a.tahrirlangan ? `<span class="tz-chip">tahrirlangan</span>` : "",
+				!a.sifatli ? `<span class="tz-chip neg" title="Izoh qisqa yoki keyingi sana yo'q">izoh to'liq emas</span>` : "",
+			].filter(Boolean).join(" ");
+			const natija = a.aloqa_natijasi === "Gaplashildi"
+				? `<b>${esc(a.aloqa_natijasi)}</b>${a.hisob_natijasi ? ` → ${esc(a.hisob_natijasi)}` : ""}`
+				: esc(a.aloqa_natijasi);
+			return `<tr>
+				<td class="nowrap">${dt(a.creation)}<div class="tz-sub">${esc(a.masul_nomi)}</div></td>
+				<td><a href="/app/qarz-ishi/${encodeURIComponent(a.qarz_ishi || "")}">${esc(a.student_name || "—")}</a>
+					<div class="tz-sub">${esc(a.sinf || "")} ${a.payer_phone ? "· " + esc(a.payer_phone) : ""}</div></td>
+				<td>${esc(a.kanal)}</td>
+				<td>${natija}${a.vada_summa ? `<div class="tz-sub">Va'da: ${this.kc(a.vada_summa)} — ${a.vada_sana ? frappe.datetime.str_to_user(a.vada_sana) : ""}</div>` : ""}</td>
+				<td class="tz-komment">${esc(a.komment || "—")}</td>
+				<td class="nowrap">${esc(a.keyingi_harakat || "—")}<div class="tz-sub">${a.keyingi_sana ? frappe.datetime.str_to_user(a.keyingi_sana) : ""}</div></td>
+				<td>${belgilar || ""}</td>
+			</tr>`;
+		}).join("");
+
+		const chip = (k, label) => `<button class="tz-seg-opt${this.sotuvFiltr === k ? " on" : ""}" data-sotuv-filtr="${k}">${label}</button>`;
+		const lentaBlok = `
+			<div class="hd" style="margin-top:18px"><div><h3>Qo'ng'iroqlar lentasi</h3>
+				<div class="meta">${this.sotuvMasul ? `Filtr: <b>${esc(this.sotuvMasul)}</b> (bekor qilish uchun menejerni qayta bosing)` : "Hamma menejerlar"} · ${list.length} ta yozuv</div></div>
+				<div class="tz-nach-tools"><div class="tz-seg">
+					${chip("", "Hammasi")}${chip("gaplashildi", "Gaplashilgan")}${chip("vada", "Va'dalar")}${chip("sifatsiz", "Izohsizlar")}
+				</div><button class="tz-seg-opt" data-sotuv-csv="1">⬇ CSV</button></div></div>
+			<div class="tbl-wrap"><table class="tz-sotuv-tbl">
+				<thead><tr><th>Vaqt / menejer</th><th>O'quvchi</th><th>Kanal</th><th>Natija</th>
+					<th>Izoh</th><th>Keyingi qadam</th><th>Belgilar</th></tr></thead>
+				<tbody>${lenta || `<tr><td colspan="7" class="empty-hint">Bu davrda aloqa yozuvi yo'q. Ochiq ishlar: ${this.fmt(d.ochiq_ishlar)} ta.</td></tr>`}</tbody>
+			</table></div>`;
+
+		return kpi + jadval + lentaBlok;
+	}
+
+	sotuvCsv() {
+		const rows = [["Vaqt", "Menejer", "O'quvchi", "Sinf", "Telefon", "Kanal",
+			"Aloqa natijasi", "Suhbat natijasi", "Va'da summa", "Va'da sana",
+			"Izoh", "Keyingi harakat", "Keyingi sana"]];
+		for (const a of this.sotuvAloqalar()) {
+			rows.push([String(a.creation).slice(0, 16), a.masul_nomi, a.student_name, a.sinf,
+				a.payer_phone, a.kanal, a.aloqa_natijasi, a.hisob_natijasi || "",
+				a.vada_summa || "", a.vada_sana || "", (a.komment || "").replace(/\n/g, " "),
+				a.keyingi_harakat || "", a.keyingi_sana || ""]);
+		}
+		const csv = rows.map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\n");
+		const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+		const a = document.createElement("a");
+		a.href = URL.createObjectURL(blob);
+		a.download = `sotuv-nazorati-${this.state.from_date}_${this.state.to_date}.csv`;
+		a.click();
+	}
+
 	renderNach() {
 		let h = this.sec("Nachisleniyalar",
 			`${this.data.meta.period.label} · kassaga tegmagan hisoblash yozuvlari — kirim (debet) va chiqim (kredit) nachisleniyalari bitta oynada`);

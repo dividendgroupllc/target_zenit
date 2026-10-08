@@ -196,3 +196,21 @@ def check_sotuv_perms(user="sotuv_menejer@gmail.com"):
 	]:
 		print(f"{dt} / {ptype}:", frappe.has_permission(dt, ptype))
 	frappe.set_user("Administrator")
+
+
+def test_sotuv_nazorati():
+	"""Sotuv nazorati paneli: rollar bo'yicha ko'rinish tekshiruvi."""
+	from target_zenit.target_zenit.page.investor_dashboard import investor_dashboard as inv
+
+	for user in ("Administrator", "xojakbar@gmail.com", "sotuv_menejer@gmail.com"):
+		frappe.set_user(user)
+		try:
+			d = inv.get_sotuv_nazorati()
+			print(
+				f"{user:28} faqat_ozi={d['faqat_ozi']!s:5} "
+				f"menejerlar={len(d['menejerlar'])} aloqalar={len(d['aloqalar'])} "
+				f"qongiroq={d['jami']['qongiroq']}"
+			)
+		except Exception as e:
+			print(f"{user:28} XATO: {type(e).__name__}: {str(e)[:80]}")
+	frappe.set_user("Administrator")

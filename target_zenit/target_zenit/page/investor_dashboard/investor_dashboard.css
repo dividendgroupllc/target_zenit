@@ -438,3 +438,28 @@
 .tz-inv .pers-bar { height:4px; width:110px; margin-left:auto; border-radius:3px; background:var(--line); margin-top:4px; overflow:hidden; }
 .tz-inv .pers-bar i { display:block; height:100%; background:var(--warn); border-radius:3px; }
 
+
+/* ===== Sotuv nazorati (kontrol-list) ===== */
+.tz-inv .tz-sotuv-kpi { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+@media (max-width:1100px){ .tz-sotuv-kpi { grid-template-columns:repeat(2,1fr); } }
+.tz-inv .tz-sotuv-kpi .k { background:var(--tz-card-2,#f7f9fc); border:1px solid var(--tz-line,#e3e8f0);
+  border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:2px; }
+.tz-inv .tz-sotuv-kpi .k .l { font-size:11px; text-transform:uppercase; letter-spacing:.3px; opacity:.65; }
+.tz-inv .tz-sotuv-kpi .k .v { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; }
+.tz-inv .tz-sotuv-kpi .k .s { font-size:11px; opacity:.6; }
+.tz-inv .tz-sotuv-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+.tz-inv .tz-sotuv-tbl th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.3px;
+  opacity:.65; padding:8px 10px; border-bottom:1px solid var(--tz-line-strong,#d3dae6); white-space:nowrap; }
+.tz-inv .tz-sotuv-tbl td { padding:8px 10px; border-bottom:1px solid var(--tz-line,#e3e8f0); vertical-align:top; }
+.tz-inv .tz-sotuv-tbl .r { text-align:right; font-variant-numeric:tabular-nums; }
+.tz-inv .tz-sotuv-tbl tbody tr:hover { background:var(--tz-card-2,#f7f9fc); }
+.tz-inv .tz-sotuv-tbl tbody tr.on { background:#e4f2f3; }
+[data-theme="dark"] .tz-sotuv-tbl tbody tr.on { background:#0e2e33; }
+.tz-inv .tz-sotuv-tbl .neg { color:#d8443c; font-weight:600; }
+.tz-inv .tz-sotuv-tbl .nowrap { white-space:nowrap; }
+.tz-inv .tz-sotuv-tbl .tz-sub { font-size:10.5px; opacity:.6; font-weight:400; }
+.tz-inv .tz-sotuv-tbl .tz-komment { max-width:380px; white-space:pre-wrap; }
+.tz-inv .tz-chip { display:inline-block; font-size:10px; padding:1px 7px; border-radius:999px;
+  background:var(--tz-card-2,#eef1f6); border:1px solid var(--tz-line-strong,#d3dae6); white-space:nowrap; }
+.tz-inv .tz-chip.warn { background:#fbf1dc; color:#a8730b; border-color:#dd9a1f; }
+.tz-inv .tz-chip.neg { background:#fbeae9; color:#b93129; border-color:#d8443c; }
