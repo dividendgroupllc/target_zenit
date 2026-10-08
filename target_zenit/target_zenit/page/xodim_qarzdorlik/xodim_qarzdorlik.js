@@ -123,7 +123,7 @@ class TZXodimQarzPanel {
 		const rows = this.filtered();
 		const html = rows.length
 			? `<table class="tbl">
-				<thead><tr><th>Xodim</th><th>Lavozim</th><th class="r">Hisoblangan</th><th class="r">To'langan</th><th class="r">Eski qarz</th><th class="r">Saldo (so'm)</th><th>Holat</th><th>Oxirgi harakat</th></tr></thead>
+				<thead><tr><th>Xodim</th><th>Lavozim</th><th class="r">Hisoblangan</th><th class="r">To'langan</th><th class="r">Saldo (so'm)</th><th>Holat</th><th>Oxirgi harakat</th></tr></thead>
 				<tbody>
 				${rows.map((r, i) => `
 					<tr data-i="${i}" class="${this.selected === i ? "sel" : ""}">
@@ -132,7 +132,6 @@ class TZXodimQarzPanel {
 						<td>${this.esc(r.lavozim || "—")}</td>
 						<td class="r">${this.fmt(r.hisoblangan)}</td>
 						<td class="r">${this.fmt(r.tolangan)}</td>
-						<td class="r">${r.eski_qarz ? this.fmt(r.eski_qarz) : "—"}</td>
 						<td class="r money ${r.saldo > 1000 ? "red2" : r.saldo < -1000 ? "blue2" : ""}">${this.fmt(r.saldo)}</td>
 						<td>${this.saldoPill(r.saldo)}</td>
 						<td>${this.dmy(r.oxirgi)}</td>
@@ -153,7 +152,7 @@ class TZXodimQarzPanel {
 		this.body.find(".detail").html(`<div class="loading">Yuklanmoqda…</div>`);
 		frappe.call({
 			method: `${XQ_M}.get_detail`,
-			args: { employee: r.employee, jalilov_party: r.jalilov_party },
+			args: { employee: r.employee },
 			callback: (resp) => {
 				const d = resp.message || { months: [], gl: [] };
 				const months = d.months || [];
@@ -187,7 +186,7 @@ class TZXodimQarzPanel {
 						<tbody>${gl.map((g) => `
 							<tr><td>${this.dmy(g.posting_date)}</td>
 							<td class="mini">${this.esc(g.oy || "")}</td>
-							<td><a href="/app/${g.voucher_type.toLowerCase().replace(/ /g, "-")}/${encodeURIComponent(g.voucher_no)}">${this.esc(g.voucher_no)}</a>
+							<td><a href="/app/${g.voucher_type.toLowerCase().replace(/ /g, "-")}/${encodeURIComponent(g.voucher_no)}">${this.esc(g.voucher_no)}</a>${g.qatorlar > 1 ? ` <span class="mini">(${g.qatorlar} qator birlashtirildi)</span>` : ""}
 								${g.izoh ? `<div class="mini">${this.esc(g.izoh)}</div>` : ""}</td>
 							<td class="r">${g.credit ? this.fmt(g.credit) : ""}</td>
 							<td class="r">${g.debit ? this.fmt(g.debit) : ""}</td></tr>`).join("")}
