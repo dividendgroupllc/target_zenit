@@ -45,6 +45,14 @@ def get_data(versiya: str | None = None):
 		(v.name for v in versiyalar if v.holat == "Faol"), versiyalar[0].name
 	)
 
+	if not frappe.db.has_column("Student Group", "custom_guruh_turi"):
+		return {
+			"versiyalar": [],
+			"xatolik": "Dars jadvali moduli hali o'rnatilmagan. "
+			"Administrator 'bench migrate' ni ishga tushirishi kerak "
+			"(yoki shu sahifadagi «Exceldan import» o'zi o'rnatadi).",
+		}
+
 	sinflar = frappe.get_all(
 		"Student Group",
 		filters={"custom_guruh_turi": "Sinf", "disabled": 0},

@@ -207,6 +207,9 @@ after_migrate = [
 	"target_zenit.setup.kassa_party_types.after_migrate",
 	# Sotuv menejer workspace'iga qarzdorlik yorliqlari (idempotent)
 	"target_zenit.qarzdorlik.setup_workspace.after_migrate",
+	# Dars jadvali: Zavuch roli, Student Group/Instructor custom fieldlari,
+	# qo'ng'iroq jadvallari (idempotent — har deploy'da o'zi o'rnatiladi)
+	"target_zenit.dars_jadvali.setup.after_migrate",
 ]
 
 # Scheduled Tasks

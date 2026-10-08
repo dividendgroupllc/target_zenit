@@ -243,3 +243,12 @@ def fayl_royxatdan_otkaz(nom="Umumiy_dars_jadvali.xlsx"):
 	).insert(ignore_permissions=True)
 	frappe.db.commit()
 	print("File yozuvi yaratildi:", nom)
+
+
+def after_migrate():
+	"""Deploy (migrate) paytida avtomatik: rol, custom fieldlar, qo'ng'iroq jadvali.
+	Idempotent — har migrate'da bemalol ishlayveradi."""
+	try:
+		hammasi()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "dars_jadvali setup after_migrate")

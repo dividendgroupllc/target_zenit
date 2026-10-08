@@ -569,6 +569,13 @@ def import_all(
 	dry_run=1,
 ):
 	"""To'liq import. dry_run=1 — hech narsa yozilmaydi, faqat hisobot."""
+	# Custom fieldlar/qo'ng'iroq jadvali hali o'rnatilmagan bo'lsa — o'zi o'rnatadi
+	# (migrate'dagi after_migrate ishlamay qolgan holat uchun himoya)
+	if not frappe.db.has_column("Student Group", "custom_guruh_turi"):
+		from target_zenit.dars_jadvali.setup import hammasi as _setup
+
+		_setup()
+
 	academic_year = academic_year or frappe.db.get_value("Academic Year", {}, "name")
 	sinflar, yacheykalar = _oqish(path)
 	hisobot = {
