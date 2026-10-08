@@ -50,7 +50,8 @@ app_include_js = [
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+# Student formasi: shartnoma summalarini jonli hisoblash (tarif/foiz -> yakuniy/oylik)
+doctype_js = {"Student": "public/js/student_tarif.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -162,6 +163,8 @@ doc_events = {
 	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish;
 	# ketgan o'quvchining to'lov rejasida kelgusi oylar bekor qilinadi
 	"Student": {
+		# Shartnoma summalari: chegirma foizidan yakuniy va oylik to'lov
+		"validate": "target_zenit.student_tarif.hisobla",
 		"on_update": [
 			"target_zenit.student_group_sync.on_student_update",
 			"target_zenit.qarzdorlik.engine.on_student_change",
@@ -210,6 +213,8 @@ after_migrate = [
 	# Dars jadvali: Zavuch roli, Student Group/Instructor custom fieldlari,
 	# qo'ng'iroq jadvallari (idempotent — har deploy'da o'zi o'rnatiladi)
 	"target_zenit.dars_jadvali.setup.after_migrate",
+	# Student: chegirma foizi maydoni + yakuniy/oylik read-only
+	"target_zenit.student_tarif.after_migrate",
 ]
 
 # Scheduled Tasks

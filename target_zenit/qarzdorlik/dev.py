@@ -214,3 +214,62 @@ def test_sotuv_nazorati():
 		except Exception as e:
 			print(f"{user:28} XATO: {type(e).__name__}: {str(e)[:80]}")
 	frappe.set_user("Administrator")
+
+
+def test_tarif_hisob():
+	"""Tarif avtomatikasi: foiz -> chegirma -> yakuniy -> oylik."""
+	nom = frappe.db.get_value("Student", {"enabled": 1}, "name")
+	doc = frappe.get_doc("Student", nom)
+	asl = {f: doc.get(f) for f in (
+		"custom_tariff_amount", "custom_discount_foiz", "custom_discount_amount",
+		"custom_final_amount", "custom_monthly_payment")}
+
+	print("1) FOIZ BILAN: tarif 60 000 000, chegirma 20%")
+	doc.custom_tariff_amount = 60_000_000
+	doc.custom_discount_foiz = 20
+	doc.save(ignore_permissions=True)
+	doc.reload()
+	print(f"   chegirma = {doc.custom_discount_amount:,.0f} | yakuniy = {doc.custom_final_amount:,.0f} "
+	      f"| oylik = {doc.custom_monthly_payment:,.0f}")
+	ok1 = (doc.custom_discount_amount == 12_000_000 and doc.custom_final_amount == 48_000_000
+	       and doc.custom_monthly_payment == 4_800_000)
+	print("   KUTILGAN: 12 000 000 | 48 000 000 | 4 800 000 ->", "✓ TO'G'RI" if ok1 else "✗ XATO")
+
+	print("2) SUMMA BILAN: chegirma 19 000 000 qo'lda (79 mln tarifda)")
+	doc.custom_tariff_amount = 79_000_000
+	doc.custom_discount_foiz = 0
+	doc.custom_discount_amount = 19_000_000
+	doc.save(ignore_permissions=True)
+	doc.reload()
+	print(f"   foiz = {doc.custom_discount_foiz} | yakuniy = {doc.custom_final_amount:,.0f} "
+	      f"| oylik = {doc.custom_monthly_payment:,.0f}")
+	ok2 = doc.custom_final_amount == 60_000_000 and doc.custom_monthly_payment == 6_000_000
+	print("   KUTILGAN: ~24.05% | 60 000 000 | 6 000 000 ->", "✓ TO'G'RI" if ok2 else "✗ XATO")
+
+	# asl holatga qaytarish
+	for f, v in asl.items():
+		doc.set(f, v)
+	doc.save(ignore_permissions=True)
+	frappe.db.commit()
+	print(f"3) {nom} asl holatiga qaytarildi: yakuniy={doc.custom_final_amount:,.0f}")
+
+
+def test_tarif_drift():
+	"""Yumaloq bo'lmagan foizli shartnoma tegilmasdan saqlanganda siljimasligi."""
+	nom = frappe.db.sql("""SELECT name FROM tabStudent WHERE enabled=1
+		AND custom_tariff_amount>0 AND custom_discount_foiz>0
+		AND ABS(custom_tariff_amount*custom_discount_foiz/100 - custom_discount_amount)>1
+		LIMIT 1""")
+	if not nom:
+		print("Bunday yozuv yo'q")
+		return
+	nom = nom[0][0]
+	oldin = frappe.db.get_value("Student", nom, ["custom_discount_amount", "custom_final_amount",
+		"custom_monthly_payment"], as_dict=True)
+	doc = frappe.get_doc("Student", nom)
+	doc.save(ignore_permissions=True)  # hech narsa o'zgartirmasdan saqlash
+	frappe.db.commit()
+	keyin = frappe.db.get_value("Student", nom, ["custom_discount_amount", "custom_final_amount",
+		"custom_monthly_payment"], as_dict=True)
+	print(f"{nom}\n  oldin: {oldin}\n  keyin: {keyin}")
+	print("  ->", "✓ O'ZGARMADI" if oldin == keyin else "✗ SILJIDI")
