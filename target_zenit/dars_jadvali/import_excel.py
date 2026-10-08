@@ -124,9 +124,18 @@ def _fayl_yoli(path: str) -> str:
 			as_dict=True,
 		)
 	if not f:
+		mavjud = frappe.get_all(
+			"File",
+			filters={"file_name": ["like", "%.xlsx"]},
+			fields=["file_name", "file_url"],
+			order_by="creation desc",
+			limit_page_length=15,
+		)
+		royxat = "\n".join(f"  - {x.file_name}" for x in mavjud) or "  (hech qanday .xlsx yuklanmagan)"
 		frappe.throw(
-			f"Fayl topilmadi: {nom}. Uni Desk'da /app/file sahifasidan yuklang "
-			"yoki to'liq yo'lini bering."
+			f"Fayl topilmadi: {nom}\n\nServerda mavjud .xlsx fayllar:\n{royxat}\n\n"
+			"Yechim: Desk'da /app/file sahifasiga faylni yuklang, "
+			"yoki to'liq yo'lini bering (masalan /home/frappe/Umumiy_dars_jadvali.xlsx)."
 		)
 	papka = "private" if f.is_private else "public"
 	return frappe.get_site_path(papka, "files", os.path.basename(f.file_url))
@@ -636,3 +645,73 @@ def tozalash(versiya="2026-2027 asosiy"):
 		n += 1
 	frappe.db.commit()
 	print(f"O'chirildi: {n} ta yozuv ({versiya})")
+
+
+def fayllar():
+	"""Serverda qanday .xlsx fayllar yuklanganini ko'rsatadi (import oldidan tekshirish)."""
+	rows = frappe.get_all(
+		"File",
+		filters={"file_name": ["like", "%.xlsx"]},
+		fields=["file_name", "file_url", "is_private", "creation", "attached_to_doctype"],
+		order_by="creation desc",
+		limit_page_length=30,
+	)
+	if not rows:
+		print("Hech qanday .xlsx fayl yuklanmagan. /app/file sahifasidan yuklang.")
+		return rows
+	print(f"{'FAYL NOMI':46} {'MAXFIY':7} YUKLANGAN")
+	for r in rows:
+		print(f"{r.file_name[:45]:46} {'ha' if r.is_private else 'yo`q':7} {str(r.creation)[:16]}")
+	return rows
+
+
+# ------------------------------------------------------------- UI import
+IMPORT_ROLLAR = {"system manager", "zavuch", "academics user", "education manager"}
+
+
+def _import_guard():
+	if not (IMPORT_ROLLAR & {r.lower() for r in frappe.get_roles()}):
+		frappe.throw("Jadval import qilish uchun ruxsat yo'q.", frappe.PermissionError)
+
+
+@frappe.whitelist()
+def ui_import(file_url: str, versiya_nomi: str = "2026-2027 asosiy", dry_run=1, tozalash_avval=0):
+	"""Desk'dan import: faylni fon vazifasida o'qiydi (1-2 daqiqa).
+	Natija realtime orqali qaytadi + keshda saqlanadi."""
+	_import_guard()
+	if not file_url:
+		frappe.throw("Avval Excel faylni yuklang.")
+	frappe.enqueue(
+		"target_zenit.dars_jadvali.import_excel._ui_import_job",
+		queue="long",
+		timeout=1800,
+		user=frappe.session.user,
+		file_url=file_url,
+		versiya_nomi=versiya_nomi,
+		dry_run=int(dry_run or 0),
+		tozalash_avval=int(tozalash_avval or 0),
+	)
+	return {"ok": 1}
+
+
+def _ui_import_job(user, file_url, versiya_nomi, dry_run, tozalash_avval):
+	natija = {}
+	try:
+		if tozalash_avval and not dry_run:
+			tozalash(versiya_nomi)
+		natija = import_all(path=file_url, versiya_nomi=versiya_nomi, dry_run=dry_run)
+		natija["holat"] = "tugadi"
+	except Exception as e:
+		frappe.log_error(frappe.get_traceback(), "jadval import (UI)")
+		natija = {"holat": "xato", "xabar": str(e)[:500]}
+
+	natija["dry_run"] = int(dry_run)
+	frappe.cache().set_value(f"jadval_import_natija:{user}", natija, expires_in_sec=3600)
+	frappe.publish_realtime("jadval_import_tugadi", natija, user=user)
+
+
+@frappe.whitelist()
+def oxirgi_natija():
+	"""Oxirgi import natijasi (sahifa yangilansa ham ko'rinsin)."""
+	_import_guard()
+	return frappe.cache().get_value(f"jadval_import_natija:{frappe.session.user}")

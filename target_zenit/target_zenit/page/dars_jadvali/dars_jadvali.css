@@ -75,3 +75,12 @@
   .tz-jadval { padding:12px 8px 40px; }
   .tz-jadval table.grid td { min-width:96px; }
 }
+
+/* import tugmasi + spinner */
+.tz-jadval .refresh.primary { background:var(--brand); color:#fff; border-color:var(--brand); font-weight:600; }
+.tz-jadval .refresh.primary:hover { background:var(--brand-ink); }
+.lds-dual-ring { display:inline-block; width:34px; height:34px; }
+.lds-dual-ring:after { content:" "; display:block; width:26px; height:26px; margin:2px;
+  border-radius:50%; border:3px solid #0e7c86; border-color:#0e7c86 transparent #0e7c86 transparent;
+  animation:lds-dual-ring 1.1s linear infinite; }
+@keyframes lds-dual-ring { 0% { transform:rotate(0deg);} 100% { transform:rotate(360deg);} }

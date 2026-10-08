@@ -5,6 +5,7 @@ frappe.pages["dars-jadvali"].on_page_load = function (wrapper) {
 };
 
 const DJ_M = "target_zenit.target_zenit.page.dars_jadvali.dars_jadvali";
+const IMP_M = "target_zenit.dars_jadvali.import_excel";
 
 class TZDarsJadvali {
 	constructor(wrapper) {
@@ -17,6 +18,16 @@ class TZDarsJadvali {
 		this.fOqituvchi = "";
 		this.make_skeleton();
 		this.load();
+		this.listen_import();
+	}
+
+	// Fon vazifasi tugaganda natijani ko'rsatish
+	listen_import() {
+		frappe.realtime.on("jadval_import_tugadi", (r) => {
+			if (this.import_dlg) this.import_dlg.hide();
+			this.show_import_result(r);
+			this.load();
+		});
 	}
 
 	esc(s) { return frappe.utils.escape_html(String(s == null ? "" : s)); }
@@ -101,6 +112,7 @@ class TZDarsJadvali {
 					${(d.sinflar || []).map((s) => `<option value="${this.esc(s)}" ${this.fSinf === s ? "selected" : ""}>${this.esc(s)}</option>`).join("")}
 				</select>
 				<button class="refresh" data-act="yuklama">O'qituvchi yuklamasi</button>
+				<button class="refresh primary" data-act="import">⬆ Exceldan import</button>
 			</div>
 
 			<div class="jadval-wrap card"></div>
@@ -152,6 +164,7 @@ class TZDarsJadvali {
 		this.body.find(".fsinf").on("change", (e) => { this.fSinf = e.target.value; this.render_grid(); });
 		this.body.find(".fversiya").on("change", (e) => { this.versiya = e.target.value; this.load(); });
 		this.body.find(`[data-act="yuklama"]`).on("click", () => this.yuklama_dialog());
+		this.body.find(`[data-act="import"]`).on("click", () => this.import_dialog());
 	}
 
 	yuklama_dialog() {
@@ -165,5 +178,95 @@ class TZDarsJadvali {
 				options: `<div class="tz-jadval"><table class="tbl mini-tbl"><thead><tr><th>O'qituvchi</th><th class="r">Soat</th></tr></thead><tbody>${rows}</tbody></table></div>`,
 			}],
 		}).show();
+	}
+
+	// ---------------- Exceldan import ----------------
+	import_dialog() {
+		const dlg = new frappe.ui.Dialog({
+			title: "Dars jadvalini Exceldan import qilish",
+			fields: [
+				{
+					fieldtype: "HTML",
+					options: `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+						Maktabning "Umumiy dars jadvali" faylini yuklang (.xlsx).<br>
+						Avval <b>sinov rejimi</b>da tekshiring — hech narsa yozilmaydi, faqat hisobot chiqadi.</div>`,
+				},
+				{ fieldname: "fayl", fieldtype: "Attach", label: "Excel fayl (.xlsx)", reqd: 1 },
+				{
+					fieldname: "versiya_nomi", fieldtype: "Data", label: "Jadval versiyasi nomi",
+					default: this.versiya || "2026-2027 asosiy", reqd: 1,
+					description: "Mavjud versiya bo'lsa — unga qo'shiladi, yo'q bo'lsa yangisi yaratiladi (Qoralama)",
+				},
+				{ fieldtype: "Section Break" },
+				{
+					fieldname: "dry_run", fieldtype: "Check", label: "Sinov rejimi (bazaga yozilmaydi)",
+					default: 1,
+				},
+				{
+					fieldname: "tozalash_avval", fieldtype: "Check",
+					label: "Avval shu versiyaning eski yozuvlarini o'chirish",
+					depends_on: "eval:!doc.dry_run",
+					description: "Jadval qaytadan yuklanayotgan bo'lsa belgilang",
+				},
+			],
+			primary_action_label: "Importni boshlash",
+			primary_action: (v) => {
+				frappe.call({
+					method: `${IMP_M}.ui_import`,
+					args: {
+						file_url: v.fayl,
+						versiya_nomi: v.versiya_nomi,
+						dry_run: v.dry_run ? 1 : 0,
+						tozalash_avval: v.tozalash_avval ? 1 : 0,
+					},
+					freeze: true,
+					freeze_message: "Import navbatga qo'yilmoqda…",
+					callback: () => {
+						dlg.set_primary_action(null);
+						dlg.set_message && dlg.set_message("");
+						dlg.$body.html(`<div style="padding:24px;text-align:center">
+							<div class="lds-dual-ring"></div>
+							<p style="margin-top:10px"><b>Import ketmoqda…</b></p>
+							<p style="font-size:12px;color:var(--text-muted)">
+								Taxminan 1–2 daqiqa. Shu oyna o'zi yopilib, natija ko'rsatiladi.<br>
+								Oynani yopsangiz ham import davom etadi.</p></div>`);
+					},
+				});
+			},
+		});
+		this.import_dlg = dlg;
+		dlg.show();
+	}
+
+	show_import_result(r) {
+		if (!r) return;
+		if (r.holat === "xato") {
+			frappe.msgprint({ title: "Import xatosi", indicator: "red", message: this.esc(r.xabar) });
+			return;
+		}
+		const o = r.oqituvchilar || {};
+		const y = r.yozuvlar || {};
+		const list = (arr) => (arr && arr.length ? arr.map((x) => this.esc(x)).join(", ") : "—");
+		frappe.msgprint({
+			title: r.dry_run ? "Sinov natijasi (bazaga yozilmadi)" : "Import tugadi",
+			indicator: y.xato_soni ? "orange" : "green",
+			message: `
+				<table class="table table-bordered" style="font-size:13px">
+					<tr><td>Excel yacheykalari</td><td><b>${r.yacheykalar || 0}</b></td></tr>
+					<tr><td>Jadval yozuvlari</td><td><b>${y.yaratildi || 0}</b> yangi · ${y.bor_edi || 0} bor edi
+						${y.xato_soni ? `· <span style="color:var(--red-600)">${y.xato_soni} xato</span>` : ""}</td></tr>
+					<tr><td>Yangi fanlar</td><td>${r.fanlar_yangi || 0}</td></tr>
+					<tr><td>O'qituvchilar</td><td>${o.jami || 0} ta — ${o.employee_bilan || 0} tasi xodim bazasiga bog'landi</td></tr>
+					<tr><td>Bloklar / daraja guruhlari</td><td>${r.bloklar || 0} / ${r.daraja_guruhlari || 0}</td></tr>
+					<tr><td>Xodim topilmaganlar</td><td style="font-size:12px">${list(o.employee_siz)}</td></tr>
+					<tr><td>Vakant (o'qituvchisiz)</td><td style="font-size:12px">${list(o.vakant)}</td></tr>
+				</table>
+				${y.xato_namuna && y.xato_namuna.length
+					? `<div style="margin-top:8px;font-size:12px"><b>Xatolar:</b><br>${y.xato_namuna.map((x) => this.esc(x)).join("<br>")}</div>`
+					: ""}
+				${r.dry_run ? `<div style="margin-top:10px;padding:8px;background:var(--bg-yellow);border-radius:6px;font-size:12px">
+					Bu sinov edi — bazaga hech narsa yozilmadi. Haqiqiy import uchun "Sinov rejimi" belgisini olib tashlang.</div>` : ""}
+			`,
+		});
 	}
 }
