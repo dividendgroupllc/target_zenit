@@ -160,6 +160,9 @@ ZAVUCH_PERMS = {
 	"Program": (1, 0, 0, 0),
 	"Student": (1, 0, 0, 0),
 	"Holiday List": (1, 0, 0, 0),
+	# Kunlik yo'qlama (pul ma'lumoti yo'q). DIQQAT: Employee ATAYLAB berilmaydi —
+	# unda oylik summa bor; yo'qlama sahifasi xodim ismlarini server tomonda oladi.
+	"Attendance": (1, 1, 1, 0),
 }
 
 

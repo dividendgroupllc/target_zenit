@@ -273,3 +273,64 @@ def test_tarif_drift():
 		"custom_monthly_payment"], as_dict=True)
 	print(f"{nom}\n  oldin: {oldin}\n  keyin: {keyin}")
 	print("  ->", "✓ O'ZGARMADI" if oldin == keyin else "✗ SILJIDI")
+
+
+def test_zavuch_yoqlama(user="zavuch_test@target.local"):
+	"""Zavuch: yo'qlama ishlaydimi va PUL ma'lumoti yopiqmi?"""
+	from frappe.desk.desk_page import getpage
+
+	from target_zenit import yoqlama
+
+	frappe.set_user(user)
+	print("roles:", sorted(frappe.get_roles()))
+	for pg in ("yoqlama", "dars-jadvali"):
+		try:
+			getpage(pg)
+			print(f"  sahifa {pg}: OCHILADI")
+		except Exception as e:
+			print(f"  sahifa {pg}: XATO {type(e).__name__}")
+	try:
+		d = yoqlama.get_data()
+		pul_maydonlari = {k for r in d["qatorlar"] for k in r
+						  if k in ("oylik", "summa", "custom_oylik", "bonus", "jami")}
+		print(f"  yo'qlama: OK — {len(d['qatorlar'])} xodim, {len(d['kunlar'])} kun")
+		print(f"  qaytgan pul maydonlari: {pul_maydonlari or 'YO`Q ✓'}")
+	except Exception as e:
+		print("  yo'qlama XATO:", type(e).__name__, e)
+
+	print("  --- pul ma'lumotiga kirish urinishlari ---")
+	for dt in ("Employee", "Salary Slip", "Salary Structure", "Tabel Oylik", "Payment Entry", "GL Entry"):
+		print(f"  {dt:18} o'qish: {frappe.has_permission(dt, 'read')}")
+	try:
+		from target_zenit.target_zenit.api import oylik_tabel
+
+		oylik_tabel.get_tabel()
+		print("  oylik tabel (pul): OCHILDI — MUAMMO!")
+	except Exception as e:
+		print(f"  oylik tabel (pul): YOPIQ ✓ ({type(e).__name__})")
+	frappe.set_user("Administrator")
+
+
+def test_yoqlama_yozish(user="zavuch_test@target.local"):
+	"""Zavuch yo'qlama belgilay oladimi va u oylik tabelga tushadimi?"""
+	from frappe.utils import nowdate
+
+	from target_zenit import yoqlama
+
+	emp = frappe.db.get_value("Instructor", {"employee": ["is", "set"]}, "employee")
+	sana = nowdate()
+	frappe.set_user(user)
+	try:
+		r1 = yoqlama.belgila(emp, sana, "Keldi")
+		print("  Keldi deb belgilandi:", r1)
+		r2 = yoqlama.belgila(emp, sana, "Kelmadi")
+		print("  Kelmadi deb o'zgartirildi:", r2)
+		r3 = yoqlama.belgila(emp, sana, "tozalash")
+		print("  Tozalandi:", r3)
+	except Exception as e:
+		print("  XATO:", type(e).__name__, e)
+	frappe.set_user("Administrator")
+	qolgan = frappe.db.get_value("Attendance", {"employee": emp, "attendance_date": sana,
+											   "docstatus": ["<", 2]}, "name")
+	print("  Bazada qolgan yozuv:", qolgan or "yo'q (tozalandi) ✓")
+	frappe.db.commit()

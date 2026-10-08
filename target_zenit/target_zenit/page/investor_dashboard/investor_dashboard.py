@@ -3062,3 +3062,179 @@ def _sotuv_leaderboard(from_date, to_date, masul=None):
         out.append(q)
     out.sort(key=lambda x: (-x["qongiroq"], -x["yigildi"]))
     return out
+
+
+# ===========================================================================
+# O'qituvchilar samaradorligi (dars jadvali x shartnoma x davomat)
+# Manbalar: Jadval Yozuvi (yuklama, bo'sh soat), Employee (fan, to'lov turi),
+#           Tabel Ish Kuni (qo'lda tabel), Terminal Checkin (turniket - fakt).
+# ===========================================================================
+SLOTLAR = 10          # kuniga dars soni
+ISH_KUNLARI = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma"]
+
+
+def _normal_tokenlar(ism: str) -> set:
+    """Ismni taqqoslash uchun normallash: kichik harf, apostroflarsiz, 4+ belgili so'zlar."""
+    s = (ism or "").lower()
+    for a, b in (("‘", ""), ("’", ""), ("ʻ", ""), ("'", ""), ("`", ""), ("-", " ")):
+        s = s.replace(a, b)
+    s = re.sub(r"[^a-zа-яё ]", " ", s)
+    for a, b in (("ye", "e"), ("kh", "x"), ("dj", "j"), ("gh", "g"), ("q", "k")):
+        s = s.replace(a, b)
+    return {w for w in s.split() if len(w) >= 4}
+
+
+def _turniket_kunlari(from_date, to_date) -> dict:
+    """person_name -> {sanalar}. Turniketda xodimlar Employee'ga bog'lanmagan,
+    shuning uchun ism bo'yicha moslashtiriladi (eng yaxshi variant tanlanadi)."""
+    rows = frappe.db.sql(
+        """SELECT person_name, DATE(event_time) sana
+           FROM `tabTerminal Checkin`
+           WHERE person_name IS NOT NULL AND person_name != ''
+             AND DATE(event_time) BETWEEN %(f)s AND %(t)s
+           GROUP BY person_name, DATE(event_time)""",
+        {"f": from_date, "t": to_date}, as_dict=True)
+    out = defaultdict(set)
+    for r in rows:
+        out[r.person_name].add(str(r.sana))
+    return out
+
+
+def _turniket_moslash(instructor_nomi: str, emp_nomi: str, turniket: dict):
+    """Instructor/Employee ismini turniketdagi ism bilan moslashtirish."""
+    kerak = _normal_tokenlar(instructor_nomi) | _normal_tokenlar(emp_nomi)
+    if not kerak:
+        return None, set()
+    eng_yaxshi, eng_ball = None, 0
+    for pn in turniket:
+        ball = len(kerak & _normal_tokenlar(pn))
+        if ball > eng_ball:
+            eng_yaxshi, eng_ball = pn, ball
+    if eng_ball < 2:          # kamida ikkita so'z mos kelishi kerak (familiya + ism)
+        return None, set()
+    return eng_yaxshi, turniket.get(eng_yaxshi, set())
+
+
+@frappe.whitelist()
+def get_oqituvchi_samaradorligi(from_date=None, to_date=None, versiya=None):
+    """O'qituvchilar bo'yicha: fan, shartnoma turi, yuklama, bo'sh soat, davomat."""
+    _guard()
+    to_date = to_date or today()
+    from_date = from_date or add_days(to_date, -30)
+
+    versiya = versiya or frappe.db.get_value(
+        "Jadval Versiyasi", {"holat": "Faol"}, "name") or frappe.db.get_value(
+        "Jadval Versiyasi", {}, "name")
+
+    # --- 1) Jadval: o'qituvchi x kun x dars ---
+    jadval = frappe.get_all(
+        "Jadval Yozuvi",
+        filters={"versiya": versiya} if versiya else {},
+        fields=["oqituvchi", "oqituvchi_nomi", "kun", "dars_raqami", "fan", "sinflar"],
+        limit_page_length=0,
+    ) if versiya else []
+
+    slotlar = defaultdict(lambda: defaultdict(set))   # oqituvchi -> kun -> {dars}
+    fanlar = defaultdict(set)
+    fan_soat = defaultdict(lambda: defaultdict(int))  # oqituvchi -> fan -> soat
+    sinflar_map = defaultdict(set)
+    for j in jadval:
+        if not j.oqituvchi:
+            continue
+        slotlar[j.oqituvchi][j.kun].add(j.dars_raqami)
+        if j.fan:
+            fanlar[j.oqituvchi].add(j.fan)
+            fan_soat[j.oqituvchi][j.fan] += 1
+        for s in (j.sinflar or "").split(","):
+            if s.strip():
+                sinflar_map[j.oqituvchi].add(s.strip())
+
+    # --- 2) Instructor -> Employee (fan, to'lov turi, oylik) ---
+    instructors = frappe.get_all(
+        "Instructor", fields=["name", "instructor_name", "employee"], limit_page_length=0)
+    emp_ids = [i.employee for i in instructors if i.employee]
+    emps = {e.name: e for e in frappe.get_all(
+        "Employee", filters={"name": ["in", emp_ids]} if emp_ids else {},
+        fields=["name", "employee_name", "designation", "status",
+                "custom_tolov_turi", "custom_oylik"], limit_page_length=0)}
+
+    # --- 3) Tabel (qo'lda) — davrdagi oylar bo'yicha ishlangan kunlar ---
+    tabel = defaultdict(int)
+    for r in frappe.db.sql(
+        """SELECT xodim, SUM(kun) kun FROM `tabTabel Ish Kuni`
+           WHERE CONCAT(yil, '-', LPAD(oy, 2, '0')) BETWEEN %(f)s AND %(t)s
+           GROUP BY xodim""",
+            {"f": str(from_date)[:7], "t": str(to_date)[:7]}, as_dict=True):
+        tabel[r.xodim] = cint(r.kun)
+
+    # --- 4) Turniket (fakt) ---
+    turniket = _turniket_kunlari(from_date, to_date)
+
+    # Davrdagi hafta kunlari -> sanalar
+    kun_sanalari = defaultdict(list)
+    d, oxiri = getdate(from_date), getdate(to_date)
+    while d <= oxiri:
+        wd = d.weekday()
+        if wd < 5:
+            kun_sanalari[ISH_KUNLARI[wd]].append(str(d))
+        d = add_days(d, 1)
+
+    out = []
+    for ins in instructors:
+        kunlar = slotlar.get(ins.name, {})
+        soat = sum(len(v) for v in kunlar.values())
+        emp = emps.get(ins.employee) if ins.employee else None
+
+        # bo'sh soatlar ("oyna") — dars kunlari ichida birinchi va oxirgi dars orasida
+        oyna = 0
+        for darslar in kunlar.values():
+            if len(darslar) > 1:
+                oyna += (max(darslar) - min(darslar) + 1) - len(darslar)
+
+        dars_kunlari = sorted(kunlar.keys(), key=lambda k: ISH_KUNLARI.index(k)
+                              if k in ISH_KUNLARI else 9)
+        kutilgan_sanalar = {s for k in dars_kunlari for s in kun_sanalari.get(k, [])}
+
+        pn, kelgan_sanalar = _turniket_moslash(
+            ins.instructor_name, emp.employee_name if emp else "", turniket)
+        kelgan_darsli = kutilgan_sanalar & kelgan_sanalar
+
+        out.append({
+            "instructor": ins.name,
+            "nomi": ins.instructor_name,
+            "employee": ins.employee,
+            "lavozim": (emp.designation if emp else "") or "",
+            "status": (emp.status if emp else "") or "",
+            "tolov_turi": (emp.custom_tolov_turi if emp else "") or "",
+            "oylik": flt(emp.custom_oylik) if emp else 0,
+            "fanlar": sorted(fanlar.get(ins.name, [])),
+            # Asosiy fan — eng ko'p soat o'qitiladigani (alifbo bo'yicha emas)
+            "asosiy_fan": (max(fan_soat.get(ins.name, {}).items(), key=lambda x: x[1])[0]
+                           if fan_soat.get(ins.name) else ""),
+            "sinflar_soni": len(sinflar_map.get(ins.name, [])),
+            "soat": soat,
+            "yuklama_foiz": round(soat / (SLOTLAR * 5) * 100) if soat else 0,
+            "dars_kunlari": dars_kunlari,
+            "bosh_kunlar": [k for k in ISH_KUNLARI if k not in kunlar],
+            "oyna": oyna,
+            "kun_soatlari": {k: len(v) for k, v in kunlar.items()},
+            "tabel_kun": tabel.get(ins.employee) if ins.employee else None,
+            "turniket_nomi": pn,
+            "kutilgan_kun": len(kutilgan_sanalar),
+            "kelgan_kun": len(kelgan_darsli),
+            "kelmagan_kun": len(kutilgan_sanalar - kelgan_sanalar) if pn else None,
+            "davomat_foiz": (round(len(kelgan_darsli) / len(kutilgan_sanalar) * 100)
+                             if pn and kutilgan_sanalar else None),
+        })
+
+    out.sort(key=lambda x: -x["soat"])
+    jami = {
+        "oqituvchilar": len(out),
+        "jadvalda": sum(1 for o in out if o["soat"] > 0),
+        "jami_soat": sum(o["soat"] for o in out),
+        "jami_oyna": sum(o["oyna"] for o in out),
+        "turniketsiz": sum(1 for o in out if not o["turniket_nomi"]),
+        "ortiqcha_yuklama": sum(1 for o in out if o["soat"] >= 35),
+    }
+    return {"from_date": from_date, "to_date": to_date, "versiya": versiya,
+            "jami": jami, "oqituvchilar": out}

@@ -233,3 +233,50 @@ def classify_person(person_id: str) -> dict:
 			return {"person_type": person_type, "employee": employee}
 
 	return {"person_type": "Noma'lum"}
+
+
+@frappe.whitelist()
+def holat(kunlar: int = 14):
+	"""Turniket integratsiyasi holati — oxirgi ma'lumot qachon kelgani.
+
+	Ishga tushirish:
+	  bench --site <sayt> execute target_zenit.integrations.hikvision.holat
+	"""
+	from frappe.utils import time_diff_in_hours
+
+	s = frappe.get_cached_doc("Hikvision Settings")
+	oxirgi = frappe.db.sql("SELECT MAX(event_time), MAX(creation) FROM `tabTerminal Checkin`")[0]
+	soat = time_diff_in_hours(now_datetime(), oxirgi[1]) if oxirgi[1] else None
+
+	yoq = "YO'Q"
+	print(f"Integratsiya yoqilgan : {'HA' if s.enabled else yoq}")
+	print(f"Token o'rnatilgan     : {'ha' if s.secret_token else 'yoq'}")
+	print(f"Settings.last_event   : {s.last_event}")
+	print(f"Oxirgi hodisa vaqti   : {oxirgi[0]}")
+	print(f"Oxirgi yozuv (creation): {oxirgi[1]}"
+	      + (f"  ->  {soat:.1f} soat oldin" if soat is not None else ""))
+	if soat is not None and soat > 24:
+		print("  !!! 24 soatdan beri yangi ma'lumot yo'q — terminallar/tarmoqni tekshiring")
+
+	print(f"\nSo'nggi {kunlar} kun:")
+	rows = frappe.db.sql(
+		"""SELECT DATE(event_time) sana, COUNT(*) hodisa,
+		          COUNT(DISTINCT person_id) odam, COUNT(DISTINCT terminal_ip) terminal
+		   FROM `tabTerminal Checkin`
+		   WHERE event_time >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+		   GROUP BY DATE(event_time) ORDER BY sana DESC""",
+		(kunlar,), as_dict=True)
+	for r in rows:
+		print(f"  {r.sana}  hodisa={r.hodisa:>5}  odam={r.odam:>4}  terminal={r.terminal}")
+	if not rows:
+		print("  (bu davrda hodisa yo'q)")
+
+	print("\nTerminallar (so'nggi 7 kun):")
+	for r in frappe.db.sql(
+		"""SELECT terminal_ip, COUNT(*) c, MAX(event_time) oxirgi
+		   FROM `tabTerminal Checkin`
+		   WHERE event_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+		   GROUP BY terminal_ip ORDER BY c DESC""", as_dict=True):
+		print(f"  {r.terminal_ip or '—'!s:18} hodisa={r.c:>5}  oxirgi={r.oxirgi}")
+	return {"last_event": oxirgi[0], "last_created": oxirgi[1], "soat_oldin": soat,
+	        "enabled": s.enabled}

@@ -62,9 +62,12 @@ class TZInvestorDashboard {
 			{ key: "balance", label: "Balans" },
 			{ key: "nach", label: "Nachisleniya" },
 			{ key: "sotuv", label: "Sotuv nazorati" },
+			{ key: "oqit", label: "O'qituvchilar" },
 		];
 		this.nach = null;           // nachisleniya ma'lumoti (kesh)
 		this.sotuv = null;          // sotuv nazorati ma'lumoti (kesh)
+		this.oqit = null;           // o'qituvchilar samaradorligi (kesh)
+		this.oqitSort = "soat";     // tartib: soat | davomat | oyna
 		this.sotuvMasul = "";       // menejer filtri ("" = hammasi)
 		this.sotuvFiltr = "";       // lenta filtri: "" | "vada" | "sifatsiz" | "gaplashildi"
 		this.nachSide = "debit";    // "debit" (kirim) | "credit" (chiqim)
@@ -423,7 +426,7 @@ class TZInvestorDashboard {
 	renderTab() {
 		if (!this.data || !this.data.meta) return;
 		const body = this.page.main.find(".tz-body");
-		const fn = { overview: "renderOverview", cashflow: "renderCashflow", kunlik: "renderKunlik", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", personal: "renderPersonal", balance: "renderBalance", nach: "renderNach", sotuv: "renderSotuv" }[this.active];
+		const fn = { overview: "renderOverview", cashflow: "renderCashflow", kunlik: "renderKunlik", debts: "renderDebts", dds: "renderDds", tuition: "renderTuition", personal: "renderPersonal", balance: "renderBalance", nach: "renderNach", sotuv: "renderSotuv", oqit: "renderOqit" }[this.active];
 		body.html(this[fn]());
 		if (this.active === "kunlik") this.mountKunlik(body.find(".tz-kunlik-host"));
 		body.find("[data-tt]").each((i, el) => { $(el).attr("title", $(el).data("tt")); });
@@ -1910,6 +1913,109 @@ class TZInvestorDashboard {
 
 	// ================= TAB: Balans (Balance Sheet) =================
 	// ================= Nachisleniya tab =================
+	// ============== O'qituvchilar samaradorligi ==============
+	renderOqit() {
+		let h = this.sec("O'qituvchilar samaradorligi",
+			`${this.data.meta.period.label} · dars jadvali, shartnoma turi, yuklama, bo'sh soatlar va darsli kunlarda kelgani`);
+		h += this.card(`
+			<div class="hd"><div><h3>Yuklama va davomat</h3>
+				<div class="meta">Yuklama — haftalik dars soati (jadvaldan) · Oyna — dars kuni ichidagi bo'sh soatlar ·
+					Davomat — darsi bor kunlarning nechtasida turniketdan o'tgani</div></div></div>
+			<div class="tz-oqit-body"><div class="tz-loader">Yuklanyapti…</div></div>`, "mb");
+		setTimeout(() => { if (this.oqit) this.paintOqit(); else this.loadOqit(); }, 0);
+		return h + this.note();
+	}
+
+	loadOqit() {
+		const body = this.page.main.find(".tz-oqit-body");
+		if (!body.length) return;
+		frappe.call({
+			method: "target_zenit.target_zenit.page.investor_dashboard.investor_dashboard.get_oqituvchi_samaradorligi",
+			args: { from_date: this.state.from_date, to_date: this.state.to_date },
+		}).then((r) => { this.oqit = r.message || null; this.paintOqit(); })
+			.catch(() => body.html(`<div class="empty-hint">Ma'lumotni yuklab bo'lmadi.</div>`));
+	}
+
+	paintOqit() {
+		const body = this.page.main.find(".tz-oqit-body");
+		if (!body.length) return;
+		body.html(this.renderOqitBody());
+		body.find("[data-oqit-sort]").on("click", (e) => {
+			this.oqitSort = String($(e.currentTarget).data("oqit-sort"));
+			this.paintOqit();
+		});
+	}
+
+	renderOqitBody() {
+		const d = this.oqit;
+		if (!d) return `<div class="tz-loader">Yuklanyapti…</div>`;
+		const j = d.jami || {};
+		const esc = (x) => frappe.utils.escape_html(String(x == null ? "" : x));
+		const pct = (v) => (v === null || v === undefined ? "—" : `${v}%`);
+		const KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma"];
+
+		let rows = (d.oqituvchilar || []).slice();
+		if (this.oqitSort === "davomat") {
+			rows.sort((a, b) => (a.davomat_foiz === null) - (b.davomat_foiz === null)
+				|| (a.davomat_foiz || 0) - (b.davomat_foiz || 0));
+		} else if (this.oqitSort === "oyna") {
+			rows.sort((a, b) => b.oyna - a.oyna);
+		} else {
+			rows.sort((a, b) => b.soat - a.soat);
+		}
+
+		const kpi = `
+			<div class="tz-sotuv-kpi">
+				<div class="k"><span class="l">O'qituvchilar</span><span class="v">${this.fmt(j.oqituvchilar)}</span>
+					<span class="s">${this.fmt(j.jadvalda)} tasi jadvalda</span></div>
+				<div class="k"><span class="l">Haftalik dars soati</span><span class="v">${this.fmt(j.jami_soat)}</span>
+					<span class="s">${this.fmt(j.ortiqcha_yuklama)} o'qituvchida 35+ soat</span></div>
+				<div class="k"><span class="l">Bo'sh soatlar (oyna)</span><span class="v">${this.fmt(j.jami_oyna)}</span>
+					<span class="s">dars kunlari ichidagi bo'shliqlar</span></div>
+				<div class="k"><span class="l">Turniketga bog'lanmagan</span><span class="v">${this.fmt(j.turniketsiz)}</span>
+					<span class="s">davomat tekshirib bo'lmaydi</span></div>
+			</div>`;
+
+		const sortBtn = (k, t) => `<button class="tz-seg-opt${this.oqitSort === k ? " on" : ""}" data-oqit-sort="${k}">${t}</button>`;
+		const tools = `<div class="hd"><div></div><div class="tz-nach-tools"><div class="tz-seg">
+			${sortBtn("soat", "Yuklama bo'yicha")}${sortBtn("davomat", "Davomat bo'yicha")}${sortBtn("oyna", "Bo'sh soat bo'yicha")}
+		</div></div></div>`;
+
+		const body = rows.map((o) => {
+			const kunlar = KUNLAR.map((k) => {
+				const n = (o.kun_soatlari || {})[k] || 0;
+				return `<span class="tz-kunbox${n ? "" : " off"}" title="${k}: ${n} dars">${n || "·"}</span>`;
+			}).join("");
+			const davomat = o.davomat_foiz === null || o.davomat_foiz === undefined
+				? `<span class="tz-chip" title="Turniketda ismi topilmadi">bog'lanmagan</span>`
+				: `<b class="${o.davomat_foiz < 70 ? "neg" : ""}">${pct(o.davomat_foiz)}</b>
+				   <div class="tz-sub">${o.kelgan_kun}/${o.kutilgan_kun} kun</div>`;
+			return `<tr>
+				<td><b>${esc(o.nomi)}</b>${o.status && o.status !== "Active" ? ` <span class="tz-chip">${esc(o.status)}</span>` : ""}
+					<div class="tz-sub">${esc(o.lavozim || "—")}</div></td>
+				<td>${esc(o.asosiy_fan || "—")}${o.fanlar.length > 1 ? `<div class="tz-sub">+${o.fanlar.length - 1} fan</div>` : ""}</td>
+				<td>${o.tolov_turi ? esc(o.tolov_turi) : `<span class="tz-chip">xodim emas</span>`}
+					${o.oylik ? `<div class="tz-sub">${this.kc(o.oylik)}</div>` : ""}</td>
+				<td class="r"><b>${this.fmt(o.soat)}</b><div class="tz-sub">${pct(o.yuklama_foiz)}</div></td>
+				<td class="nowrap">${kunlar}</td>
+				<td class="r ${o.oyna > 10 ? "neg" : ""}">${this.fmt(o.oyna)}</td>
+				<td class="r">${o.bosh_kunlar.length ? esc(o.bosh_kunlar.map((k) => k.slice(0, 2)).join(", ")) : "—"}</td>
+				<td class="r">${o.tabel_kun === null || o.tabel_kun === undefined ? "—" : this.fmt(o.tabel_kun)}</td>
+				<td class="r">${davomat}</td>
+			</tr>`;
+		}).join("");
+
+		return kpi + tools + `
+			<div class="tbl-wrap"><table class="tz-sotuv-tbl">
+				<thead><tr>
+					<th>O'qituvchi</th><th>Asosiy fan</th><th>Shartnoma</th><th class="r">Haftalik soat</th>
+					<th>Du Se Ch Pa Ju</th><th class="r">Oyna</th><th class="r">Bo'sh kun</th>
+					<th class="r">Tabel kun</th><th class="r">Darsli kunlarda keldi</th>
+				</tr></thead>
+				<tbody>${body || `<tr><td colspan="9" class="empty-hint">Jadval yo'q — avval dars jadvalini import qiling.</td></tr>`}</tbody>
+			</table></div>`;
+	}
+
 	// ================== Sotuv nazorati (kontrol-list) ==================
 	renderSotuv() {
 		let h = this.sec("Sotuv bo'limi nazorati",

@@ -463,3 +463,11 @@
   background:var(--tz-card-2,#eef1f6); border:1px solid var(--tz-line-strong,#d3dae6); white-space:nowrap; }
 .tz-inv .tz-chip.warn { background:#fbf1dc; color:#a8730b; border-color:#dd9a1f; }
 .tz-inv .tz-chip.neg { background:#fbeae9; color:#b93129; border-color:#d8443c; }
+
+/* O'qituvchilar tabi — kunlik yuklama katakchalari */
+.tz-inv .tz-kunbox { display:inline-block; width:22px; height:22px; line-height:22px; text-align:center;
+  border-radius:6px; font-size:11px; font-weight:700; margin-right:3px;
+  background:#e4f2f3; color:#0a5c64; border:1px solid #bfe0e3; }
+.tz-inv .tz-kunbox.off { background:transparent; color:#b8c0cc; border-style:dashed; font-weight:400; }
+[data-theme="dark"] .tz-inv .tz-kunbox { background:#0e2e33; color:#7fd8df; border-color:#1d4a50; }
+[data-theme="dark"] .tz-inv .tz-kunbox.off { background:transparent; color:#4a5568; }
