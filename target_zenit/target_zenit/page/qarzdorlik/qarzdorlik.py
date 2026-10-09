@@ -44,12 +44,34 @@ def get_data():
 		limit_page_length=0,
 	)
 
+	# Har ish bo'yicha aloqa yozuvlari soni — "gaplashilgan" (kamida bir marta
+	# aloqaga chiqilgan) ishlarni ajratish uchun.
+	case_names = [c.name for c in cases]
+	aloqa_map = {}
+	if case_names:
+		for r in frappe.db.sql(
+			"""SELECT qarz_ishi, COUNT(*) soni,
+			          SUM(CASE WHEN aloqa_natijasi='Gaplashildi' THEN 1 ELSE 0 END) gaplashildi
+			   FROM `tabAloqa Yozuvi`
+			   WHERE qarz_ishi IN ({}) GROUP BY qarz_ishi""".format(
+				", ".join(["%s"] * len(case_names))
+			),
+			tuple(case_names),
+			as_dict=True,
+		):
+			aloqa_map[r.qarz_ishi] = r
+	for c in cases:
+		m = aloqa_map.get(c.name)
+		c["aloqa_soni"] = int(m.soni) if m else 0
+		c["gaplashildi_soni"] = int(m.gaplashildi or 0) if m else 0
+
 	today = getdate(nowdate())
 	stats = {
 		"ochiq": len(cases),
 		"jami_qarz": sum(flt(c.qarz_summa) for c in cases),
 		"bugun": 0,
 		"otgan": 0,
+		"gaplashilgan": sum(1 for c in cases if c["aloqa_soni"] > 0),
 		"vada_buzilgan": sum(1 for c in cases if c.ishlov_status == "Va'da buzildi"),
 		"eskalatsiya": sum(1 for c in cases if c.ishlov_status == "Eskalatsiya"),
 		"buckets": {},

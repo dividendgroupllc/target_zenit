@@ -45,6 +45,7 @@
 /* kpi */
 .tz-qarz .grid { display:grid; gap:12px; }
 .tz-qarz .grid.cols-5 { grid-template-columns:repeat(5, 1fr); }
+.tz-qarz .grid.cols-6 { grid-template-columns:repeat(6, 1fr); }
 .tz-qarz .mb { margin-bottom:14px; }
 .tz-qarz .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
 .tz-qarz .kpi { padding:12px 14px; }
@@ -76,14 +77,14 @@
 
 /* moslashuvchanlik: har xil ekranlar */
 @media (max-width: 1500px) { .tz-qarz .grid.cols-5 { grid-template-columns:repeat(5, 1fr); } }
-@media (max-width: 1250px) { .tz-qarz .grid.cols-5 { grid-template-columns:repeat(3, 1fr); } }
+@media (max-width: 1250px) { .tz-qarz .grid.cols-5, .tz-qarz .grid.cols-6 { grid-template-columns:repeat(3, 1fr); } }
 @media (max-width: 1100px) {
   .tz-qarz .split { grid-template-columns:1fr; }
   .tz-qarz .detail { position:static; max-height:none; }
 }
 @media (max-width: 760px) {
   .tz-qarz { padding:12px 10px 40px; }
-  .tz-qarz .grid.cols-5 { grid-template-columns:repeat(2, 1fr); }
+  .tz-qarz .grid.cols-5, .tz-qarz .grid.cols-6 { grid-template-columns:repeat(2, 1fr); }
   .tz-qarz .controls { gap:6px; }
   .tz-qarz .controls .q { min-width:140px; }
   .tz-qarz .tbl th, .tz-qarz .tbl td { padding:7px 8px; }

@@ -109,6 +109,7 @@ class TZQarzPanel {
 			if (this.fSinf && this.fSinf !== "__none" && c.sinf !== this.fSinf) return false;
 			if (this.fQueue === "today" && !(c.keyingi_aloqa && c.keyingi_aloqa <= today)) return false;
 			if (this.fQueue === "overdue" && !(c.keyingi_aloqa && c.keyingi_aloqa < today)) return false;
+			if (this.fQueue === "gaplashilgan" && !(c.aloqa_soni > 0)) return false;
 			if (q) {
 				const hay = [c.student_name, c.sinf, c.payer_name, c.payer_phone].join(" ").toLowerCase();
 				if (!hay.includes(q)) return false;
@@ -136,13 +137,16 @@ class TZQarzPanel {
 				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
 			</div>
 
-			<div class="grid cols-5 mb kpis">
+			<div class="grid cols-6 mb kpis">
 				<div class="card kpi click ${this.fQueue === "today" ? "sel" : ""}" data-queue="today">
 					<div class="lab"><span class="pin b"></span>Bugun aloqa</div>
 					<div class="val">${this.fmt(st.bugun)}</div><div class="sub">keyingi aloqa = bugun</div></div>
 				<div class="card kpi click ${this.fQueue === "overdue" ? "sel" : ""}" data-queue="overdue">
 					<div class="lab"><span class="pin r"></span>O'tib ketgan</div>
 					<div class="val">${this.fmt(st.otgan)}</div><div class="sub">aloqa sanasi o'tgan</div></div>
+				<div class="card kpi click ${this.fQueue === "gaplashilgan" ? "sel" : ""}" data-queue="gaplashilgan">
+					<div class="lab"><span class="pin g"></span>Gaplashilgan</div>
+					<div class="val">${this.fmt(st.gaplashilgan)}</div><div class="sub">kamida bir marta aloqa qilingan</div></div>
 				<div class="card kpi"><div class="lab"><span class="pin y"></span>Va'da buzilgan</div>
 					<div class="val">${this.fmt(st.vada_buzilgan)}</div><div class="sub">birinchi navbatda</div></div>
 				<div class="card kpi"><div class="lab"><span class="pin r"></span>Eskalatsiya</div>
@@ -194,7 +198,7 @@ class TZQarzPanel {
 				<tbody>
 				${rows.map((c) => `
 					<tr data-case="${this.esc(c.name)}" class="${this.selected === c.name ? "sel" : ""} ${c.keyingi_aloqa && c.keyingi_aloqa < today ? "late" : ""}">
-						<td><div class="nm">${this.esc(c.student_name)}</div>
+						<td><div class="nm">${this.esc(c.student_name)}${c.aloqa_soni > 0 ? ` <span class="pill st-ok" title="${c.aloqa_soni} ta aloqa yozuvi${c.gaplashildi_soni > 0 ? `, ${c.gaplashildi_soni} marta gaplashildi` : ""}">✓ ${c.aloqa_soni} aloqa</span>` : ""}</div>
 							<div class="mini">${this.esc(c.payer_name || "")} ${this.tel(c.payer_phone)}</div></td>
 						<td>${this.esc(c.sinf || "—")}</td>
 						<td class="r money">${this.fmt(c.qarz_summa)}</td>
