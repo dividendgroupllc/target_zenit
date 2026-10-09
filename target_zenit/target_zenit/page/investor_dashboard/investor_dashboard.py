@@ -2904,8 +2904,9 @@ def get_sotuv_nazorati(from_date=None, to_date=None, masul=None, limit=500):
         f"""SELECT ay.name, ay.creation, ay.vaqt, ay.owner, ay.masul, ay.kanal,
                    ay.aloqa_natijasi, ay.hisob_natijasi, ay.komment,
                    ay.keyingi_harakat, ay.keyingi_sana, ay.vada_summa, ay.vada_sana,
-                   ay.qarz_ishi, ay.student_name,
+                   ay.qarz_ishi, ay.student_name, ay.student,
                    qi.sinf, qi.payer_name, qi.payer_phone, qi.qarz_summa,
+                   qi.customer,
                    TIMESTAMPDIFF(MINUTE, ay.vaqt, ay.creation) kechikish_min,
                    (ay.modified > DATE_ADD(ay.creation, INTERVAL 1 MINUTE)) tahrirlangan
             FROM `tabAloqa Yozuvi` ay

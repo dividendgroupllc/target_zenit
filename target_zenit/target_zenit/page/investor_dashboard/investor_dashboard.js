@@ -2063,6 +2063,19 @@ class TZInvestorDashboard {
 		return a;
 	}
 
+	// Akt Sverka hisobotiga havola — o'quvchining (Customer) barcha to'lovlari.
+	// Davr: joriy o'quv yili boshidan (1-iyul) bugungacha.
+	sverkaUrl(customer) {
+		if (!customer) return "";
+		const b = frappe.datetime.str_to_obj(frappe.datetime.get_today());
+		const yil = b.getMonth() + 1 >= 7 ? b.getFullYear() : b.getFullYear() - 1;
+		const q = new URLSearchParams({
+			party_type: "Customer", party: customer,
+			from_date: `${yil}-07-01`, to_date: frappe.datetime.get_today(),
+		});
+		return `/app/query-report/Akt Sverka?${q.toString()}`;
+	}
+
 	renderSotuvBody() {
 		const d = this.sotuv;
 		if (!d) return `<div class="tz-loader">Yuklanyapti…</div>`;
@@ -2129,6 +2142,8 @@ class TZInvestorDashboard {
 			return `<tr>
 				<td class="nowrap">${dt(a.creation)}<div class="tz-sub">${esc(a.masul_nomi)}</div></td>
 				<td><a href="/app/qarz-ishi/${encodeURIComponent(a.qarz_ishi || "")}">${esc(a.student_name || "—")}</a>
+					${a.customer ? `<a class="tz-sverka" href="${this.sverkaUrl(a.customer)}" target="_blank"
+						title="Akt sverka — shu o'quvchining barcha to'lovlari">↗ sverka</a>` : ""}
 					<div class="tz-sub">${esc(a.sinf || "")} ${a.payer_phone ? "· " + esc(a.payer_phone) : ""}</div></td>
 				<td>${esc(a.kanal)}</td>
 				<td>${natija}${a.vada_summa ? `<div class="tz-sub">Va'da: ${this.kc(a.vada_summa)} — ${a.vada_sana ? frappe.datetime.str_to_user(a.vada_sana) : ""}</div>` : ""}</td>
