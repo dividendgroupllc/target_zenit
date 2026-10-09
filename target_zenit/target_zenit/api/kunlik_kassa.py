@@ -244,10 +244,42 @@ def get_data(from_date=None, to_date=None, currency=None, accounts=None,
     # ── Oldingi davr (taqqoslash uchun; TUR filtrisiz — KPI bilan bir xil) ──
     pf, pt_ = add_days(f0, -davr_kun), add_days(f0, -1)
     prev = {"kirim": 0.0, "chiqim": 0.0}
+    # Reyting jadvallaridagi "% Δ" ustuni uchun — oldingi davr kesimi
+    prev_kat = {"Приход": defaultdict(float), "Расход": defaultdict(float)}
+    prev_party = {"Приход": defaultdict(float), "Расход": defaultdict(float)}
     for r in _oqim_qatorlar(sel, pf, pt_):
         if _mos(r, kategoriya, party, None, party_type):
             prev["kirim" if r.tur == "Приход" else "chiqim"] += flt(r.s)
+            prev_kat[r.tur][_kategoriya(r.tur, r.party_type, r.expense_account_name)] += flt(r.s)
+            pn0 = (r.party_name or "").strip()
+            if pn0:
+                prev_party[r.tur][pn0] += flt(r.s)
     prev["net"] = prev["kirim"] - prev["chiqim"]
+
+    # ── Diagramma uchun "oxirgi bir oy" (to_date'dan orqaga 30 kun) ────────
+    # Foydalanuvchi qisqa davr tanlasa ham (masalan 1–8 oktabr), kunlik
+    # diagramma to'liq oyni ko'rsatadi: 8 sentabr → 8 oktabr.
+    oy_f = add_days(t0, -30)
+    oylik_kirim = defaultdict(float)
+    oylik_chiqim = defaultdict(float)
+    oylik_n = defaultdict(int)
+    for r in _oqim_qatorlar(sel, oy_f, t0):
+        if not _mos(r, kategoriya, party, None, party_type):
+            continue
+        if r.tur == "Приход":
+            oylik_kirim[str(r.sana)] += flt(r.s)
+        else:
+            oylik_chiqim[str(r.sana)] += flt(r.s)
+        oylik_n[str(r.sana)] += cint(r.n)
+    oylik_days = []
+    dx = oy_f
+    while dx <= t0:
+        k = str(dx)
+        oylik_days.append({"sana": k, "kirim": oylik_kirim.get(k, 0.0),
+                           "chiqim": oylik_chiqim.get(k, 0.0),
+                           "net": oylik_kirim.get(k, 0.0) - oylik_chiqim.get(k, 0.0),
+                           "n": oylik_n.get(k, 0)})
+        dx = add_days(dx, 1)
 
     # ── Runway: oxirgi 30 kunlik o'rtacha kunlik chiqim ─────────────────────
     chiqim30 = flt(frappe.db.sql("""
@@ -278,14 +310,29 @@ def get_data(from_date=None, to_date=None, currency=None, accounts=None,
         if eng is None or flt(r.mx) > flt(eng.mx):
             eng = r
 
-    def _kat_list(tur):
-        return sorted(
-            [{"label": lbl, "summa": v["summa"], "n": v["n"]} for lbl, v in kat[tur].items()],
-            key=lambda x: -x["summa"])
+    def _delta(cur, old):
+        """Oldingi davrga nisbatan o'zgarish: (oldingi summa, foiz yoki None)."""
+        old = flt(old)
+        if old <= 0.005:
+            return old, None          # oldingi davrda bo'lmagan -> foiz ma'nosiz
+        return old, round((flt(cur) - old) / old * 100, 1)
 
-    top = {tur: sorted([{"label": lbl, **v} for lbl, v in topd[tur].items()],
-                       key=lambda x: -x["summa"])[:5]
-           for tur in ("Приход", "Расход")}
+    def _kat_list(tur):
+        out = []
+        for lbl, v in kat[tur].items():
+            old, pct = _delta(v["summa"], prev_kat[tur].get(lbl, 0))
+            out.append({"label": lbl, "summa": v["summa"], "n": v["n"],
+                        "prev": old, "delta_pct": pct})
+        return sorted(out, key=lambda x: -x["summa"])
+
+    def _top_list(tur, limit=8):
+        out = []
+        for lbl, v in topd[tur].items():
+            old, pct = _delta(v["summa"], prev_party[tur].get(lbl, 0))
+            out.append({"label": lbl, **v, "prev": old, "delta_pct": pct})
+        return sorted(out, key=lambda x: -x["summa"])[:limit]
+
+    top = {tur: _top_list(tur) for tur in ("Приход", "Расход")}
 
     # ── Eng katta tranzaksiya (filtr doirasida) ─────────────────────────────
     largest = None
@@ -327,6 +374,7 @@ def get_data(from_date=None, to_date=None, currency=None, accounts=None,
             "largest": largest,
         },
         "days": days,
+        "oylik_days": oylik_days,
         "kirim_kat": _kat_list("Приход"), "chiqim_kat": _kat_list("Расход"),
         "top_kirim": top["Приход"], "top_chiqim": top["Расход"],
         "from_date": str(f0), "to_date": str(t0),

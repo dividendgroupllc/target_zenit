@@ -51,7 +51,8 @@ def get_data():
 
 	employees = frappe.get_all(
 		"Employee",
-		fields=["name", "employee_name", "designation", "status", "cell_number"],
+		fields=["name", "employee_name", "designation", "status", "cell_number",
+		        "custom_ish_haqi_kategoriya"],
 		limit_page_length=0,
 	)
 	emp_by_id = {e.name: e for e in employees}
@@ -65,6 +66,7 @@ def get_data():
 				"employee": emp.name if emp else None,
 				"ism": emp.employee_name if emp else party_label,
 				"lavozim": (emp.designation if emp else "") or "",
+				"kategoriya": (emp.custom_ish_haqi_kategoriya if emp else "") or "",
 				"faol": (emp.status == "Active") if emp else False,
 				"telefon": (emp.cell_number if emp else "") or "",
 				"hisoblangan": 0.0,   # kredit (oylik yozilgani)

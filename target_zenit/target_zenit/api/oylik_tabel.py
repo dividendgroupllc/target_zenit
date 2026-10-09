@@ -961,14 +961,21 @@ KATEGORIYA_HISOB_TURI = {"Admin oylik": "admin", "O'qituvchi": "sebest",
 # Bir xil lavozim har xil kategoriyada bo'lishi mumkin (masalan "Bosh oshpaz
 # yordamchisi") — bunday istisnolar Employee'dagi maydonda aniq belgilanadi.
 XODIMLAR_KALITLARI = ("tutor", "tyutor", "tozalik", "komendant",
+                      "supuruvchi", "farrosh",
                       "academic director", "exam director")
-OQITUVCHI_KALITLARI = ("teacher", "o'qituvchi", "oqituvchi", "o‘qituvchi",
+OQITUVCHI_KALITLARI = ("teacher", "techer", "o'qituvchi", "oqituvchi", "o‘qituvchi",
                        "o’qituvchi", "assistant", "assistent", "pre school",
                        "preschool", "primary", "mental", "mathematic",
-                       "matematika", "science", "biology", "physics",
-                       "history", "chess", "ethics", "musiqa",
-                       "uzbek language", "biznes", "business", "gimnastika",
-                       "p.e.")
+                       "matematika", "math", "science", "biology", "physics",
+                       "history", "tarix", "geograf", "geography",
+                       "chess", "ethics", "musiqa", "music",
+                       "uzbek language", "uzbek tili", "english", "russian",
+                       "rus tili", "chinese", "chines",
+                       "informatika", "informatics", "it teacher",
+                       "robotics", "ai teacher", "sat ", "sat/",
+                       "karate", "murabbiy", "economics", "chemistry",
+                       "kimyo", "personal development", "global perspective",
+                       "biznes", "business", "gimnastika", "p.e.")
 
 
 def _ish_haqi_kategoriya(tanlov, lavozim, tolov_turi=None):
@@ -977,13 +984,26 @@ def _ish_haqi_kategoriya(tanlov, lavozim, tolov_turi=None):
     if (tanlov or "").strip() in ISH_HAQI_KATEGORIYALARI:
         return (tanlov or "").strip()
     l = (lavozim or "").lower()
-    if "oshpaz" in l:
+    if "oshpaz" in l or "oshxona" in l or "salat" in l:
         return "Oshxona"
     if any(k in l for k in XODIMLAR_KALITLARI):
         return "Xodimlar"
     if (tolov_turi or "").strip() == "Soatbay" or any(k in l for k in OQITUVCHI_KALITLARI):
         return "O'qituvchi"
     return "Admin oylik"
+
+
+def set_ish_haqi_kategoriya(doc, method=None):
+    """Employee doc_events(validate) hook: ish haqi kategoriyasi bo'sh bo'lsa,
+    lavozimdan (va to'lov turidan) avtomat to'ldiradi. Qo'lda tanlangan qiymat
+    o'zgartirilmaydi — shuning uchun istisnolarni (masalan Admin oylik bo'lgan
+    oshxona yordamchisi) qo'lda belgilab qo'yish mumkin."""
+    if (doc.get("custom_ish_haqi_kategoriya") or "").strip():
+        return
+    if not (doc.get("designation") or "").strip():
+        return
+    doc.custom_ish_haqi_kategoriya = _ish_haqi_kategoriya(
+        None, doc.get("designation"), doc.get("custom_tolov_turi"))
 
 
 def _ish_haqi_hisoblari(company):

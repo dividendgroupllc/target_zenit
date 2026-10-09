@@ -2631,6 +2631,7 @@ function tzKunlikInit($host) {
 	const dmy = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? `${m[3]}.${m[2]}.${m[1]}` : s; };
 	const HAFTA = ["Yak", "Du", "Se", "Chor", "Pay", "Ju", "Shan"];
 	const OYLAR = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
+	const OYQ = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"];
 	const hk = (s) => { const d = new Date(s + "T00:00:00"); return isNaN(d) ? "" : HAFTA[d.getDay()]; };
 	const pm = (v) => (v < 0 ? "−" + fmt(Math.abs(v)) : "+" + fmt(v));
 	const limitKey = () => "kk_min_limit_" + (st.currency || "UZS");
@@ -2675,8 +2676,7 @@ function tzKunlikInit($host) {
 		if (!d || d.empty) { $root.html(`<div class="kk-empty">Kassa hujjatlari topilmadi.</div>`); return; }
 		const flowLegend = `<div class="kk-legend right">
 			<span><span class="sw" style="background:${C.good}"></span>Kirim</span>
-			<span><span class="sw" style="background:${C.bad}"></span>Chiqim</span>
-			<span><span class="ln"></span>Sof oqim</span></div>`;
+			<span><span class="sw" style="background:${C.bad}"></span>Chiqim</span></div>`;
 		const limit = getLimit();
 		const past = limit ? d.days.filter((x) => x.balans < limit).length : 0;
 		const balRight = `<div class="kk-legend right"><span class="kk-limit">min chegara:
@@ -2687,15 +2687,15 @@ function tzKunlikInit($host) {
 			+ card("Kunlar kesimi — kassa kitobi",
 				"qatorni bosing — kun hujjatlari ochiladi · КО-4 — chop etiladigan kunlik varaq (doim filtrsiz, to'liq kun)"
 				+ ((st.kat || st.party) ? ` · <b style="color:${C.blueDark}">filtr faol:</b> kirim/chiqim filtrlangan, qoldiq ustunlari umumiy` : ""), ledger(d))
+			+ card("Kunlik kirim va chiqim", "oxirgi bir oy · har kun yonma-yon · ustun bosilsa jadvalda kun ochiladi", dailyBarsChart(d), flowLegend)
 			+ `<div class="kk-grid2">`
-			+ card("Pul oqimi", (d.days.length > 16 ? "haftalar kesimida" : "kunlar kesimida") + " · chiziq — sof oqim" + (d.days.length > 16 ? "" : " · ustun bosilsa jadvalda kun ochiladi"), flowChart(d), flowLegend)
+			+ card("Joriy davr vs oldingi davr", "eng muhim uch ko'rsatkich taqqoslamasi", compareChart(d))
 			+ card("Qoldiq dinamikasi", "kun oxiridagi qoldiq, ichki o'tkazmalar bilan", balanceChart(d), balRight)
 			+ `</div><div class="kk-grid2">`
-			+ card("Joriy davr vs oldingi davr", "eng muhim uch ko'rsatkich taqqoslamasi", compareChart(d))
-			+ card("Davr waterfall", "boshi → kirimlar → chiqimlar → oxiri · ustun bosilsa tafsilot", waterfall(d) + `<div class="kk-drill"></div>`)
-			+ `</div><div class="kk-grid2">`
-			+ card("Chiqim kategoriyalari", "qatorni bosing — tafsilot pastda ochiladi", pareto(d.chiqim_kat, C.bad, d.kpi.chiqim, "Расход") + `<div class="kk-drill"></div>`)
-			+ card("Kirim manbalari", "qatorni bosing — tafsilot pastda ochiladi", pareto(d.kirim_kat, C.good, d.kpi.kirim, "Приход") + `<div class="kk-drill"></div>`)
+			+ card("Kirim reytingi", "kategoriyalar · oldingi davrga nisbatan % · qatorni bosing — tafsilot",
+				reyting(d.kirim_kat, C.good, d.kpi.kirim, "Приход", "Kategoriya", (d.kpi.prev || {}).kirim) + `<div class="kk-drill"></div>`)
+			+ card("Chiqim reytingi", "kategoriyalar · oldingi davrga nisbatan % · qatorni bosing — tafsilot",
+				reyting(d.chiqim_kat, C.bad, d.kpi.chiqim, "Расход", "Kategoriya", (d.kpi.prev || {}).chiqim) + `<div class="kk-drill"></div>`)
 			+ `</div><div class="kk-grid2">`
 			+ card("Top kontragentlar", "qatorni bosing — kontragent tafsiloti pastda ochiladi", topParties(d) + `<div class="kk-drill"></div>`)
 			+ card("Kalendar", "kunlik sof oqim: yashil — plyus, qizil — minus · kunni bosing", heatmap(d))
@@ -2902,8 +2902,8 @@ function tzKunlikInit($host) {
 	// ---------------------------------------------------------------- oqim diagrammasi
 	// Davr 16 kundan uzun bo'lsa HAFTALARGA yig'iladi (Xero/QuickBooks andozasi:
 	// 30 ta ingichka ustun o'rniga 4-5 ta aniq taqqoslanadigan ustun)
-	function flowBuckets(days) {
-		if (days.length <= 16) {
+	function flowBuckets(days, maxDaily) {
+		if (days.length <= (maxDaily || 16)) {
 			return days.map((x) => ({ ...x, dan: x.sana, gacha: x.sana, hafta: false }));
 		}
 		const map = new Map();
@@ -2919,45 +2919,58 @@ function tzKunlikInit($host) {
 		return [...map.values()];
 	}
 
-	function flowChart(d) {
-		const days = d.days;
+	// Kunlik kirim/chiqim — yonma-yon ustunlar (ikkalasi ham noldan yuqoriga).
+	// Tooltip va "ustun bosilsa kun ochiladi" — .kk-day-hit orqali (eski bilan bir xil).
+	function dailyBarsChart(d) {
+		// DOIM oxirgi bir oy: to_date'dan orqaga 30 kun (masalan 8 sen → 8 okt),
+		// tanlangan davr qisqaroq bo'lsa ham. Backend `oylik_days` da beradi.
+		const days = (d.oylik_days && d.oylik_days.length) ? d.oylik_days : d.days;
 		if (!days.length) return `<div class="kk-empty">Ma'lumot yo'q.</div>`;
-		const B = flowBuckets(days);
+		const B = flowBuckets(days.slice(-31), 45);   // doim kunma-kun
 		st.flowBuckets = B;
-		const haftalik = B.length && B[0].hafta;
 		const n = B.length, u = uid();
-		const W = 600, H = 190, pL = 56, pR = 10, pT = 10, pB = 24;
-		const maxK = Math.max(1, ...B.map((x) => x.kirim));
-		const maxC = Math.max(1, ...B.map((x) => x.chiqim));
-		const span = maxK + maxC;
-		const y0 = pT + (H - pT - pB) * (maxK / span);
-		const yV = (v) => y0 - v / span * (H - pT - pB);
-		const slot = (W - pL - pR) / n, bw = Math.max(6, Math.min(54, slot * 0.58));
+		// Karta to'liq enda — viewBox yassi bo'lishi kerak (aks holda balandlik cho'ziladi)
+		const W = 1400, H = 140, pL = 58, pR = 12, pT = 12, pB = 22;
+		const plotH = H - pT - pB;
+		const max = Math.max(1, ...B.map((x) => Math.max(x.kirim, x.chiqim)));
+		const yV = (v) => pT + plotH * (1 - v / max);
+		const slot = (W - pL - pR) / n;
+		// Ustunlar ingichka (namunadagidek), juftlik orasida kichik tirqish
+		const bw = Math.max(1.8, Math.min(11, slot * 0.22));
+		const gap = Math.max(0.6, bw * 0.16);
+		// yorliqlar bir-biriga tegmasin: ~16 tadan ko'p bo'lmasin
+		const step = Math.ceil(n / 16);
+
 		let bars = "", labs = "";
+		const dv = st.data || {};
 		B.forEach((x, i) => {
 			const cx = pL + slot * i + slot / 2;
-			const dl = Math.min(0.3, i * 0.04).toFixed(2);
-			bars += `<g class="kk-day-hit" data-bucket="${i}" ${x.hafta ? "" : `data-day="${x.sana}"`}>
-				<rect class="hover-bg" x="${(cx - slot / 2).toFixed(1)}" y="${pT}" width="${slot.toFixed(1)}" height="${H - pT - pB}" rx="6" fill="transparent"/>
-				${x.kirim ? `<rect class="kk-grow" style="animation-delay:${dl}s" x="${(cx - bw / 2).toFixed(1)}" y="${yV(x.kirim).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2.5, y0 - yV(x.kirim) - 1).toFixed(1)}" rx="4" fill="url(#${u}in)" filter="url(#${u}soft)"/>` : ""}
-				${x.chiqim ? `<rect class="kk-growd" style="animation-delay:${dl}s" x="${(cx - bw / 2).toFixed(1)}" y="${(y0 + 2).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2.5, yV(-x.chiqim) - y0 - 2).toFixed(1)}" rx="4" fill="url(#${u}out)" filter="url(#${u}soft)"/>` : ""}
+			const dl = Math.min(0.3, i * 0.012).toFixed(2);
+			// tanlangan davrdan tashqaridagi kunlar xiraroq
+			const op = (x.sana < dv.from_date || x.sana > dv.to_date) ? ' opacity=".45"' : "";
+			const kh = x.kirim ? Math.max(2, plotH - (yV(x.kirim) - pT)) : 0;
+			const ch = x.chiqim ? Math.max(2, plotH - (yV(x.chiqim) - pT)) : 0;
+			bars += `<g class="kk-day-hit"${op} data-bucket="${i}" ${x.hafta ? "" : `data-day="${x.sana}"`}>
+				<rect class="hover-bg" x="${(cx - slot / 2).toFixed(1)}" y="${pT}" width="${slot.toFixed(1)}" height="${plotH}" rx="5" fill="transparent"/>
+				${kh ? `<rect class="kk-grow" style="animation-delay:${dl}s" x="${(cx - gap / 2 - bw).toFixed(1)}" y="${yV(x.kirim).toFixed(1)}" width="${bw.toFixed(1)}" height="${kh.toFixed(1)}" rx="${Math.min(3, bw / 2).toFixed(1)}" fill="url(#${u}in)"/>` : ""}
+				${ch ? `<rect class="kk-grow" style="animation-delay:${dl}s" x="${(cx + gap / 2).toFixed(1)}" y="${yV(x.chiqim).toFixed(1)}" width="${bw.toFixed(1)}" height="${ch.toFixed(1)}" rx="${Math.min(3, bw / 2).toFixed(1)}" fill="url(#${u}out)"/>` : ""}
 			</g>`;
-			const lbl = x.hafta ? `${Number(x.dan.slice(8, 10))}–${Number(x.gacha.slice(8, 10))}` : Number(x.sana.slice(8, 10));
-			labs += `<text x="${cx}" y="${H - 9}" font-size="10" fill="${C.faint}" text-anchor="middle">${lbl}</text>`;
+			// Yorliq: "1 okt." — bitta qatorda; ko'p kun bo'lsa oraliq bilan
+			if (i % step === 0 || i === n - 1) {
+				const oy = OYQ[Number(x.sana.slice(5, 7)) - 1] || "";
+				const lbl = x.hafta
+					? `${Number(x.dan.slice(8, 10))}–${Number(x.gacha.slice(8, 10))} ${oy}.`
+					: `${Number(x.sana.slice(8, 10))} ${oy}.`;
+				labs += `<text x="${cx.toFixed(1)}" y="${H - 7}" font-size="11" fill="${C.faint}" text-anchor="middle">${lbl}</text>`;
+			}
 		});
-		const P = B.map((x, i) => [+(pL + slot * i + slot / 2).toFixed(1), +yV(x.net).toFixed(1)]);
-		const netPath = smoothPath(P);
-		const gl = (v, strong) => `<line x1="${pL}" y1="${yV(v)}" x2="${W - pR}" y2="${yV(v)}" stroke="${strong ? C.line : C.lineSoft}" ${strong ? "" : 'stroke-dasharray="1 4" stroke-linecap="round"'}/>
-			<text x="${pL - 7}" y="${yV(v) + 3.5}" font-size="10" fill="${C.faint}" text-anchor="end">${v ? m1(v) : "0"}</text>`;
-		const last = P[P.length - 1];
+
+		const gl = (v, strong) => `<line x1="${pL}" y1="${yV(v).toFixed(1)}" x2="${W - pR}" y2="${yV(v).toFixed(1)}" stroke="${strong ? C.line : C.lineSoft}" ${strong ? "" : 'stroke-dasharray="1 4" stroke-linecap="round"'}/>
+			<text x="${pL - 7}" y="${(yV(v) + 3.5).toFixed(1)}" font-size="10" fill="${C.faint}" text-anchor="end">${v ? m1(v) : "0"}</text>`;
+
 		return `<svg width="100%" viewBox="0 0 ${W} ${H}">${defs(u)}
-			${gl(maxK)}${gl(0, true)}${gl(-maxC)}
-			${bars}
-			<path d="${netPath}" fill="none" stroke="${C.blue}" stroke-width="5" opacity=".2" filter="url(#${u}glow)"/>
-			<path d="${netPath}" fill="none" stroke="${C.blue}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
-			<circle class="kk-pulse" cx="${last[0]}" cy="${last[1]}" r="4.5" fill="${C.blue}"/>
-			<circle cx="${last[0]}" cy="${last[1]}" r="3.6" fill="${C.blue}" stroke="#fff" stroke-width="1.6"/>
-			${labs}</svg>`;
+			${gl(max)}${gl(max / 2)}${gl(0, true)}
+			${bars}${labs}</svg>`;
 	}
 
 	// Joriy davr vs oldingi davr — eng kerakli uch ko'rsatkichni yonma-yon
@@ -3061,79 +3074,68 @@ function tzKunlikInit($host) {
 			<span><span class="sw" style="background:${C.lineSoft}"></span>harakat yo'q</span></div>`;
 	}
 
-	// ---------------------------------------------------------------- waterfall
-	function waterfall(d) {
-		const TOP = 5;
-		const squash = (list) => {
-			const a = list.slice(0, TOP), rest = list.slice(TOP);
-			if (rest.length) a.push({ label: `Boshqa (${rest.length})`, summa: rest.reduce((s, x) => s + x.summa, 0) });
-			return a.filter((x) => x.summa > 0.5);
+	// Reyting jadvali — o'rin raqami, summa, ichki ustun va oldingi davrga
+	// nisbatan % o'zgarish; oxirida "Umumiy jami" qatori.
+	function reyting(list, color, total, tur, nomUstun, prevTotal) {
+		if (!list || !list.length) return `<div class="kk-empty">Davrda harakat yo'q.</div>`;
+		const top = list.slice(0, 8);
+		const mx = Math.max(1, ...top.map((x) => x.summa));
+		const delta = (p) => {
+			if (p === null || p === undefined) return `<span class="kk-dl new">yangi</span>`;
+			const up = p > 0;
+			const nol = Math.abs(p) < 0.05;
+			return `<span class="kk-dl ${nol ? "flat" : up ? "up" : "down"}">${nol ? "0,0" : (up ? "+" : "") + p.toFixed(1).replace(".", ",")} %${nol ? "" : up ? " ↑" : " ↓"}</span>`;
 		};
-		const kir = squash(d.kirim_kat), chi = squash(d.chiqim_kat);
-		const steps = [{ label: "Boshi", v: d.kpi.opening, tip: "anchor" }]
-			.concat(kir.map((x) => ({ label: x.label, v: x.summa, tip: "in" })))
-			.concat(chi.map((x) => ({ label: x.label, v: -x.summa, tip: "out" })))
-			.concat([{ label: "Oxiri", v: d.kpi.closing, tip: "anchor" }]);
-		let run = d.kpi.opening, lo = Math.min(0, d.kpi.opening), hi = Math.max(0, d.kpi.opening);
-		const pos = steps.map((s) => {
-			if (s.tip === "anchor") { lo = Math.min(lo, s.v, 0); hi = Math.max(hi, s.v); return { ...s, a: 0, b: s.v }; }
-			const a = run; run += s.v; const b = run;
-			lo = Math.min(lo, a, b); hi = Math.max(hi, a, b);
-			return { ...s, a, b };
-		});
-		if (hi === lo) hi = lo + 1;
-		const u = uid();
-		const W = 600, H = 200, pL = 62, pR = 8, pT = 14, pB = 50;
-		const yV = (v) => pT + (hi - v) / (hi - lo) * (H - pT - pB);
-		const n = pos.length, slot = (W - pL - pR) / n, bw = Math.min(48, slot * 0.68);
-		let out = "", conns = "", prevX = null, prevY = null;
-		pos.forEach((s, i) => {
-			const x = pL + slot * i + (slot - bw) / 2;
-			const yA = yV(Math.max(s.a, s.b)), hB = Math.max(3, Math.abs(yV(s.a) - yV(s.b)));
-			const fill = s.tip === "anchor" ? `url(#${u}anchor)` : (s.tip === "in" ? `url(#${u}in)` : `url(#${u}out)`);
-			const drill = (s.tip !== "anchor" && !/^Boshqa \(/.test(s.label))
-				? ` data-tur="${s.tip === "in" ? "Приход" : "Расход"}" data-kat="${esc(s.label)}" style="cursor:pointer"` : "";
-			out += `<g class="kk-wf-hit"${drill}><title>${esc(s.label)}: ${fmt(Math.abs(s.tip === "anchor" ? s.b : s.v))}${drill ? " — bosing, tafsilot ochiladi" : ""}</title>
-				<rect class="kk-grow" style="animation-delay:${(i * 0.05).toFixed(2)}s" x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${bw.toFixed(1)}" height="${hB.toFixed(1)}" rx="5" fill="${fill}" filter="url(#${u}soft)"/></g>
-				<text x="${(x + bw / 2).toFixed(1)}" y="${(yA - 6).toFixed(1)}" font-size="9.5" font-weight="700" fill="${C.ink}" text-anchor="middle">${m1(s.tip === "anchor" ? s.b : Math.abs(s.v))}</text>`;
-			const lbl = s.label.length > 14 ? s.label.slice(0, 13) + "…" : s.label;
-			out += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 42}" font-size="9.5" fill="${C.muted}" text-anchor="end" transform="rotate(-30 ${(x + bw / 2).toFixed(1)} ${H - 42})">${esc(lbl)}</text>`;
-			const edgeY = yV(s.b).toFixed(1);
-			if (prevX != null) conns += `<line x1="${prevX}" y1="${prevY}" x2="${x.toFixed(1)}" y2="${prevY}" stroke="${C.slate}" stroke-width="1" stroke-dasharray="2 3" opacity=".7"/>`;
-			prevX = (x + bw).toFixed(1); prevY = edgeY;
-		});
-		return `<svg width="100%" viewBox="0 0 ${W} ${H}">${defs(u)}
-			<line x1="${pL}" y1="${yV(0)}" x2="${W - pR}" y2="${yV(0)}" stroke="${C.line}"/>${conns}${out}</svg>`;
+		const jamiPct = (() => {
+			const pt = Number(prevTotal);
+			if (!pt || pt <= 0.005) return "";
+			return delta(Math.round((total - pt) / pt * 1000) / 10);
+		})();
+
+		return `<table class="kk-reyting">
+			<thead><tr><th class="no"></th><th>${esc(nomUstun)}</th><th class="r">Summa</th><th class="bar"></th><th class="r dl">% Δ</th></tr></thead>
+			<tbody>${top.map((x, i) => {
+				const click = tur ? ` class="click" data-tur="${esc(tur)}" data-kat="${esc(x.label)}" title="Bosing — tafsilot pastda ochiladi"` : "";
+				return `<tr${click}>
+					<td class="no">${i + 1}.</td>
+					<td class="nm" title="${esc(x.label)}">${esc(x.label)}</td>
+					<td class="r num">${fmt(x.summa)}</td>
+					<td class="bar"><i style="width:${Math.max(3, x.summa / mx * 100)}%;background:${color}"></i></td>
+					<td class="r dl">${delta(x.delta_pct)}</td></tr>`;
+			}).join("")}</tbody>
+			<tfoot><tr><td></td><td class="nm">Umumiy jami</td>
+				<td class="r num">${fmt(total)}</td><td></td><td class="r dl">${jamiPct}</td></tr></tfoot>
+		</table>`;
 	}
 
-	// ---------------------------------------------------------------- pareto / top
-	function pareto(list, color, total, tur) {
-		if (!list || !list.length) return `<div class="kk-empty">Davrda harakat yo'q.</div>`;
+	// Kontragentlar reytingi (kirim/chiqim alohida) — bosilsa tafsilot ochiladi
+	function partyReyting(list, color, tur) {
+		if (!list || !list.length) return `<div class="kk-empty" style="padding:8px">yo'q</div>`;
 		const mx = Math.max(1, ...list.map((x) => x.summa));
-		let kum = 0;
-		return `<div class="kk-hbars">` + list.slice(0, 8).map((x) => {
-			kum += x.summa;
-			const ulush = total ? (x.summa / total * 100) : 0;
-			const click = tur ? ` click" data-tur="${esc(tur)}" data-kat="${esc(x.label)}" title="Bosing — kategoriya tafsiloti pastda ochiladi` : "";
-			return `<div class="hb${click}"><div class="hb-t">
-				<span title="${esc(x.label)}">${esc(x.label)}</span>
-				<b class="num">${fmt(x.summa)} <span class="kum">${ulush.toFixed(0)}% · kum. ${total ? (kum / total * 100).toFixed(0) : 0}%</span></b></div>
-				<div class="hb-track"><i style="width:${Math.max(2, x.summa / mx * 100)}%;background:${color}"></i></div></div>`;
-		}).join("") + `</div>`;
+		const jami = list.reduce((a, x) => a + x.summa, 0);
+		const delta = (p) => {
+			if (p === null || p === undefined) return `<span class="kk-dl new">yangi</span>`;
+			const up = p > 0, nol = Math.abs(p) < 0.05;
+			return `<span class="kk-dl ${nol ? "flat" : up ? "up" : "down"}">${nol ? "0,0" : (up ? "+" : "") + p.toFixed(1).replace(".", ",")} %${nol ? "" : up ? " ↑" : " ↓"}</span>`;
+		};
+		return `<table class="kk-reyting">
+			<tbody>${list.map((x, i) => `
+				<tr class="click" data-tur="${esc(tur)}" data-party="${esc(x.label)}" title="Bosing — kontragent tafsiloti pastda ochiladi">
+					<td class="no">${i + 1}.</td>
+					<td class="nm" title="${esc(x.label)}">${esc(x.label)}</td>
+					<td class="r num">${fmt(x.summa)}</td>
+					<td class="bar"><i style="width:${Math.max(3, x.summa / mx * 100)}%;background:${color}"></i></td>
+					<td class="r dl">${delta(x.delta_pct)}</td></tr>`).join("")}</tbody>
+			<tfoot><tr><td></td><td class="nm">Jami (top ${list.length})</td>
+				<td class="r num">${fmt(jami)}</td><td></td><td></td></tr></tfoot>
+		</table>`;
 	}
 
 	function topParties(d) {
-		const blok = (title, list, color, tur) => {
-			const mx = Math.max(1, ...list.map((y) => y.summa));
-			return `<div style="margin-bottom:12px"><div class="kk-subtitle">${title}</div>`
-				+ (list.length ? `<div class="kk-hbars">` + list.map((x) =>
-					`<div class="hb click" data-tur="${esc(tur)}" data-party="${esc(x.label)}" title="Bosing — kontragent tafsiloti pastda ochiladi">
-					<div class="hb-t"><span title="${esc(x.label)}">${esc(x.label)}</span><b class="num">${fmt(x.summa)}</b></div>
-					<div class="hb-track"><i style="width:${Math.max(2, x.summa / mx * 100)}%;background:${color}"></i></div></div>`).join("") + `</div>`
-					: `<div class="kk-empty" style="padding:8px">yo'q</div>`) + `</div>`;
-		};
-		return blok("Kirim — top 5", d.top_kirim || [], C.good, "Приход")
-			+ blok("Chiqim — top 5", d.top_chiqim || [], C.bad, "Расход");
+		return `<div style="margin-bottom:14px"><div class="kk-subtitle">Kirim — kontragentlar reytingi</div>`
+			+ partyReyting(d.top_kirim || [], C.good, "Приход") + `</div>`
+			+ `<div><div class="kk-subtitle">Chiqim — kontragentlar reytingi</div>`
+			+ partyReyting(d.top_chiqim || [], C.bad, "Расход") + `</div>`;
 	}
 
 	// ---------------------------------------------------------------- ledger
@@ -3304,15 +3306,15 @@ function tzKunlikInit($host) {
 			st.selDay = null; load();
 		});
 		// Diagramma elementlari — bosilganda shu karta ichida tafsilot ochiladi
-		$root.on("click.kk", ".hb.click, .kk-wf-hit[data-kat]", function () {
+		$root.on("click.kk", ".hb.click, tr.click[data-tur], .kk-wf-hit[data-kat]", function () {
 			const $el = $(this);
 			const tur = String($el.attr("data-tur") || "");
 			const kat = String($el.attr("data-kat") || "");
 			const party = String($el.attr("data-party") || "");
 			if (!tur || (!kat && !party)) return;
 			const $card = $el.closest(".kk-card");
-			$card.find(".hb.click").removeClass("active");
-			if ($el.hasClass("hb")) $el.addClass("active");
+			$card.find(".hb.click, tr.click[data-tur]").removeClass("active");
+			$el.addClass("active");
 			loadDrill(tur, kat, party, $card.find(".kk-drill").first());
 		});
 		$root.on("click.kk", "[data-drill-close]", function (e) {
@@ -3385,11 +3387,18 @@ function tzKunlikInit($host) {
 				const b = st.flowBuckets[Number(bi)];
 				if (b) {
 					const title = b.hafta ? `${dmy(b.dan)} – ${dmy(b.gacha)} (hafta)` : `${dmy(b.dan)} · ${hk(b.dan)}`;
+					// Diagramma doim oxirgi bir oyni ko'rsatadi — tanlangan davrdan
+					// tashqaridagi kunda qoldiq hisoblanmaydi va jadvalda qatori yo'q
+					const dv = st.data || {};
+					const tashqari = b.dan < dv.from_date || b.dan > dv.to_date;
+					const qoldiq = (b.balans === undefined || b.balans === null || tashqari)
+						? `${b.n} hujjat${tashqari ? " · tanlangan davrdan tashqarida" : ""}`
+						: `Oxiridagi qoldiq: <b>${fmt(b.balans)}</b> · ${b.n} hujjat`;
 					tipShow(`<div class="t">${title}</div>
 						<div class="row"><i style="background:${C.good}"></i>Kirim <b>${fmt(b.kirim)}</b></div>
 						<div class="row"><i style="background:${C.bad}"></i>Chiqim <b>${fmt(b.chiqim)}</b></div>
 						<div class="row"><i style="background:${C.blue}"></i>Sof oqim <b>${pm(b.net)}</b></div>
-						<div class="q">Oxiridagi qoldiq: <b>${fmt(b.balans)}</b> · ${b.n} hujjat</div>`, ev);
+						<div class="q">${qoldiq}</div>`, ev);
 					return;
 				}
 			}

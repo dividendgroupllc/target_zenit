@@ -16,6 +16,7 @@ class TZXodimQarzPanel {
 		this.q = "";
 		this.fTur = "qarzdor"; // qarzdor | kompaniya | hamma
 		this.fLavozim = "";    // lavozim (guruh) filtri
+		this.fKategoriya = ""; // ish haqi kategoriyasi filtri
 		this.make_skeleton();
 		this.load();
 	}
@@ -55,6 +56,13 @@ class TZXodimQarzPanel {
 		return [...set].sort((a, b) => a.localeCompare(b));
 	}
 
+	// Ish haqi kategoriyalari — kanonik tartibda, faqat ma'lumotda uchraganlar
+	kategoriyalar() {
+		const kanon = ["Admin oylik", "O'qituvchi", "Xodimlar", "Oshxona"];
+		const bor = new Set((this.data.rows || []).map((r) => r.kategoriya).filter(Boolean));
+		return kanon.filter((k) => bor.has(k));
+	}
+
 	filtered() {
 		const q = this.q.trim().toLowerCase();
 		return (this.data.rows || []).filter((r) => {
@@ -62,8 +70,10 @@ class TZXodimQarzPanel {
 			if (this.fTur === "kompaniya" && !(r.saldo < -1000)) return false;
 			if (this.fLavozim === "__none" && r.lavozim) return false;
 			if (this.fLavozim && this.fLavozim !== "__none" && r.lavozim !== this.fLavozim) return false;
+			if (this.fKategoriya === "__none" && r.kategoriya) return false;
+			if (this.fKategoriya && this.fKategoriya !== "__none" && r.kategoriya !== this.fKategoriya) return false;
 			if (q) {
-				const hay = [r.ism, r.lavozim, r.telefon, r.employee].join(" ").toLowerCase();
+				const hay = [r.ism, r.lavozim, r.kategoriya, r.telefon, r.employee].join(" ").toLowerCase();
 				if (!hay.includes(q)) return false;
 			}
 			return true;
@@ -99,6 +109,12 @@ class TZXodimQarzPanel {
 
 			<div class="controls mb">
 				<input type="text" class="q" placeholder="Qidiruv: ism, lavozim, telefon…" value="${this.esc(this.q)}">
+				<select class="fkategoriya">
+					<option value="">Barcha kategoriyalar</option>
+					${this.kategoriyalar().map((k) =>
+						`<option value="${this.esc(k)}" ${this.fKategoriya === k ? "selected" : ""}>${this.esc(k)}</option>`).join("")}
+					<option value="__none" ${this.fKategoriya === "__none" ? "selected" : ""}>Belgilanmagan</option>
+				</select>
 				<select class="flavozim">
 					<option value="">Barcha lavozimlar</option>
 					<option value="__none" ${this.fLavozim === "__none" ? "selected" : ""}>Lavozimsiz</option>
@@ -116,6 +132,7 @@ class TZXodimQarzPanel {
 		this.body.find(`[data-act="reload"]`).on("click", () => this.load());
 		this.body.find(".q").on("input", frappe.utils.debounce((e) => { this.q = e.target.value; this.render_list(); }, 250));
 		this.body.find(".flavozim").on("change", (e) => { this.fLavozim = e.target.value; this.render_list(); });
+		this.body.find(".fkategoriya").on("change", (e) => { this.fKategoriya = e.target.value; this.render_list(); });
 		this.body.find(".kpi.click").on("click", (e) => { this.fTur = $(e.currentTarget).data("t"); this.render(); });
 	}
 
@@ -129,7 +146,7 @@ class TZXodimQarzPanel {
 					<tr data-i="${i}" class="${this.selected === i ? "sel" : ""}">
 						<td><div class="nm">${r.employee ? `<a class="slink" href="/app/employee/${encodeURIComponent(r.employee)}" onclick="event.stopPropagation()">${this.esc(r.ism)}</a>` : this.esc(r.ism)}</div>
 							<div class="mini">${this.esc(r.telefon || "")} ${r.faol ? "" : '<span class="pill st-mut">ishdan ketgan</span>'}</div></td>
-						<td>${this.esc(r.lavozim || "—")}</td>
+						<td>${this.esc(r.lavozim || "—")}${r.kategoriya ? `<div class="mini"><span class="pill st-mut">${this.esc(r.kategoriya)}</span></div>` : ""}</td>
 						<td class="r">${this.fmt(r.hisoblangan)}</td>
 						<td class="r">${this.fmt(r.tolangan)}</td>
 						<td class="r money ${r.saldo > 1000 ? "red2" : r.saldo < -1000 ? "blue2" : ""}">${this.fmt(r.saldo)}</td>

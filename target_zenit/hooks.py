@@ -180,6 +180,8 @@ doc_events = {
 	# Salary Structure Assignment avto-yaratiladi (oylik tabel/payroll uchun;
 	# Kassa oqimiga ta'sir qilmaydi)
 	"Employee": {
+		# Ish haqi kategoriyasi (tabel) bo'sh bo'lsa — lavozimdan avtomat to'ldiriladi
+		"validate": "target_zenit.target_zenit.api.oylik_tabel.set_ish_haqi_kategoriya",
 		"on_update": "target_zenit.target_zenit.api.oylik_tabel.employee_oylik_ssa",
 	},
 	# Nachisleniya yozilganda — o'sha xodim/oy bo'yicha avval to'langan
