@@ -340,6 +340,16 @@ fixtures = [
                 "Student-custom_hikvision_id",
                 "Student-custom_eduvisit_id",
                 "Guardian-custom_eduvisit_id",
+                # Ota-ona (Guardian) hujjat ma'lumotlari — shartnoma/karta uchun
+                "Guardian-custom_hujjat_section",
+                "Guardian-custom_fuqaroligi",
+                "Guardian-custom_pasport",
+                "Guardian-custom_pasport_berilgan_sana",
+                "Guardian-custom_pasport_kim_bergan",
+                "Guardian-custom_jshshir",
+                "Guardian-custom_manzil",
+                "Guardian-custom_imzo_sanasi",
+                "Guardian-custom_imzo",
                 "Student-custom_shartnoma_qilindi",
                 "Student-custom_shartnoma_turi",
                 "Student-custom_sinf_guruh",
@@ -369,7 +379,21 @@ fixtures = [
     {
         "dt": "Property Setter",
         "filters": [
-            ["name", "in", ["Student-student_email_id-reqd"]]
+            ["name", "in", [
+                "Student-student_email_id-reqd",
+                # Guardian: kartada keraksiz standart fieldlar yashirildi
+                "Guardian-email_address-hidden",
+                "Guardian-alternate_number-hidden",
+                "Guardian-date_of_birth-hidden",
+                "Guardian-user-hidden",
+                "Guardian-column_break_3-hidden",
+                "Guardian-education-hidden",
+                "Guardian-occupation-hidden",
+                "Guardian-designation-hidden",
+                "Guardian-work_address-hidden",
+                "Guardian-section_break_8-hidden",
+                "Guardian-interests-hidden",
+            ]]
         ]
     }
 ]
