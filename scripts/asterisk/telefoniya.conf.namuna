@@ -1,0 +1,35 @@
+# Target Zenit telefoniya — Asterisk serveridagi sozlama.
+# Joyi: /etc/target-zenit-telefoniya.conf   (chmod 600, egasi asterisk)
+
+# Frappe sayti
+CRM_URL="https://target.zenit.uz"
+
+# "Telefoniya Agent" rolidagi foydalanuvchining API kaliti.
+# Frappe'da: User -> Settings -> API Access -> Generate Keys
+CRM_TOKEN="api_key:api_secret"
+
+# Frappe saytni Host sarlavhasi bo'yicha aniqlaydi. CRM_URL'da IP yoki ichki
+# nom ishlatilsa (masalan http://10.8.0.1:8000), sayt nomini shu yerda bering.
+# CRM_URL'ning o'zida to'g'ri domen bo'lsa — bo'sh qoldiring.
+#CRM_HOST="target.zenit.uz"
+
+# Navbat papkasi. Yozuvlar shu yerda turadi va yuborilgach done/ ga ko'chadi.
+SPOOL="/var/spool/target-zenit-telefoniya"
+
+# Asterisk MixMonitor xom WAV fayllarni shu yerga yozadi.
+XOM="/var/spool/asterisk/monitor"
+
+# MP3 sifati. 48k stereo: daqiqasiga ~360 KB, gap tushunarli, STT uchun yetarli.
+MP3_BITRATE="48k"
+
+# Yuborilgan fayllar done/ da shu kun saqlanadi, keyin o'chiriladi.
+# 0 = darhol o'chirish. Boshida 7 kun qoldirish tavsiya etiladi — CRM'ga
+# yetib borganini o'z ko'zingiz bilan tekshirib olasiz.
+DONE_SAQLASH_KUNI=7
+
+# Fayl konvertatsiyasini qancha kutamiz (sekund). Shu vaqtdan keyin
+# metadata yozuvsiz yuboriladi — qo'ng'iroq yo'qolib ketmasin.
+FAYL_KUTISH=180
+
+# Necha urinishdan keyin xato/ ga ko'chiramiz.
+MAKS_URINISH=20

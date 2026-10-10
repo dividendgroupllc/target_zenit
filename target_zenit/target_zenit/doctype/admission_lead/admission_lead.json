@@ -9,6 +9,7 @@
   "child_name",
   "family",
   "phone",
+  "normal_telefon",
   "column_break_1",
   "birth_year",
   "target_grade",
@@ -140,6 +141,16 @@
    "fieldname": "notes",
    "fieldtype": "Text Editor",
    "label": "Izohlar"
+  },
+  {
+   "fieldname": "normal_telefon",
+   "fieldtype": "Data",
+   "label": "Normal telefon",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1,
+   "search_index": 1,
+   "description": "Telefon raqamining kanonik ko'rinishi (998XXXXXXXXX). Avtomatik to'ldiriladi — qo'ng'iroqni oilaga bog'lash shu maydon bo'yicha ketadi."
   }
  ],
  "index_web_pages_for_search": 0,

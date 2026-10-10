@@ -1,0 +1,136 @@
+{
+ "actions": [],
+ "creation": "2026-10-10 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_saqlash",
+  "yozuvlar_papkasi",
+  "joriy_papka",
+  "column_break_saqlash",
+  "saqlash_kuni",
+  "maks_fayl_mb",
+  "section_sim",
+  "sim_kunlik_limit",
+  "column_break_sim",
+  "sim_pauza_min",
+  "sim_pauza_maks",
+  "section_ai",
+  "ai_yoqilgan",
+  "stt_provayder"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_saqlash",
+   "fieldtype": "Section Break",
+   "label": "Yozuvlarni saqlash"
+  },
+  {
+   "description": "Bo'sh qoldirilsa — sayt ichidagi <code>private/call-recordings</code> ishlatiladi. Bu papka <code>bench backup --with-files</code> ga kirmaydi, shuning uchun zaxira fayllari o'sib ketmaydi.",
+   "fieldname": "yozuvlar_papkasi",
+   "fieldtype": "Data",
+   "label": "Yozuvlar papkasi (to'liq yo'l)"
+  },
+  {
+   "fieldname": "joriy_papka",
+   "fieldtype": "Data",
+   "label": "Joriy papka",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_saqlash",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "180",
+   "description": "Shu kundan oshgan yozuv fayllari o'chiriladi. Qo'ng'iroq metadatasi (vaqt, raqam, davomiylik) saqlanib qoladi.",
+   "fieldname": "saqlash_kuni",
+   "fieldtype": "Int",
+   "label": "Saqlash muddati (kun)"
+  },
+  {
+   "default": "25",
+   "description": "Bundan katta fayl qabul qilinmaydi. 3 daqiqali stereo MP3 ~1 MB.",
+   "fieldname": "maks_fayl_mb",
+   "fieldtype": "Int",
+   "label": "Maksimal fayl hajmi (MB)"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_sim",
+   "fieldtype": "Section Break",
+   "label": "SIM nazorati"
+  },
+  {
+   "default": "50",
+   "description": "Bitta SIM uchun kunlik chiquvchi qo'ng'iroq chegarasi. Operator SIM-box deb bloklab qo'ymasligi uchun 40-60 oralig'ida tutiladi.",
+   "fieldname": "sim_kunlik_limit",
+   "fieldtype": "Int",
+   "label": "SIM kunlik limiti"
+  },
+  {
+   "fieldname": "column_break_sim",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "3",
+   "fieldname": "sim_pauza_min",
+   "fieldtype": "Int",
+   "label": "Qo'ng'iroqlar orasidagi min pauza (s)"
+  },
+  {
+   "default": "10",
+   "fieldname": "sim_pauza_maks",
+   "fieldtype": "Int",
+   "label": "Maks pauza (s)"
+  },
+  {
+   "collapsible": 1,
+   "description": "Bu bo'lim keyingi bosqich uchun. Hozir o'chirilgan holda qoladi.",
+   "fieldname": "section_ai",
+   "fieldtype": "Section Break",
+   "label": "Transkripsiya va tahlil (keyingi bosqich)"
+  },
+  {
+   "default": "0",
+   "fieldname": "ai_yoqilgan",
+   "fieldtype": "Check",
+   "label": "AI yoqilgan"
+  },
+  {
+   "default": "yoq",
+   "depends_on": "ai_yoqilgan",
+   "fieldname": "stt_provayder",
+   "fieldtype": "Select",
+   "label": "Nutq->matn provayderi",
+   "options": "yoq\nfaster_whisper\nmohir"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-10 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Telefoniya Sozlamalari",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales Manager"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

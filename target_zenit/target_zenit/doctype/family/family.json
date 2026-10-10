@@ -9,6 +9,8 @@
   "family_name",
   "phone",
   "phone2",
+  "normal_telefon",
+  "normal_telefon2",
   "column_break_1",
   "father_name",
   "mother_name",
@@ -116,6 +118,26 @@
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Izohlar"
+  },
+  {
+   "fieldname": "normal_telefon",
+   "fieldtype": "Data",
+   "label": "Normal telefon",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1,
+   "search_index": 1,
+   "description": "Telefon raqamining kanonik ko'rinishi (998XXXXXXXXX). Avtomatik to'ldiriladi — qo'ng'iroqni oilaga bog'lash shu maydon bo'yicha ketadi."
+  },
+  {
+   "fieldname": "normal_telefon2",
+   "fieldtype": "Data",
+   "label": "Normal telefon 2",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1,
+   "search_index": 1,
+   "description": "Telefon raqamining kanonik ko'rinishi (998XXXXXXXXX). Avtomatik to'ldiriladi — qo'ng'iroqni oilaga bog'lash shu maydon bo'yicha ketadi."
   }
  ],
  "index_web_pages_for_search": 0,

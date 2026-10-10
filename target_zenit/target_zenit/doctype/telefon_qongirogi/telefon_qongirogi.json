@@ -1,0 +1,424 @@
+{
+ "actions": [],
+ "autoname": "format:TQ-{YYYY}-{######}",
+ "creation": "2026-10-10 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_asosiy",
+  "asterisk_uniqueid",
+  "yonalish",
+  "holat",
+  "manba",
+  "qurilma",
+  "column_break_asosiy",
+  "boshlandi",
+  "tugash_sababi",
+  "kim_tugatdi",
+  "section_tomonlar",
+  "ichki_raqam",
+  "xodim",
+  "foydalanuvchi",
+  "xodim_id",
+  "column_break_tomonlar",
+  "tashqi_raqam",
+  "normal_telefon",
+  "section_boglanish",
+  "aloqador_ism",
+  "kontakt_ism",
+  "family",
+  "admission_lead",
+  "column_break_boglanish",
+  "student",
+  "maqsad",
+  "izoh",
+  "section_vaqt",
+  "javob_berildi",
+  "tugadi",
+  "column_break_vaqt",
+  "kutish_vaqti",
+  "suhbat_vaqti",
+  "jami_vaqti",
+  "section_sim",
+  "sim_kanal",
+  "column_break_sim",
+  "sim_raqam",
+  "section_yozuv",
+  "yozuv_bor",
+  "fayl_hajmi",
+  "column_break_yozuv",
+  "yozuv_ochirildi",
+  "fayl_hash",
+  "fayl_yoli",
+  "yozuv_html",
+  "xato_matni"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_asosiy",
+   "fieldtype": "Section Break",
+   "label": "Qo'ng'iroq"
+  },
+  {
+   "description": "Asterisk UNIQUEID — Asterisk va CRM o'rtasidagi yagona bog'lovchi kalit.",
+   "fieldname": "asterisk_uniqueid",
+   "fieldtype": "Data",
+   "label": "Asterisk ID",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "yonalish",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Yo'nalish",
+   "options": "Chiquvchi\nKiruvchi",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "default": "Yangi",
+   "fieldname": "holat",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Holat",
+   "options": "Yangi\nYozuv bor\nTranskripsiya\nTahlil qilindi\nXato",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_asosiy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "boshlandi",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Boshlandi",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "tugash_sababi",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Natija",
+   "options": "\nJavob berildi\nJavob yo'q\nBand\nO'chirilgan\nXato\nBekor qilindi",
+   "read_only": 1
+  },
+  {
+   "description": "Trubkani kim qo'ydi — keyinchalik tahlil uchun signal.",
+   "fieldname": "kim_tugatdi",
+   "fieldtype": "Select",
+   "label": "Kim tugatdi",
+   "options": "\nMenejer\nMijoz\nNoma'lum",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_tomonlar",
+   "fieldtype": "Section Break",
+   "label": "Tomonlar"
+  },
+  {
+   "fieldname": "ichki_raqam",
+   "fieldtype": "Data",
+   "label": "Ichki raqam",
+   "read_only": 1
+  },
+  {
+   "fieldname": "xodim",
+   "fieldtype": "Link",
+   "label": "Menejer",
+   "options": "Employee",
+   "read_only": 1
+  },
+  {
+   "fieldname": "foydalanuvchi",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Foydalanuvchi",
+   "options": "User",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_tomonlar",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Asterisk bergan ko'rinish — o'zgartirilmagan.",
+   "fieldname": "tashqi_raqam",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Mijoz raqami",
+   "read_only": 1
+  },
+  {
+   "description": "Kanonik ko'rinish (998XXXXXXXXX) — qidiruv shu bo'yicha ketadi.",
+   "fieldname": "normal_telefon",
+   "fieldtype": "Data",
+   "label": "Normal raqam",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "section_boglanish",
+   "fieldtype": "Section Break",
+   "label": "Bog'lanish"
+  },
+  {
+   "fieldname": "aloqador_ism",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kim",
+   "read_only": 1
+  },
+  {
+   "fieldname": "family",
+   "fieldtype": "Link",
+   "label": "Oila",
+   "options": "Family",
+   "search_index": 1
+  },
+  {
+   "fieldname": "admission_lead",
+   "fieldtype": "Link",
+   "label": "Murojaat (Lead)",
+   "options": "Admission Lead",
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_boglanish",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "student",
+   "fieldtype": "Link",
+   "label": "O'quvchi",
+   "options": "Student",
+   "search_index": 1
+  },
+  {
+   "fieldname": "maqsad",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Maqsad",
+   "options": "\nYangi murojaat\nTashrifga chaqirish\nTashrifdan keyin\nShartnoma / to'lov\nQarzdorlik\nDavomat\nQayta ro'yxat\nBoshqa"
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Small Text",
+   "label": "Izoh"
+  },
+  {
+   "fieldname": "section_vaqt",
+   "fieldtype": "Section Break",
+   "label": "Vaqt"
+  },
+  {
+   "fieldname": "javob_berildi",
+   "fieldtype": "Datetime",
+   "label": "Javob berildi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tugadi",
+   "fieldtype": "Datetime",
+   "label": "Tugadi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_vaqt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Javob berilgunga qadar jiringlagan vaqt.",
+   "fieldname": "kutish_vaqti",
+   "fieldtype": "Duration",
+   "hide_days": 1,
+   "label": "Kutish",
+   "read_only": 1
+  },
+  {
+   "description": "Faqat gaplashilgan vaqt — jiringlash hisobga olinmaydi.",
+   "fieldname": "suhbat_vaqti",
+   "fieldtype": "Duration",
+   "hide_days": 1,
+   "in_list_view": 1,
+   "label": "Suhbat",
+   "read_only": 1
+  },
+  {
+   "fieldname": "jami_vaqti",
+   "fieldtype": "Duration",
+   "hide_days": 1,
+   "label": "Jami",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_sim",
+   "fieldtype": "Section Break",
+   "label": "SIM / kanal"
+  },
+  {
+   "fieldname": "sim_kanal",
+   "fieldtype": "Data",
+   "label": "Kanal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_sim",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sim_raqam",
+   "fieldtype": "Data",
+   "label": "SIM raqami",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_yozuv",
+   "fieldtype": "Section Break",
+   "label": "Ovoz yozuvi"
+  },
+  {
+   "default": "0",
+   "fieldname": "yozuv_bor",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Yozuv bor",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fayl_hajmi",
+   "fieldtype": "Int",
+   "label": "Fayl hajmi (bayt)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_yozuv",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Saqlash muddati tugab, fayl o'chirilgan. Metadata qoladi.",
+   "fieldname": "yozuv_ochirildi",
+   "fieldtype": "Check",
+   "label": "Yozuv o'chirilgan",
+   "read_only": 1
+  },
+  {
+   "description": "SHA-256 — takroriy yuklashni oldini oladi.",
+   "fieldname": "fayl_hash",
+   "fieldtype": "Data",
+   "label": "Fayl hash",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "description": "Yozuvlar papkasiga nisbatan yo'l. Fayl Frappe 'files' papkasidan tashqarida — backup'ga kirmaydi.",
+   "fieldname": "fayl_yoli",
+   "fieldtype": "Data",
+   "label": "Fayl yo'li",
+   "read_only": 1
+  },
+  {
+   "fieldname": "yozuv_html",
+   "fieldtype": "HTML",
+   "label": "Pleer"
+  },
+  {
+   "fieldname": "xato_matni",
+   "fieldtype": "Small Text",
+   "label": "Xato",
+   "read_only": 1
+  },
+  {
+   "fieldname": "manba",
+   "fieldtype": "Select",
+   "label": "Manba",
+   "options": "Asterisk\nAndroid\nQo'lda",
+   "default": "Asterisk",
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "Yozuv qaysi tizimdan keldi. Android — sotuvchi telefonidagi ilova; Asterisk — PBX server."
+  },
+  {
+   "fieldname": "qurilma",
+   "fieldtype": "Data",
+   "label": "Qurilma",
+   "read_only": 1,
+   "description": "Android manbasida: telefon modeli (masalan Xiaomi 23129RN51X)."
+  },
+  {
+   "fieldname": "kontakt_ism",
+   "fieldtype": "Data",
+   "label": "Telefondagi kontakt nomi",
+   "read_only": 1,
+   "description": "Sotuvchi telefonining kontaktlar ro'yxatidagi nom. CRM'dagi 'Kim' maydonidan alohida."
+  },
+  {
+   "fieldname": "xodim_id",
+   "fieldtype": "Data",
+   "label": "Yuborilgan xodim ID",
+   "read_only": 1,
+   "description": "Android ilovasi sozlamasida kiritilgan qiymat. Agar «Menejer» bo'sh bo'lsa — telefon noto'g'ri sozlangan, shu qiymatni tekshiring."
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-10 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Telefon Qongirogi",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sotuv meneger",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Telefoniya Agent",
+   "write": 1
+  }
+ ],
+ "search_fields": "tashqi_raqam,aloqador_ism,normal_telefon",
+ "sort_field": "boshlandi",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "aloqador_ism",
+ "track_changes": 1
+}

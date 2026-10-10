@@ -1,0 +1,11 @@
+[Unit]
+Description=Har 30 sekundda navbatni tekshirish
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=30
+AccuracySec=5
+Unit=telefoniya-yuklovchi.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Target Zenit telefoniya — navbatdagi qo'ng'iroqlarni CRM'ga yuborish
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=asterisk
+Group=asterisk
+ExecStart=/usr/local/bin/telefoniya-yuklovchi
+# Tarmoq uzilganda qayta urinish mantiqi skript ichida — systemd restart kerak emas.
