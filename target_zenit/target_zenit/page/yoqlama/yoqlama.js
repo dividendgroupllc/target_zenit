@@ -15,6 +15,7 @@ class TZYoqlama {
 		this.yil = b.getFullYear();
 		this.oy = b.getMonth() + 1;
 		this.faqatOqituvchi = 1;
+		this.fKategoriya = "";   // ish haqi kategoriyasi (tabel) filtri
 		this.q = "";
 		this.make_skeleton();
 		this.load();
@@ -37,7 +38,8 @@ class TZYoqlama {
 	load() {
 		frappe.call({
 			method: `${YQ_M}.get_data`,
-			args: { yil: this.yil, oy: this.oy, faqat_oqituvchi: this.faqatOqituvchi },
+			args: { yil: this.yil, oy: this.oy, faqat_oqituvchi: this.faqatOqituvchi,
+				kategoriya: this.fKategoriya || null },
 			callback: (r) => { this.data = r.message; this.render(); },
 			error: () => this.body.html(`<div class="loading">Xatolik. Sahifani yangilang.</div>`),
 		});
@@ -63,7 +65,8 @@ class TZYoqlama {
 		const rows = this.qatorlar();
 
 		const head = kunlar.map((k) =>
-			`<th class="kun ${k.dam ? "dam" : ""}" title="${k.sana}"><span>${k.kun}</span><em>${k.hafta}</em></th>`).join("");
+			`<th class="kun ${k.dam ? "dam" : ""}${k.sana === d.bugun ? " bugun" : ""}" title="${k.sana}">
+				<span>${k.kun}</span><em>${k.hafta}</em></th>`).join("");
 
 		const tana = rows.map((r) => {
 			const kataklar = r.kunlik.map((c, i) => {
@@ -76,12 +79,16 @@ class TZYoqlama {
 				else if (k.dam) { cls += " dam"; }
 				else { cls += " bosh"; matn = "·"; }
 				if (darsli && !k.dam) cls += " darsli";
+				// Zavuch faqat BUGUNGI kunni belgilaydi; qolgan kunlar ko'rinadi, lekin tegilmaydi
+				const bugunmi = k.sana === d.bugun;
+				const bloklangan = k.kelajak || !d.oy_ochiq || (d.faqat_bugun && !bugunmi);
+				if (bugunmi) cls += " bugun";
 				return `<td><button class="${cls}" data-x="${this.esc(r.xodim)}" data-s="${k.sana}"
-					${k.kelajak || !d.oy_ochiq ? "disabled" : ""}
-					title="${k.sana}${darsli ? " · darsi bor" : ""}">${matn}</button></td>`;
+					${bloklangan ? "disabled" : ""}
+					title="${k.sana}${darsli ? " · darsi bor" : ""}${d.faqat_bugun && !bugunmi ? " · faqat bugungi kun belgilanadi" : ""}">${matn}</button></td>`;
 			}).join("");
 			return `<tr>
-				<th class="nom"><b>${this.esc(r.ism)}</b><span>${this.esc(r.lavozim || "")}${r.soatbay ? " · soatbay" : ""}</span></th>
+				<th class="nom"><b>${this.esc(r.ism)}</b><span>${this.esc(r.kategoriya || r.lavozim || "")}${r.soatbay ? " · soatbay" : ""}</span></th>
 				${kataklar}
 				<td class="jami"><b>${r.keldi}</b></td></tr>`;
 		}).join("");
@@ -90,7 +97,8 @@ class TZYoqlama {
 			<div class="topbar">
 				<div>
 					<h1>Yo'qlama</h1>
-					<div class="sub">Kunlik yo'qlama · belgilangan kunlar oylik tabelga avtomatik tushadi</div>
+					<div class="sub">Kunlik yo'qlama · belgilangan kunlar oylik tabelga avtomatik tushadi${d.faqat_bugun
+						? ` · <b>faqat bugungi kun (${this.esc(frappe.datetime.str_to_user(d.bugun))}) belgilanadi</b>` : ""}</div>
 				</div>
 				<div class="spacer"></div>
 				<div class="chips">
@@ -108,6 +116,12 @@ class TZYoqlama {
 					<button class="chip ${this.faqatOqituvchi ? "on" : ""}" data-f="1">Faqat o'qituvchilar</button>
 					<button class="chip ${this.faqatOqituvchi ? "" : "on"}" data-f="0">Barcha xodimlar</button>
 				</div>
+				<select class="fkategoriya" title="Ish haqi kategoriyasi (tabel)">
+					<option value="">Barcha kategoriyalar</option>
+					${(d.kategoriyalar || []).map((k) =>
+						`<option value="${this.esc(k)}" ${this.fKategoriya === k ? "selected" : ""}>${this.esc(k)}</option>`).join("")}
+					<option value="__none" ${this.fKategoriya === "__none" ? "selected" : ""}>Belgilanmagan</option>
+				</select>
 				<div class="spacer"></div>
 				<span class="legend"><i class="keldi"></i> keldi <i class="yoq"></i> kelmadi
 					<i class="darsli"></i> darsi bor kun <i class="bosh"></i> belgilanmagan</span>
@@ -126,6 +140,10 @@ class TZYoqlama {
 	bind() {
 		this.body.find("[data-act='reload']").on("click", () => this.load());
 		this.body.find("[data-oy]").on("click", (e) => this.oyOzgart(Number($(e.currentTarget).data("oy"))));
+		this.body.find(".fkategoriya").on("change", (e) => {
+			this.fKategoriya = e.target.value;
+			this.load();
+		});
 		this.body.find("[data-f]").on("click", (e) => {
 			this.faqatOqituvchi = Number($(e.currentTarget).data("f"));
 			this.load();

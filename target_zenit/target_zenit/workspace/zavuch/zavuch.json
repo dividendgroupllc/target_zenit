@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Zavuch paneli</b></span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Yo'qlama\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dars jadvali\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Mening jadvalim\",\"col\":3}},{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5\\\">Jadval tuzish</span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Jadval versiyalari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Jadval yozuvlari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dars bloklari\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Qo'ng'iroq jadvali\",\"col\":3}},{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5\\\">Ma'lumotnoma</span>\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'qituvchilar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Fanlar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Sinflar va guruhlar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Xonalar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'quvchilar\",\"col\":3}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dars kunlari (Course Schedule)\",\"col\":3}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Zavuch paneli</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Yo'qlama\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Dars jadvali\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Mening jadvalim\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">O'quv reja (KTP)</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quv rejalar (KTP)\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Dars bajarilishi\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">Jadval tuzish</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Jadval versiyalari\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Jadval yozuvlari\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Dars bloklari\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Qo'ng'iroq jadvali\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">Ma'lumotnoma</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'qituvchilar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Fanlar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sinflar va guruhlar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Xonalar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Dars kunlari (Course Schedule)\", \"col\": 3}}]",
  "creation": "2026-10-08 20:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -12,7 +12,7 @@
  "is_hidden": 0,
  "label": "Zavuch",
  "links": [],
- "modified": "2026-10-08 21:00:00.000000",
+ "modified": "2026-10-09 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Zavuch",
@@ -125,6 +125,20 @@
    "doc_view": "List",
    "label": "Dars kunlari (Course Schedule)",
    "link_to": "Course Schedule",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "O'quv rejalar (KTP)",
+   "link_to": "Oquv Reja",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Dars bajarilishi",
+   "link_to": "Dars Bajarilishi",
    "type": "DocType"
   }
  ],

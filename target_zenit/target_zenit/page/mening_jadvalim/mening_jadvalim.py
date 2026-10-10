@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import frappe
-from frappe.utils import getdate, nowdate
+from frappe.utils import add_days, getdate, nowdate
+
+from target_zenit import oquv_reja as oreja
 
 KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
 
@@ -73,11 +75,43 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None):
 		order_by="kun_raqami asc, dars_raqami asc",
 		limit_page_length=0,
 	)
+	# Joriy haftaning dushanbasi (sanalarni darsга biriktirish uchun)
+	bugun = getdate(nowdate())
+	hafta_boshi = add_days(bugun, -bugun.weekday())
 	for d in natija["darslar"]:
 		d["boshlanish"] = _vaqt_str(d["boshlanish"])
 		d["tugash"] = _vaqt_str(d["tugash"])
+		# Shu dars sanasi (joriy haftada) — kun_raqami 1=Dushanba
+		kr = (d.get("kun_raqami") or 1) - 1
+		d["sana"] = str(add_days(hafta_boshi, kr))
+		# O'quv reja holati (faol reja + keyingi mavzu + o'tilganmi)
+		try:
+			h = oreja.dars_holati(d["fan"], d["guruh"], sana=d["sana"],
+			                      jadval_yozuvi=d["name"], guruh_nomi=d.get("guruh_nomi"))
+			d["oquv_reja"] = h.get("oquv_reja")
+			d["keyingi"] = h.get("keyingi")
+			d["otildi"] = h.get("otildi")
+			d["jami"] = h.get("jami")
+			d["bugun"] = h.get("bugun")
+		except Exception:
+			d["oquv_reja"] = None
 	natija["haftalik_soat"] = len(natija["darslar"])
+	natija["bugun_sana"] = str(bugun)
 	return natija
+
+
+@frappe.whitelist()
+def dars_detali(jadval_yozuvi: str, sana: str | None = None):
+	"""Dars ustiga bosilganda to'liq ma'lumot (oquv_reja modulida)."""
+	return oreja.dars_detali(jadval_yozuvi=jadval_yozuvi, sana=sana)
+
+
+@frappe.whitelist()
+def dars_otdim(jadval_yozuvi: str, sana: str | None = None, reja_qatori: str | None = None,
+               holat: str = "O'tildi", izoh: str | None = None):
+	"""«Shu darsni o'tdim» — o'quv reja bajarilishini belgilaydi (oquv_reja modulida)."""
+	return oreja.dars_otdim(jadval_yozuvi=jadval_yozuvi, sana=sana,
+	                        reja_qatori=reja_qatori, holat=holat, izoh=izoh)
 
 
 @frappe.whitelist()

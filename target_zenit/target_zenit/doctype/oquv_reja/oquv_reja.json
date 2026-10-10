@@ -1,0 +1,153 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:OR-{#####}",
+ "creation": "2026-10-09 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "fan",
+  "sinflar",
+  "sinf_daraja",
+  "academic_year",
+  "column_break_1",
+  "nomi",
+  "til",
+  "holat",
+  "section_meta",
+  "muallif",
+  "jami_soat",
+  "column_break_2",
+  "izoh",
+  "section_qatorlar",
+  "qatorlar"
+ ],
+ "fields": [
+  {
+   "fieldname": "fan",
+   "fieldtype": "Link",
+   "label": "Fan",
+   "options": "Course",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sinflar",
+   "fieldtype": "Table MultiSelect",
+   "label": "Sinflar (Student Group'dan)",
+   "options": "Oquv Reja Guruhi",
+   "description": "Shu reja qaysi sinf(lar)ga tegishli — Student Group'dan tanlang (parallel sinflar: 2A, 2B...)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sinf_daraja",
+   "fieldtype": "Data",
+   "label": "Sinf-daraja (yorliq)",
+   "description": "Sinflardan avto to'ladi (masalan: 5). Nom va hisobot uchun.",
+   "in_standard_filter": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "academic_year",
+   "fieldtype": "Link",
+   "label": "O'quv yili",
+   "options": "Academic Year",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "nomi",
+   "fieldtype": "Data",
+   "label": "Nomi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "til",
+   "fieldtype": "Select",
+   "label": "Dars tili (AI uchun)",
+   "options": "Aralash\nIngliz\nO'zbek\nRus",
+   "default": "Aralash"
+  },
+  {
+   "fieldname": "holat",
+   "fieldtype": "Select",
+   "label": "Holat",
+   "options": "Qoralama\nFaol\nArxiv",
+   "default": "Qoralama",
+   "in_standard_filter": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_meta",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "muallif",
+   "fieldtype": "Link",
+   "label": "Muallif",
+   "options": "User"
+  },
+  {
+   "fieldname": "jami_soat",
+   "fieldtype": "Int",
+   "label": "Jami soat",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Small Text",
+   "label": "Izoh"
+  },
+  {
+   "fieldname": "section_qatorlar",
+   "fieldtype": "Section Break",
+   "label": "Mavzular (KTP)"
+  },
+  {
+   "fieldname": "qatorlar",
+   "fieldtype": "Table",
+   "label": "Mavzular",
+   "options": "Oquv Reja Qatori"
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-09 10:00:00.000000",
+ "module": "target_zenit",
+ "name": "Oquv Reja",
+ "owner": "Administrator",
+ "naming_rule": "Expression",
+ "title_field": "nomi",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1
+  },
+  {
+   "role": "Zavuch",
+   "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1
+  },
+  {
+   "role": "Academics User",
+   "read": 1, "write": 1, "create": 1
+  },
+  {
+   "role": "Education Manager",
+   "read": 1, "write": 1, "create": 1, "delete": 1
+  },
+  {
+   "role": "Instructor",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

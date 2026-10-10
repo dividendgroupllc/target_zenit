@@ -404,3 +404,27 @@ def test_kim_yoqlamaga_kiradi():
 			api = f"yopiq ({type(e).__name__})"
 		print(f"{user:24} rollari={rollar} | sahifa: {sahifa} | API: {api}")
 	frappe.set_user("Administrator")
+
+
+def test_yoqlama_bugun_qoidasi():
+	"""Zavuch faqat bugunni belgilay oladimi; operator esa istalgan kunni?"""
+	from frappe.utils import add_days, nowdate
+
+	from target_zenit import yoqlama
+
+	emp = frappe.db.get_value("Instructor", {"employee": ["is", "set"]}, "employee")
+	bugun, kecha = nowdate(), add_days(nowdate(), -1)
+
+	for user in ("zavuch_test@target.local", "xojakbar@gmail.com"):
+		frappe.set_user(user)
+		d = yoqlama.get_data()
+		print(f"\n{user}  (faqat_bugun={d['faqat_bugun']})")
+		for sana, nom in ((bugun, "BUGUN"), (kecha, "kecha")):
+			try:
+				yoqlama.belgila(emp, sana, "Keldi")
+				yoqlama.belgila(emp, sana, "tozalash")
+				print(f"   {nom:6} ({sana}): ✓ belgilay oldi")
+			except Exception as e:
+				print(f"   {nom:6} ({sana}): ✗ {type(e).__name__} — {str(e)[:70]}")
+	frappe.set_user("Administrator")
+	frappe.db.commit()

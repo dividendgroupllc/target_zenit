@@ -1,0 +1,90 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-09 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "tartib",
+  "bolim",
+  "mavzu",
+  "column_break_1",
+  "soat",
+  "davomiylik_min",
+  "dars_turi",
+  "section_1",
+  "tavsif",
+  "resurs"
+ ],
+ "fields": [
+  {
+   "fieldname": "tartib",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "№",
+   "columns": 1
+  },
+  {
+   "fieldname": "bolim",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Bo'lim",
+   "columns": 2
+  },
+  {
+   "fieldname": "mavzu",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Mavzu",
+   "columns": 4
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "soat",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Soat",
+   "default": "1",
+   "columns": 1
+  },
+  {
+   "fieldname": "davomiylik_min",
+   "fieldtype": "Int",
+   "label": "Davomiyligi (daq)"
+  },
+  {
+   "fieldname": "dars_turi",
+   "fieldtype": "Select",
+   "label": "Dars turi",
+   "options": "\nYangi mavzu\nTakrorlash\nNazorat\nAmaliy\nBoshqa"
+  },
+  {
+   "fieldname": "section_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "tavsif",
+   "fieldtype": "Small Text",
+   "label": "Tavsif"
+  },
+  {
+   "fieldname": "resurs",
+   "fieldtype": "Data",
+   "label": "Resurs"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-09 10:00:00.000000",
+ "module": "target_zenit",
+ "name": "Oquv Reja Qatori",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": []
+}
