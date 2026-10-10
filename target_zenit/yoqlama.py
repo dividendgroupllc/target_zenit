@@ -39,7 +39,7 @@ def _oy_ochiqmi(yil, oy) -> bool:
 
 
 @frappe.whitelist()
-def get_data(yil=None, oy=None, faqat_oqituvchi=1, kategoriya=None):
+def get_data(yil=None, oy=None, faqat_oqituvchi=0, kategoriya=None):
 	"""Oylik yo'qlama to'ri: xodimlar x kunlar. Pul maydonlari qaytarilmaydi."""
 	_guard()
 	bugun = getdate(nowdate())

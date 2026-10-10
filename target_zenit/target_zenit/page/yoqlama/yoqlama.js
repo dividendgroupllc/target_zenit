@@ -14,7 +14,7 @@ class TZYoqlama {
 		const b = frappe.datetime.str_to_obj(frappe.datetime.get_today());
 		this.yil = b.getFullYear();
 		this.oy = b.getMonth() + 1;
-		this.faqatOqituvchi = 1;
+		this.faqatOqituvchi = 0;   // default: barcha xodimlar (kategoriya filtri bilan kesishmasin)
 		this.fKategoriya = "";   // ish haqi kategoriyasi (tabel) filtri
 		this.q = "";
 		this.make_skeleton();
