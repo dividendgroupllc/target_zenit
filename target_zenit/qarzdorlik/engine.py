@@ -490,6 +490,35 @@ def _joriy_oquv_yili() -> str:
 	return f"{t.year}-{t.year + 1}" if t.month >= 7 else f"{t.year - 1}-{t.year}"
 
 
+def ensure_tuition_plans():
+	"""Shartnomali, lekin rejasi yo'q o'quvchilarga reja ochadi.
+	Hook ishlamay qolgan holatlar uchun kechki xavfsizlik to'ri
+	(ommaviy import, to'g'ridan-to'g'ri SQL tahriri va h.k.)."""
+	from target_zenit.qarzdorlik.setup import joriy_oquv_yili, plan_yarat
+
+	yil = joriy_oquv_yili()
+	rows = frappe.db.sql(
+		"""SELECT s.name FROM `tabStudent` s
+		   WHERE s.enabled = 1 AND s.custom_shartnoma_qilindi = 1
+		     AND (s.custom_monthly_payment > 0 OR s.custom_final_amount > 0)
+		     AND (s.date_of_leaving IS NULL OR s.date_of_leaving = '')
+		     AND NOT EXISTS (SELECT 1 FROM `tabTolov Rejasi` tr
+		                     WHERE tr.student = s.name AND tr.holat != 'Bekor'
+		                       AND tr.academic_year = %s)""",
+		(yil,),
+	)
+	n = 0
+	for (student,) in rows:
+		try:
+			yangi = plan_yarat(student, yil)
+			if yangi:
+				recompute_plan(yangi, sync_case=True)
+				n += 1
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"qarzdorlik ensure_tuition_plans: {student}")
+	return n
+
+
 def ensure_charge_plans():
 	"""Faol rejasi YO'Q, lekin nachisleniyasi (Kitob/Forma...) bor o'quvchilarga —
 	masalan grant/investor farzandlari — faqat-nachisleniya reja ochadi.
@@ -566,6 +595,10 @@ def nightly():
 	"""Daily scheduler: hamma faol reja -> recompute + case sync; PTP; SLA.
 	Har qadam alohida himoyalangan — bitta xato qolganini to'xtatmaydi."""
 	try:
+		ensure_tuition_plans()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "qarzdorlik nightly: ensure_tuition_plans")
+	try:
 		ensure_charge_plans()
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "qarzdorlik nightly: ensure_charge_plans")
@@ -616,7 +649,20 @@ def on_invoice(doc, method=None):
 
 
 def on_student_change(doc, method=None):
-	"""O'quvchi ketsa — kelgusi oylar Bekor, qolgan qarz 'Ketgan-qarzli' bucket."""
+	"""O'quvchi o'zgarganda:
+	  * shartnoma/tarif qo'yilsa -> To'lov Rejasi avtomatik ochiladi;
+	  * ketsa -> kelgusi oylar Bekor, qolgan qarz 'Ketgan-qarzli' bucket."""
+	try:
+		# Yangi shartnomali o'quvchi (yoki tarifi endi to'ldirildi) -> reja
+		if doc.get("custom_shartnoma_qilindi") and not doc.get("date_of_leaving"):
+			from target_zenit.qarzdorlik.setup import plan_yarat
+
+			yangi = plan_yarat(doc.name)
+			if yangi:
+				recompute_plan(yangi, sync_case=True)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"qarzdorlik plan_yarat: {doc.name}")
+
 	try:
 		if not doc.date_of_leaving:
 			return

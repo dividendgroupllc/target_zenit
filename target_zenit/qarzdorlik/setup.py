@@ -56,6 +56,58 @@ def backfill_payer():
 	print(json.dumps({"jami_ochiq": len(cases), "toldirildi": updated, "tel_topilmadi": telsiz}, ensure_ascii=False))
 
 
+
+def joriy_oquv_yili() -> str:
+	"""Sentabr-iyun: 1-iyuldan keyin yangi o'quv yili boshlanadi."""
+	t = getdate(frappe.utils.nowdate())
+	return f"{t.year}-{t.year + 1}" if t.month >= 7 else f"{t.year - 1}-{t.year}"
+
+
+def plan_yarat(student: str, academic_year: str | None = None, dry_run: int = 0):
+	"""Bitta o'quvchiga Tolov Rejasi (idempotent).
+
+	Qaytaradi: reja nomi | None (reja kerak emas yoki allaqachon bor).
+	Sabablari: grant/investor (summa yo'q), shartnomasiz, nofaol, reja bor."""
+	academic_year = academic_year or joriy_oquv_yili()
+	s = frappe.db.get_value(
+		"Student", student,
+		["name", "student_name", "enabled", "joining_date", "custom_shartnoma_qilindi",
+		 "custom_monthly_payment", "custom_final_amount"],
+		as_dict=True,
+	)
+	if not s or not s.enabled or not s.custom_shartnoma_qilindi:
+		return None
+
+	months = _months(academic_year)
+	monthly = flt(s.custom_monthly_payment)
+	final = flt(s.custom_final_amount)
+	if monthly <= 0 and final <= 0:
+		return None                      # grant/investor — qarz nazoratiga kirmaydi
+	if monthly <= 0:
+		monthly = final / len(months)
+
+	if frappe.db.exists("Tolov Rejasi", {
+		"student": s.name, "academic_year": academic_year, "holat": ["!=", "Bekor"]}):
+		return None
+
+	joined = getdate(s.joining_date) if s.joining_date else None
+	rows = [
+		{"oy_label": label, "due_date": due, "amount": monthly}
+		for label, due in months
+		if not (joined and joined > due and (joined.year, joined.month) != (due.year, due.month))
+	]
+	if not rows or dry_run:
+		return None
+
+	doc = frappe.get_doc({
+		"doctype": "Tolov Rejasi", "student": s.name, "academic_year": academic_year,
+		"holat": "Faol", "oylik_tolov": monthly, "yakuniy_summa": final, "oylar": rows,
+	})
+	doc.flags.ignore_permissions = True
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
 def generate_plans(academic_year: str = "2026-2027", dry_run: int = 0):
 	"""Shartnomali faol o'quvchilarga Tolov Rejasi yaratadi (bor bo'lsa o'tkazib yuboradi).
 

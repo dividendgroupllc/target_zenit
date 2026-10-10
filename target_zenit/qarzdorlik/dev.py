@@ -428,3 +428,90 @@ def test_yoqlama_bugun_qoidasi():
 				print(f"   {nom:6} ({sana}): ✗ {type(e).__name__} — {str(e)[:70]}")
 	frappe.set_user("Administrator")
 	frappe.db.commit()
+
+
+def test_avto_yangilanish():
+	"""Qarzdorlik paneli avtomatik yangilanadimi:
+	1) yangi shartnomali o'quvchi -> reja + qarz ishi ochiladimi?
+	2) yangi Sales Invoice (nachisleniya) -> rejaga tushadimi?"""
+	from frappe.utils import nowdate
+
+	from target_zenit.qarzdorlik import engine
+
+	# --- 1) Yangi o'quvchi (shartnomali) ---
+	s = frappe.get_doc({
+		"doctype": "Student", "first_name": "ZZTest Avto", "custom_shartnoma_qilindi": 1,
+		"custom_tariff": "Kontrak", "custom_tariff_amount": 60_000_000,
+		"custom_discount_foiz": 20, "joining_date": nowdate(),
+	}).insert(ignore_permissions=True)
+	frappe.db.commit()
+	print(f"1) Yangi o'quvchi: {s.name} | yakuniy={s.custom_final_amount:,.0f} oylik={s.custom_monthly_payment:,.0f}")
+	print("   reja (darhol):", frappe.db.exists("Tolov Rejasi", {"student": s.name}) or "YO'Q")
+
+	engine.nightly()
+	frappe.db.commit()
+	tr = frappe.db.exists("Tolov Rejasi", {"student": s.name})
+	qi = frappe.db.exists("Qarz Ishi", {"student": s.name})
+	print("   nightly'dan keyin -> reja:", tr or "YO'Q", "| qarz ishi:", qi or "YO'Q")
+
+	# --- 2) Yangi Sales Invoice (kitob/forma) ---
+	mavjud = frappe.db.get_value("Tolov Rejasi", {"holat": "Faol"}, ["name", "student", "customer"], as_dict=True)
+	oldin = frappe.db.count("Tolov Rejasi Oyi", {"parent": mavjud.name})
+	# eng oddiy SI: mavjud itemdan
+	item = frappe.db.get_value("Sales Invoice Item", {"item_code": ["like", "Kitob%"]}, "item_code") or "Kitob"
+	try:
+		si = frappe.get_doc({
+			"doctype": "Sales Invoice", "customer": mavjud.customer, "currency": "UZS",
+			"conversion_rate": 1, "posting_date": nowdate(), "due_date": nowdate(),
+			"items": [{"item_code": item, "qty": 1, "rate": 1_500_000}],
+		})
+		si.flags.ignore_permissions = True
+		si.insert()
+		si.submit()
+		frappe.db.commit()
+		keyin = frappe.db.count("Tolov Rejasi Oyi", {"parent": mavjud.name})
+		print(f"\n2) Yangi SI {si.name} ({mavjud.student}): reja qatorlari {oldin} -> {keyin}",
+			  "✓ avto qo'shildi" if keyin > oldin else "✗ qo'shilmadi")
+		si.cancel()
+		frappe.db.commit()
+	except Exception as e:
+		print("\n2) SI XATO:", type(e).__name__, str(e)[:120])
+
+	# tozalash
+	for dt, nm in (("Qarz Ishi", qi), ("Tolov Rejasi", tr)):
+		if nm:
+			frappe.delete_doc(dt, nm, force=1, ignore_permissions=True)
+	frappe.delete_doc("Student", s.name, force=1, ignore_permissions=True)
+	frappe.db.commit()
+	print("\n(test ma'lumotlari tozalandi)")
+
+
+def test_si_avto(student="EDU-STU-2026-00591"):
+	"""Yangi Sales Invoice (nachisleniya) rejaga avtomatik tushadimi?"""
+	from frappe.utils import nowdate
+
+	tr = frappe.db.get_value("Tolov Rejasi", {"student": student, "holat": "Faol"},
+							 ["name", "customer", "qarz_bugun"], as_dict=True)
+	if not tr:
+		print("Reja topilmadi:", student)
+		return
+	oldin_q = frappe.db.count("Tolov Rejasi Oyi", {"parent": tr.name})
+	si = frappe.get_doc({
+		"doctype": "Sales Invoice", "customer": tr.customer, "currency": "UZS",
+		"conversion_rate": 1, "posting_date": nowdate(), "due_date": nowdate(),
+		"items": [{"item_code": "Kitob", "qty": 1, "rate": 1_500_000}],
+	})
+	si.flags.ignore_permissions = True
+	si.insert()
+	si.submit()
+	frappe.db.commit()
+	keyin_q = frappe.db.count("Tolov Rejasi Oyi", {"parent": tr.name})
+	keyin_qarz = frappe.db.get_value("Tolov Rejasi", tr.name, "qarz_bugun")
+	print(f"SI {si.name} submit -> qatorlar {oldin_q} -> {keyin_q} | "
+		  f"qarz {tr.qarz_bugun:,.0f} -> {keyin_qarz:,.0f}",
+		  "✓ AVTO" if keyin_q > oldin_q else "✗")
+	si.cancel()
+	frappe.db.commit()
+	oxiri = frappe.db.count("Tolov Rejasi Oyi", {"parent": tr.name, "holat": ["!=", "Bekor"]})
+	print(f"SI bekor qilindi -> faol qatorlar: {oxiri}",
+		  "✓ qator Bekor bo'ldi" if oxiri == oldin_q else "✗")

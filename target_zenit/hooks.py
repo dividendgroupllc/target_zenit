@@ -162,9 +162,20 @@ doc_events = {
 	},
 	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish;
 	# ketgan o'quvchining to'lov rejasida kelgusi oylar bekor qilinadi
+	# Telefoniya: raqamlarni kanonik ko'rinishda saqlab turamiz —
+	# qo'ng'iroqni oilaga/murojaatga bog'lash indeks bo'yicha tez ketsin.
+	"Family": {
+		"validate": "target_zenit.telefoniya.sync.family_validate",
+	},
+	"Admission Lead": {
+		"validate": "target_zenit.telefoniya.sync.admission_lead_validate",
+	},
 	"Student": {
 		# Shartnoma summalari: chegirma foizidan yakuniy va oylik to'lov
-		"validate": "target_zenit.student_tarif.hisobla",
+		"validate": [
+			"target_zenit.student_tarif.hisobla",
+			"target_zenit.telefoniya.sync.student_validate",
+		],
 		"on_update": [
 			"target_zenit.student_group_sync.on_student_update",
 			"target_zenit.qarzdorlik.engine.on_student_change",
@@ -208,7 +219,17 @@ doc_events = {
 	},
 }
 
+# Telefoniya: menejer faqat o'z qo'ng'iroqlarini ko'radi, rahbar hammasini.
+permission_query_conditions = {
+	"Telefon Qongirogi": "target_zenit.target_zenit.doctype.telefon_qongirogi.telefon_qongirogi.permission_query_conditions",
+}
+
+has_permission = {
+	"Telefon Qongirogi": "target_zenit.target_zenit.doctype.telefon_qongirogi.telefon_qongirogi.has_permission",
+}
+
 after_migrate = [
+	"target_zenit.telefoniya.setup.after_migrate",
 	"target_zenit.setup.kassa_party_types.after_migrate",
 	# Sotuv menejer workspace'iga qarzdorlik yorliqlari (idempotent)
 	"target_zenit.qarzdorlik.setup_workspace.after_migrate",
@@ -230,6 +251,8 @@ scheduler_events = {
 		"target_zenit.integrations.eduvisit.daily_sync",
 		# Qarzdorlik: rejalarni qayta hisoblash, ish ochish/yopish, PTP/SLA tekshiruvi
 		"target_zenit.qarzdorlik.engine.nightly",
+		# Telefoniya: saqlash muddati o'tgan ovoz yozuvlarini o'chirish
+		"target_zenit.telefoniya.api.eski_yozuvlarni_ochir",
 	],
 	"cron": {
 		# Har yili 1-sentabr 06:00 — hamma faol o'quvchi bir sinf yuqoriga (G4A -> G5A)
