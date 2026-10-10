@@ -1,0 +1,71 @@
+.tz-ojb { padding: 16px 18px 48px; --line:#e6e8ec; --muted:#8a9099; --ink-2:#555; --brand:#2f6fed; }
+[data-theme="dark"] .tz-ojb { --line:#30353c; --muted:#8a9099; --ink-2:#aab; }
+.tz-ojb .loading, .tz-ojb .empty { color: var(--muted); padding: 16px; text-align: center; }
+.tz-ojb .empty.mini, .tz-ojb .loading.mini { padding: 8px; font-size: 12px; }
+.tz-ojb .topbar h1 { font-size: 20px; margin: 0 0 2px; }
+.tz-ojb .topbar .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+.tz-ojb .card { background: var(--card, #fff); border: 1px solid var(--line); border-radius: 12px; }
+.tz-ojb .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.tz-ojb .filters select { border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; font-size: 13px; background: var(--card,#fff); color: inherit; max-width: 240px; }
+.tz-ojb .filters .clf { border: 1px solid var(--line); background: transparent; border-radius: 9px; padding: 6px 10px; font-size: 12px; cursor: pointer; color: var(--muted); }
+.oj-cands { max-height: 220px; overflow: auto; margin-top: 6px; border: 1px solid var(--border-color,#e5e5e5); border-radius: 8px; }
+.oj-cand { padding: 5px 9px; border-bottom: 1px solid var(--border-color,#f0f0f0); font-size: 12.5px; cursor: pointer; }
+.oj-cand:last-child { border-bottom: none; }
+.oj-cand:hover { background: rgba(47,111,237,.08); }
+.oj-cand.fanchi { background: rgba(140,207,158,.1); }
+.oj-cand .t { font-size: 10px; border-radius: 6px; padding: 0 5px; margin-left: 3px; }
+.oj-cand .t.ok { background: #d7f0dd; color: #1a7f37; } .oj-cand .t.af { background: #e6f0ff; color: #2f6fed; }
+.oj-cand .h { color: #888; font-size: 11px; margin-left: 4px; } .oj-cand i { color: #c0392b; font-size: 10.5px; }
+.tz-ojb .split { display: grid; grid-template-columns: 280px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 920px) { .tz-ojb .split { grid-template-columns: 1fr; } }
+
+.tz-ojb .list { padding: 10px; max-height: 78vh; overflow: auto; }
+.tz-ojb .list .q { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; font-size: 13px; margin-bottom: 8px; background: var(--card,#fff); color: inherit; }
+.tz-ojb .trow { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.tz-ojb .trow:hover { background: rgba(47,111,237,.07); }
+.tz-ojb .trow.sel { background: rgba(47,111,237,.14); font-weight: 600; }
+.tz-ojb .trow .h { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.tz-ojb .vk { color: #c0392b; font-size: 10px; border: 1px solid #e8b4ad; border-radius: 6px; padding: 0 4px; }
+
+.tz-ojb .main { padding: 14px; min-height: 300px; }
+.tz-ojb .g-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.tz-ojb .g-name { font-size: 16px; font-weight: 700; }
+.tz-ojb .g-stat { display: flex; gap: 6px; flex-wrap: wrap; }
+.tz-ojb .chip { background: rgba(0,0,0,.04); border-radius: 999px; padding: 3px 10px; font-size: 11.5px; color: var(--ink-2); }
+[data-theme="dark"] .tz-ojb .chip { background: rgba(255,255,255,.06); }
+.tz-ojb .ogoh { display: flex; flex-direction: column; gap: 3px; background: #fff7e6; border: 1px solid #ffe08a; border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; font-size: 12px; color: #8a6d00; }
+.tz-ojb .legend { display: flex; gap: 12px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.tz-ojb .legend .lg::before { content: "■ "; }
+.tz-ojb .legend .band::before { color: #9db4e8; } .tz-ojb .legend .bosh::before { color: #cfd4da; }
+.tz-ojb .legend .blok::before { color: #e2a7a0; } .tz-ojb .legend .afzal::before { color: #8ccf9e; }
+
+.tz-ojb .gtbl-wrap { overflow-x: auto; }
+.tz-ojb .gtbl { border-collapse: collapse; width: 100%; min-width: 560px; }
+.tz-ojb .gtbl th, .tz-ojb .gtbl td { border: 1px solid var(--line); text-align: center; }
+.tz-ojb .gtbl th { font-size: 12px; padding: 5px; background: rgba(0,0,0,.02); position: relative; }
+.tz-ojb .gtbl th .kn { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
+.tz-ojb .gtbl .c-d { width: 30px; font-weight: 700; color: var(--muted); font-size: 12px; background: rgba(0,0,0,.02); }
+.tz-ojb .cell { height: 42px; font-size: 10.5px; padding: 2px 3px; vertical-align: middle; }
+.tz-ojb .cell.band { background: hsl(var(--h) 62% 92%); border-left: 2px solid hsl(var(--h) 55% 55%); }
+[data-theme="dark"] .tz-ojb .cell.band { background: hsl(var(--h) 38% 20%); }
+.tz-ojb .cell.band .f { display: block; font-weight: 700; color: hsl(var(--h) 55% 32%); line-height: 1.1; }
+[data-theme="dark"] .tz-ojb .cell.band .f { color: hsl(var(--h) 65% 78%); }
+.tz-ojb .cell.band .g { display: block; color: var(--ink-2); font-size: 9.5px; }
+.tz-ojb .cell.bosh { cursor: pointer; color: #bfc5cc; font-size: 15px; }
+.tz-ojb .cell.bosh:hover { background: rgba(47,111,237,.1); color: var(--brand); }
+.tz-ojb .cell.blok { background: repeating-linear-gradient(45deg, #f7e9e7, #f7e9e7 5px, #fff 5px, #fff 9px); }
+[data-theme="dark"] .tz-ojb .cell.blok { background: repeating-linear-gradient(45deg, #3a2320, #3a2320 5px, transparent 5px, transparent 9px); }
+.tz-ojb .cell.afzal { background: rgba(140,207,158,.18); color: #2e8b57; }
+
+.tz-ojb .cand { margin-top: 12px; padding: 10px 12px; }
+.tz-ojb .cand-h { display: flex; justify-content: space-between; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.tz-ojb .cand-h .x { cursor: pointer; color: var(--muted); }
+.tz-ojb .clist { max-height: 260px; overflow: auto; }
+.tz-ojb .crow { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.tz-ojb .crow:last-child { border-bottom: none; }
+.tz-ojb .crow.fanchi { background: rgba(140,207,158,.1); }
+.tz-ojb .crow .nm { flex: 1; }
+.tz-ojb .crow .h { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.tz-ojb .tag { font-size: 10px; border-radius: 6px; padding: 0 5px; margin-left: 3px; }
+.tz-ojb .tag.ok { background: #d7f0dd; color: #1a7f37; } .tz-ojb .tag.af { background: #e6f0ff; color: #2f6fed; }
+.tz-ojb .crow .warn { color: #c0392b; font-size: 10.5px; }

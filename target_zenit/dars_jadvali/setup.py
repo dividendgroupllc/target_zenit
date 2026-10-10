@@ -59,6 +59,41 @@ CUSTOM_FIELDS = {
 			"insert_after": "custom_vakant",
 			"description": "0 = nazorat qilinmaydi",
 		},
+		{
+			"fieldname": "custom_max_kun",
+			"label": "Haftada max ish kuni",
+			"fieldtype": "Int",
+			"insert_after": "custom_haftalik_norma",
+			"description": "0 = cheklanmagan",
+		},
+		{
+			"fieldname": "custom_max_kunlik_dars",
+			"label": "Kuniga max dars",
+			"fieldtype": "Int",
+			"insert_after": "custom_max_kun",
+			"description": "0 = cheklanmagan",
+		},
+		{
+			"fieldname": "custom_max_ketma_ket",
+			"label": "Max ketma-ket dars",
+			"fieldtype": "Int",
+			"insert_after": "custom_max_kunlik_dars",
+			"description": "0 = cheklanmagan",
+		},
+		{
+			"fieldname": "custom_mavjudlik_section",
+			"label": "Mavjudlik / cheklovlar",
+			"fieldtype": "Section Break",
+			"insert_after": "custom_max_ketma_ket",
+		},
+		{
+			"fieldname": "custom_mavjudlik",
+			"label": "Band/afzal kun va darslar",
+			"fieldtype": "Table",
+			"options": "Oqituvchi Mavjudlik",
+			"insert_after": "custom_mavjudlik_section",
+			"description": "Faqat istisnolar: band (ishlamaydi) yoki afzal ko'radigan kun/dars. Bo'sh = butun hafta mavjud.",
+		},
 	],
 }
 
