@@ -39,7 +39,7 @@ def _oy_ochiqmi(yil, oy) -> bool:
 
 
 @frappe.whitelist()
-def get_data(yil=None, oy=None, faqat_oqituvchi=0, kategoriya=None):
+def get_data(yil=None, oy=None, kategoriya=None):
 	"""Oylik yo'qlama to'ri: xodimlar x kunlar. Pul maydonlari qaytarilmaydi."""
 	_guard()
 	bugun = getdate(nowdate())
@@ -83,8 +83,6 @@ def get_data(yil=None, oy=None, faqat_oqituvchi=0, kategoriya=None):
 	bor_kat = {(x.custom_ish_haqi_kategoriya or "").strip() for x in xodimlar}
 	kategoriyalar = [k for k in kanon if k in bor_kat] or kanon
 
-	if cint(faqat_oqituvchi):
-		xodimlar = [x for x in xodimlar if x.name in instr_emp]
 	# Ish haqi kategoriyasi (tabel) bo'yicha filtr
 	if kategoriya == "__none":
 		xodimlar = [x for x in xodimlar if not (x.custom_ish_haqi_kategoriya or "").strip()]

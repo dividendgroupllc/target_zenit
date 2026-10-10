@@ -14,7 +14,6 @@ class TZYoqlama {
 		const b = frappe.datetime.str_to_obj(frappe.datetime.get_today());
 		this.yil = b.getFullYear();
 		this.oy = b.getMonth() + 1;
-		this.faqatOqituvchi = 0;   // default: barcha xodimlar (kategoriya filtri bilan kesishmasin)
 		this.fKategoriya = "";   // ish haqi kategoriyasi (tabel) filtri
 		this.q = "";
 		this.make_skeleton();
@@ -38,8 +37,7 @@ class TZYoqlama {
 	load() {
 		frappe.call({
 			method: `${YQ_M}.get_data`,
-			args: { yil: this.yil, oy: this.oy, faqat_oqituvchi: this.faqatOqituvchi,
-				kategoriya: this.fKategoriya || null },
+			args: { yil: this.yil, oy: this.oy, kategoriya: this.fKategoriya || null },
 			callback: (r) => { this.data = r.message; this.render(); },
 			error: () => this.body.html(`<div class="loading">Xatolik. Sahifani yangilang.</div>`),
 		});
@@ -112,10 +110,6 @@ class TZYoqlama {
 
 			<div class="controls mb">
 				<input type="text" class="q" placeholder="Qidiruv: ism yoki lavozim…" value="${this.esc(this.q)}">
-				<div class="chips">
-					<button class="chip ${this.faqatOqituvchi ? "on" : ""}" data-f="1">Faqat o'qituvchilar</button>
-					<button class="chip ${this.faqatOqituvchi ? "" : "on"}" data-f="0">Barcha xodimlar</button>
-				</div>
 				<select class="fkategoriya" title="Ish haqi kategoriyasi (tabel)">
 					<option value="">Barcha kategoriyalar</option>
 					${(d.kategoriyalar || []).map((k) =>
@@ -142,10 +136,6 @@ class TZYoqlama {
 		this.body.find("[data-oy]").on("click", (e) => this.oyOzgart(Number($(e.currentTarget).data("oy"))));
 		this.body.find(".fkategoriya").on("change", (e) => {
 			this.fKategoriya = e.target.value;
-			this.load();
-		});
-		this.body.find("[data-f]").on("click", (e) => {
-			this.faqatOqituvchi = Number($(e.currentTarget).data("f"));
 			this.load();
 		});
 		this.body.find(".q").on("input", frappe.utils.debounce((e) => { this.q = e.target.value; this.render(); }, 250));
