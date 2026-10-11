@@ -15,6 +15,7 @@ from target_zenit.dars_jadvali.oqituvchi_jadval import (
 	_guard,
 	_mavjudlik_map,
 	_mavjudlikmi,
+	_vaqt_str,
 )
 
 
@@ -46,7 +47,7 @@ def kun_darslari(sana: str, oqituvchi: str | None = None, versiya: str | None = 
 		filtr["oqituvchi"] = oqituvchi
 	yozuvlar = frappe.get_all(
 		"Jadval Yozuvi", filters=filtr,
-		fields=["name", "dars_raqami", "fan", "guruh_nomi", "oqituvchi", "oqituvchi_nomi", "xona", "boshlanish"],
+		fields=["name", "dars_raqami", "fan", "guruh_nomi", "oqituvchi", "oqituvchi_nomi", "xona", "boshlanish", "tugash"],
 		order_by="dars_raqami asc", limit_page_length=0)
 
 	ozg = _ozgarishlar(sana, versiya)
@@ -57,6 +58,7 @@ def kun_darslari(sana: str, oqituvchi: str | None = None, versiya: str | None = 
 			"jadval_yozuvi": y.name, "dars_raqami": y.dars_raqami, "fan": y.fan,
 			"guruh_nomi": y.guruh_nomi, "asl_oqituvchi": y.oqituvchi,
 			"asl_oqituvchi_nomi": y.oqituvchi_nomi, "xona": y.xona,
+			"boshlanish": _vaqt_str(y.boshlanish), "tugash": _vaqt_str(y.tugash),
 			"ozgarish": ({
 				"name": o.name, "tur": o.tur,
 				"yangi_oqituvchi": o.yangi_oqituvchi,
@@ -101,7 +103,7 @@ def guruh_kun(sana: str, guruh: str, versiya: str | None = None) -> dict:
 
 	# Shu sinfga tegishli darslar: sinflar ro'yxatida bu guruh/sinf nomi bor
 	yozuvlar = frappe.db.sql(
-		"""SELECT name, dars_raqami, fan, guruh_nomi, oqituvchi, oqituvchi_nomi, xona, boshlanish
+		"""SELECT name, dars_raqami, fan, guruh_nomi, oqituvchi, oqituvchi_nomi, xona, boshlanish, tugash
 		   FROM `tabJadval Yozuvi`
 		   WHERE versiya=%s AND kun=%s AND (guruh=%s OR sinflar LIKE %s)
 		   ORDER BY dars_raqami ASC""",
@@ -114,7 +116,8 @@ def guruh_kun(sana: str, guruh: str, versiya: str | None = None) -> dict:
 		darslar.append({
 			"jadval_yozuvi": y.name, "dars_raqami": y.dars_raqami, "fan": y.fan,
 			"guruh_nomi": y.guruh_nomi, "oqituvchi_nomi": y.oqituvchi_nomi,
-			"xona": y.xona, "boshlanish": str(y.boshlanish or "")[:5],
+			"xona": y.xona, "boshlanish": _vaqt_str(y.boshlanish),
+			"tugash": _vaqt_str(y.tugash),
 			"ozgarish": ({
 				"tur": o.tur,
 				"yangi_oqituvchi_nomi": frappe.db.get_value("Instructor", o.yangi_oqituvchi, "instructor_name") if o.yangi_oqituvchi else None,

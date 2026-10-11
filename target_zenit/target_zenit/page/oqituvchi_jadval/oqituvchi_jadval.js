@@ -144,9 +144,10 @@ class TZOqituvchiBandligi {
 		if (c.holat === "band") {
 			const d0 = (c.darslar || [])[0] || {};
 			const extra = (c.darslar || []).length > 1 ? ` +${c.darslar.length - 1}` : "";
+			const vaqt = d0.boshlanish ? `${d0.boshlanish}–${d0.tugash}` : "";
 			const info = `${d0.fan || ""} · ${d0.guruh || ""}`;
-			return `<td class="cell band" style="--h:${this.rang(d0.fan)}" data-name="${this.esc(d0.name)}" data-info="${this.esc(info)}" title="${this.esc(info)}${d0.xona ? " · " + this.esc(d0.xona) : ""} — bosib o'chiring">
-				<span class="f">${this.esc(d0.fan)}</span><span class="g">${this.esc(d0.guruh || "")}${extra}</span></td>`;
+			return `<td class="cell band" style="--h:${this.rang(d0.fan)}" data-name="${this.esc(d0.name)}" data-info="${this.esc(info)}" title="${this.esc(info)}${vaqt ? " · " + vaqt : ""}${d0.xona ? " · " + this.esc(d0.xona) : ""} — bosib o'chiring">
+				${vaqt ? `<span class="tm">${this.esc(vaqt)}</span>` : ""}<span class="f">${this.esc(d0.fan)}</span><span class="g">${this.esc(d0.guruh || "")}${extra}</span></td>`;
 		}
 		if (c.holat === "blok") return `<td class="cell blok" title="Band emas (ishlamaydi)"></td>`;
 		const cls = c.holat === "afzal" ? "cell afzal bosh" : "cell bosh";
@@ -158,6 +159,7 @@ class TZOqituvchiBandligi {
 		const dlg = new frappe.ui.Dialog({
 			title: __(`${kun}, ${dars}-dars — dars qo'shish`),
 			fields: [
+				{ fieldtype: "HTML", fieldname: "vaqt", options: `<div class="oj-vaqt">🕐 Vaqt: <b>—</b> <span class="mini">(sinf tanlang)</span></div>` },
 				{ fieldtype: "Link", fieldname: "oqituvchi", label: __("O'qituvchi"), options: "Instructor", default: this.selected, reqd: 1 },
 				{ fieldtype: "Link", fieldname: "fan", label: __("Fan"), options: "Course", default: this.fFan || undefined, reqd: 1 },
 				{ fieldtype: "Link", fieldname: "guruh", label: __("Sinf / guruh"), options: "Student Group", default: this.fGuruh || undefined, reqd: 1 },
@@ -181,6 +183,22 @@ class TZOqituvchiBandligi {
 				});
 			},
 		});
+		// Vaqt — guruh tanlanganda qo'ng'iroq jadvalidan avto hisoblanadi
+		const yangilaVaqt = () => {
+			const g = dlg.get_value("guruh");
+			const $v = dlg.fields_dict.vaqt.$wrapper.find(".oj-vaqt");
+			if (!g) { $v.html(`🕐 Vaqt: <b>—</b> <span class="mini">(sinf tanlang)</span>`); return; }
+			$v.html(`🕐 Vaqt: <span class="mini">hisoblanmoqda…</span>`);
+			frappe.call({
+				method: `${OJ_M}.slot_vaqti`, args: { dars_raqami: dars, guruh: g },
+				callback: (r) => {
+					const m = r.message || {};
+					$v.html(m.boshlanish ? `🕐 Vaqt: <b>${self.esc(m.boshlanish)}–${self.esc(m.tugash)}</b> <span class="mini">(${kun}, ${dars}-dars)</span>` : `🕐 Vaqt: <b>—</b>`);
+				},
+			});
+		};
+		dlg.fields_dict.guruh.$input && dlg.fields_dict.guruh.df && (dlg.fields_dict.guruh.df.onchange = yangilaVaqt);
+		if (this.fGuruh) setTimeout(yangilaVaqt, 150);
 		// "Kim o'tishi mumkin" — bo'sh+malakali kandidatlarni ko'rsatadi, bosilsa o'qituvchini tanlaydi
 		dlg.fields_dict.kim.$input.on("click", () => {
 			const fan = dlg.get_value("fan");

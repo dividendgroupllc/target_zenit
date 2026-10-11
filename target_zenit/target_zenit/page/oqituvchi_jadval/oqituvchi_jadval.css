@@ -8,6 +8,8 @@
 .tz-ojb .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .tz-ojb .filters select { border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; font-size: 13px; background: var(--card,#fff); color: inherit; max-width: 240px; }
 .tz-ojb .filters .clf { border: 1px solid var(--line); background: transparent; border-radius: 9px; padding: 6px 10px; font-size: 12px; cursor: pointer; color: var(--muted); }
+.oj-vaqt { background: #eef4ff; border: 1px solid #cfe0ff; border-radius: 8px; padding: 7px 11px; font-size: 13px; margin-bottom: 4px; }
+.oj-vaqt .mini { color: #8a9099; font-size: 11px; }
 .oj-cands { max-height: 220px; overflow: auto; margin-top: 6px; border: 1px solid var(--border-color,#e5e5e5); border-radius: 8px; }
 .oj-cand { padding: 5px 9px; border-bottom: 1px solid var(--border-color,#f0f0f0); font-size: 12.5px; cursor: pointer; }
 .oj-cand:last-child { border-bottom: none; }
@@ -45,7 +47,8 @@
 .tz-ojb .gtbl th { font-size: 12px; padding: 5px; background: rgba(0,0,0,.02); position: relative; }
 .tz-ojb .gtbl th .kn { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
 .tz-ojb .gtbl .c-d { width: 30px; font-weight: 700; color: var(--muted); font-size: 12px; background: rgba(0,0,0,.02); }
-.tz-ojb .cell { height: 42px; font-size: 10.5px; padding: 2px 3px; vertical-align: middle; }
+.tz-ojb .cell { height: 50px; font-size: 10.5px; padding: 2px 3px; vertical-align: middle; }
+.tz-ojb .cell.band .tm { display: block; font-size: 9px; color: var(--muted); font-weight: 600; line-height: 1.1; }
 .tz-ojb .cell.band { background: hsl(var(--h) 62% 92%); border-left: 2px solid hsl(var(--h) 55% 55%); }
 [data-theme="dark"] .tz-ojb .cell.band { background: hsl(var(--h) 38% 20%); }
 .tz-ojb .cell.band .f { display: block; font-weight: 700; color: hsl(var(--h) 55% 32%); line-height: 1.1; }

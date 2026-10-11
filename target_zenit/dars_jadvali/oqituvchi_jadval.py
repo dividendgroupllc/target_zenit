@@ -11,6 +11,17 @@ KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma"]
 MENEJER = {"system manager", "zavuch", "academics user", "education manager"}
 
 
+def _vaqt_str(v) -> str:
+	"""Time/timedelta/str -> 'HH:MM'."""
+	if not v:
+		return ""
+	if hasattr(v, "total_seconds"):
+		j = int(v.total_seconds())
+		return f"{j // 3600:02d}:{(j % 3600) // 60:02d}"
+	s = str(v)
+	return s[:5] if len(s) >= 5 else s
+
+
 def _guard():
 	if not (MENEJER & {r.lower() for r in frappe.get_roles()}):
 		frappe.throw(_("Ruxsat yo'q."), frappe.PermissionError)
@@ -62,13 +73,14 @@ def oqituvchi_tori(oqituvchi: str, versiya: str | None = None) -> dict:
 	yozuvlar = frappe.get_all(
 		"Jadval Yozuvi",
 		filters={"versiya": versiya, "oqituvchi": oqituvchi},
-		fields=["name", "kun", "dars_raqami", "fan", "guruh_nomi", "xona"],
+		fields=["name", "kun", "dars_raqami", "fan", "guruh_nomi", "xona", "boshlanish", "tugash"],
 		limit_page_length=0,
 	)
 	band = {}
 	for y in yozuvlar:
 		band.setdefault((y.kun, int(y.dars_raqami or 0)), []).append(
-			{"name": y.name, "fan": y.fan, "guruh": y.guruh_nomi, "xona": y.xona})
+			{"name": y.name, "fan": y.fan, "guruh": y.guruh_nomi, "xona": y.xona,
+			 "boshlanish": _vaqt_str(y.boshlanish), "tugash": _vaqt_str(y.tugash)})
 
 	# To'r: har kun x dars
 	tor = []
@@ -192,6 +204,21 @@ def filtr_variantlari(versiya: str | None = None) -> dict:
 		fields=["name", "student_group_name", "custom_guruh_turi"],
 		order_by="custom_guruh_turi, student_group_name", limit_page_length=0)
 	return {"fanlar": fanlar, "guruhlar": guruhlar}
+
+
+@frappe.whitelist()
+def slot_vaqti(dars_raqami, guruh: str) -> dict:
+	"""Shu dars raqami + guruh(sinf) uchun qo'ng'iroq jadvalidan boshlanish/tugash vaqti.
+	Dialogда dars qo'shishdan oldin vaqtni ko'rsatish uchun."""
+	_guard()
+	from target_zenit.target_zenit.doctype.jadval_yozuvi.jadval_yozuvi import guruh_sinflari
+	from target_zenit.target_zenit.doctype.qongiroq_jadvali.qongiroq_jadvali import vaqt
+	try:
+		sinflar = guruh_sinflari(guruh)
+	except Exception:
+		sinflar = []
+	b, t = vaqt(sinflar[0] if sinflar else guruh, int(dars_raqami))
+	return {"boshlanish": _vaqt_str(b), "tugash": _vaqt_str(t)}
 
 
 @frappe.whitelist()

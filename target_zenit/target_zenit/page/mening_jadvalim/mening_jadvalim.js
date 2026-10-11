@@ -86,7 +86,7 @@ class TZMeningJadvalim {
 						<div class="box-t">${k} <span class="mini">${list.length} dars</span></div>
 						${list.map((x) => `<div class="w-row clickable" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}" style="--h:${this.rang(x.fan)}">
 							<span class="no">${x.dars_raqami}</span>
-							<span class="t">${this.esc(x.boshlanish)}</span>
+							<span class="t">${this.esc(x.boshlanish)}${x.tugash ? "–" + this.esc(x.tugash) : ""}</span>
 							<span class="f">${this.esc(x.fan)}</span>
 							<span class="g">${this.esc(x.sinflar || x.guruh_nomi || "")}</span>
 							${x.bugun ? `<span class="w-ok" title="O'tildi: ${this.esc((x.bugun || {}).mavzu || "")}">✓</span>` : ""}

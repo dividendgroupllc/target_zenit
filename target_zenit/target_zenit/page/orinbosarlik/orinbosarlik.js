@@ -67,9 +67,9 @@ class TZOrinbosarlik {
 		const d = this.d || {};
 		if (!d.kun) { this.body.find(".tbl-wrap").html(`<div class="empty">${this.esc(d.xabar || "Dam olish kuni")}</div>`); return; }
 		if (!(d.darslar || []).length) { this.body.find(".tbl-wrap").html(`<div class="empty">Bu kun uchun dars topilmadi${this.oqituvchi ? " (tanlangan o'qituvchida)" : ""}</div>`); return; }
-		const html = `<table class="tbl"><thead><tr><th>#</th><th>Fan</th><th>Guruh</th><th>Asl o'qituvchi</th><th>Holat</th><th>Amal</th></tr></thead><tbody>
+		const html = `<table class="tbl"><thead><tr><th>#</th><th>Vaqt</th><th>Fan</th><th>Guruh</th><th>Asl o'qituvchi</th><th>Holat</th><th>Amal</th></tr></thead><tbody>
 			${d.darslar.map((x) => `<tr data-jy="${this.esc(x.jadval_yozuvi)}" class="${x.ozgarish ? "chg" : ""}">
-				<td class="n">${x.dars_raqami}</td><td>${this.esc(x.fan)}</td><td>${this.esc(x.guruh_nomi)}</td>
+				<td class="n">${x.dars_raqami}</td><td class="vq">${this.esc(x.boshlanish || "")}${x.tugash ? "–" + this.esc(x.tugash) : ""}</td><td>${this.esc(x.fan)}</td><td>${this.esc(x.guruh_nomi)}</td>
 				<td>${this.esc(x.asl_oqituvchi_nomi || x.asl_oqituvchi || "—")}</td>
 				<td>${this.statusCell(x)}</td>
 				<td class="act">
@@ -88,7 +88,7 @@ class TZOrinbosarlik {
 		const dlg = new frappe.ui.Dialog({
 			title: __(`O'rinbosar — ${dars.fan || ""} · ${dars.guruh_nomi || ""}`),
 			fields: [
-				{ fieldtype: "HTML", fieldname: "info", options: `<div class="ob-info">Asl: <b>${self.esc(dars.asl_oqituvchi_nomi || "")}</b> · ${self.esc(this.d.kun)}, ${dars.dars_raqami}-dars · ${self.esc(this.sana)}</div><div class="ob-cands">Yuklanmoqda…</div>` },
+				{ fieldtype: "HTML", fieldname: "info", options: `<div class="ob-info">Asl: <b>${self.esc(dars.asl_oqituvchi_nomi || "")}</b> · ${self.esc(this.d.kun)}, ${dars.dars_raqami}-dars${dars.boshlanish ? ` (${self.esc(dars.boshlanish)}–${self.esc(dars.tugash)})` : ""} · ${self.esc(this.sana)}</div><div class="ob-cands">Yuklanmoqda…</div>` },
 				{ fieldtype: "Small Text", fieldname: "sabab", label: __("Sabab (ixtiyoriy)") },
 			],
 		});
