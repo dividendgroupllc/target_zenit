@@ -10,7 +10,11 @@ from frappe import _
 from frappe.utils import getdate
 
 from target_zenit.dars_jadvali.oqituvchi_jadval import (
-	KUNLAR, _faol_versiya, _guard, _mavjudlik_map, _mavjudlikmi,
+	KUNLAR,
+	_faol_versiya,
+	_guard,
+	_mavjudlik_map,
+	_mavjudlikmi,
 )
 
 
@@ -83,6 +87,41 @@ def _band_oqituvchilar_slotda(versiya, kun, dars, sana):
 		if o.tur == "O'rinbosar" and o.yangi_oqituvchi:
 			band.add(o.yangi_oqituvchi)
 	return band
+
+
+@frappe.whitelist()
+def guruh_kun(sana: str, guruh: str, versiya: str | None = None) -> dict:
+	"""Bitta sinf/guruhning shu sanadagi darslari + o'zgarish overlay (o'quvchi/ota-ona ko'rinishi)."""
+	_guard()
+	versiya = _faol_versiya(versiya)
+	kun = _kun_nomi(sana)
+	nomi = frappe.db.get_value("Student Group", guruh, "student_group_name") or guruh
+	if not kun:
+		return {"sana": str(sana), "kun": "", "guruh_nomi": nomi, "darslar": [], "xabar": "Dam olish kuni"}
+
+	# Shu sinfga tegishli darslar: sinflar ro'yxatida bu guruh/sinf nomi bor
+	yozuvlar = frappe.db.sql(
+		"""SELECT name, dars_raqami, fan, guruh_nomi, oqituvchi, oqituvchi_nomi, xona, boshlanish
+		   FROM `tabJadval Yozuvi`
+		   WHERE versiya=%s AND kun=%s AND (guruh=%s OR sinflar LIKE %s)
+		   ORDER BY dars_raqami ASC""",
+		(versiya, kun, guruh, f"%{nomi}%"), as_dict=True)
+
+	ozg = _ozgarishlar(sana, versiya)
+	darslar = []
+	for y in yozuvlar:
+		o = ozg.get(y.name)
+		darslar.append({
+			"jadval_yozuvi": y.name, "dars_raqami": y.dars_raqami, "fan": y.fan,
+			"guruh_nomi": y.guruh_nomi, "oqituvchi_nomi": y.oqituvchi_nomi,
+			"xona": y.xona, "boshlanish": str(y.boshlanish or "")[:5],
+			"ozgarish": ({
+				"tur": o.tur,
+				"yangi_oqituvchi_nomi": frappe.db.get_value("Instructor", o.yangi_oqituvchi, "instructor_name") if o.yangi_oqituvchi else None,
+				"sabab": o.sabab,
+			} if o else None),
+		})
+	return {"sana": str(sana), "kun": kun, "guruh": guruh, "guruh_nomi": nomi, "versiya": versiya, "darslar": darslar}
 
 
 @frappe.whitelist()
@@ -185,9 +224,11 @@ def cover_statistika(dan: str | None = None, gacha: str | None = None) -> list[d
 	_guard()
 	cond, args = ["tur='O''rinbosar'", "yangi_oqituvchi IS NOT NULL"], []
 	if dan:
-		cond.append("sana >= %s"); args.append(getdate(dan))
+		cond.append("sana >= %s")
+		args.append(getdate(dan))
 	if gacha:
-		cond.append("sana <= %s"); args.append(getdate(gacha))
+		cond.append("sana <= %s")
+		args.append(getdate(gacha))
 	rows = frappe.db.sql(
 		f"""SELECT yangi_oqituvchi, COUNT(*) n FROM `tabJadval Ozgarishi`
 		    WHERE {' AND '.join(cond)} GROUP BY yangi_oqituvchi ORDER BY n DESC""",

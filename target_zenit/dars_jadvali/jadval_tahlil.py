@@ -8,7 +8,12 @@ import frappe
 from frappe import _
 
 from target_zenit.dars_jadvali.oqituvchi_jadval import (
-	KUNLAR, _faol_versiya, _guard, _mavjudlik_map, _mavjudlikmi, _max_darslar,
+	KUNLAR,
+	_faol_versiya,
+	_guard,
+	_mavjudlik_map,
+	_mavjudlikmi,
+	_max_darslar,
 )
 
 
@@ -101,7 +106,8 @@ def tahlil(versiya: str | None = None) -> dict:
 		band = len(sinf_slot.get(nm, set()))
 		holat = "ok"
 		if band > grid_sigim:
-			holat = "sigim_oshgan"; sinf_muammo += 1
+			holat = "sigim_oshgan"
+			sinf_muammo += 1
 		elif band == grid_sigim:
 			holat = "toliq"
 		sinflar.append({

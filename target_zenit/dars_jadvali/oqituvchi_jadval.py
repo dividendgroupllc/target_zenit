@@ -104,7 +104,8 @@ def oqituvchi_tori(oqituvchi: str, versiya: str | None = None) -> dict:
 		seq = best = 0
 		for d in range(1, ndars + 1):
 			if (k, d) in band:
-				seq += 1; best = max(best, seq)
+				seq += 1
+				best = max(best, seq)
 			else:
 				seq = 0
 		max_ketma = max(max_ketma, best)
