@@ -78,12 +78,45 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None):
 	# Joriy haftaning dushanbasi (sanalarni darsга biriktirish uchun)
 	bugun = getdate(nowdate())
 	hafta_boshi = add_days(bugun, -bugun.weekday())
+	hafta_oxiri = add_days(hafta_boshi, 4)
+
+	# Shu haftadagi jadval o'zgarishlari (o'rinbosarlik/bekor) — bir marta
+	ozg_map = {}
+	cover_vazifalar = []
+	for o in frappe.get_all(
+		"Jadval Ozgarishi",
+		filters={"sana": ["between", [hafta_boshi, hafta_oxiri]]},
+		fields=["name", "sana", "jadval_yozuvi", "tur", "asl_oqituvchi",
+		        "yangi_oqituvchi", "sabab", "kun", "dars_raqami", "guruh_nomi", "fan"],
+		limit_page_length=0):
+		ozg_map[(str(o.sana), o.jadval_yozuvi)] = o
+		# Bu o'qituvchi o'rinbosar bo'ladigan darslar
+		if o.yangi_oqituvchi == oqituvchi:
+			jy = frappe.db.get_value("Jadval Yozuvi", o.jadval_yozuvi,
+			                         ["boshlanish", "tugash"], as_dict=True) or {}
+			cover_vazifalar.append({
+				"sana": str(o.sana), "kun": o.kun, "dars_raqami": o.dars_raqami,
+				"fan": o.fan, "guruh_nomi": o.guruh_nomi,
+				"asl_oqituvchi_nomi": frappe.db.get_value("Instructor", o.asl_oqituvchi, "instructor_name"),
+				"boshlanish": _vaqt_str(jy.get("boshlanish")), "tugash": _vaqt_str(jy.get("tugash")),
+				"sabab": o.sabab,
+			})
+	cover_vazifalar.sort(key=lambda x: (x["sana"], x["dars_raqami"] or 0))
+	natija["cover_vazifalar"] = cover_vazifalar
+
 	for d in natija["darslar"]:
 		d["boshlanish"] = _vaqt_str(d["boshlanish"])
 		d["tugash"] = _vaqt_str(d["tugash"])
 		# Shu dars sanasi (joriy haftada) — kun_raqami 1=Dushanba
 		kr = (d.get("kun_raqami") or 1) - 1
 		d["sana"] = str(add_days(hafta_boshi, kr))
+		# O'zgarish overlay (shu sana + shu dars)
+		o = ozg_map.get((d["sana"], d["name"]))
+		d["ozgarish"] = ({
+			"tur": o.tur,
+			"yangi_oqituvchi_nomi": frappe.db.get_value("Instructor", o.yangi_oqituvchi, "instructor_name") if o.yangi_oqituvchi else None,
+			"sabab": o.sabab,
+		} if o else None)
 		# O'quv reja holati (faol reja + keyingi mavzu + o'tilganmi)
 		try:
 			h = oreja.dars_holati(d["fan"], d["guruh"], sana=d["sana"],

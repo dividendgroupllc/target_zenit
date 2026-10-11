@@ -141,3 +141,18 @@
 .tz-mening .w-row .f { font-weight:600; }
 .tz-mening .w-row .g { color:var(--ink-2); margin-left:auto; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:46%; }
 .tz-mening .mini { font-size:10px; color:var(--muted); font-weight:400; }
+
+/* O'rinbosarlik overlay */
+.tz-mening .ozg { font-size: 11.5px; margin-top: 3px; border-radius: 6px; padding: 2px 7px; display: inline-block; }
+.tz-mening .ozg.bekor { background: #fadbd6; color: #c0392b; }
+.tz-mening .ozg.cover { background: #d7f0dd; color: #1a7f37; }
+.tz-mening .cover-card { padding: 12px 14px; margin-bottom: 14px; border-left: 4px solid #1a7f37; }
+.tz-mening .cv-row { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border-color,#eee); }
+.tz-mening .cv-row:last-child { border-bottom: none; }
+.tz-mening .cv-when { min-width: 120px; font-size: 12px; }
+.tz-mening .cv-when b { color: #1a7f37; } .tz-mening .cv-when span { display: block; color: var(--muted); font-size: 11px; }
+.tz-mening .cv-info { font-size: 13px; } .tz-mening .cv-info .mini { color: var(--muted); font-size: 11px; }
+.tz-mening .w-row.w-bekor { opacity: .6; }
+.tz-mening .w-row.w-bekor .f, .tz-mening .w-row.w-bekor .g { text-decoration: line-through; }
+.tz-mening .w-chg { margin-left: auto; font-weight: 700; color: #1a7f37; }
+.tz-mening .w-row.w-bekor .w-chg { color: #c0392b; }

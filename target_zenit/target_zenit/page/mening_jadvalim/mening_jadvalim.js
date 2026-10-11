@@ -17,6 +17,13 @@ class TZMeningJadvalim {
 
 	esc(s) { return frappe.utils.escape_html(String(s == null ? "" : s)); }
 	dmy(s) { const p = String(s || "").slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : ""; }
+	kunQisqa(k) { return ({ Dushanba: "Du", Seshanba: "Se", Chorshanba: "Ch", Payshanba: "Pa", Juma: "Ju", Shanba: "Sh" })[k] || k; }
+	ozgInfo(x) {
+		const o = x.ozgarish; if (!o) return "";
+		if (o.tur === "Bekor") return `<div class="ozg bekor">⛔ Bu dars bugun bekor qilindi${o.sabab ? ` — ${this.esc(o.sabab)}` : ""}</div>`;
+		if (o.tur === "O'rinbosar") return `<div class="ozg cover">🔄 O'rinbosar: <b>${this.esc(o.yangi_oqituvchi_nomi || "")}</b> (siz bu darsга kirmaysiz)</div>`;
+		return "";
+	}
 	rang(fan) { let h = 0; for (const ch of String(fan || "")) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; }
 
 	make_skeleton() {
@@ -70,6 +77,7 @@ class TZMeningJadvalim {
 							<div class="fan">${this.esc(x.fan)}</div>
 							<div class="guruh">${this.esc(x.guruh_nomi || x.guruh)}${x.sinflar ? ` · ${this.esc(x.sinflar)}` : ""}</div>
 							<div class="reja">${this.rejaInfo(x)}</div>
+							${this.ozgInfo(x)}
 						</div>
 						<div class="acts">
 							<button class="btn-belgila" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}">${x.bugun ? "✏️ O'zgartirish" : "📝 Darsni belgilash"}</button>
@@ -79,17 +87,27 @@ class TZMeningJadvalim {
 					: `<div class="empty">Bugun dars yo'q</div>`}
 			</div>
 
+			${(d.cover_vazifalar || []).length ? `
+			<div class="card cover-card">
+				<div class="box-t">🔄 O'rinbosarlik vazifalaringiz (shu hafta)</div>
+				${d.cover_vazifalar.map((c) => `
+					<div class="cv-row">
+						<div class="cv-when"><b>${this.esc(this.kunQisqa(c.kun))}</b> ${this.esc(this.dmy(c.sana))}<span>${this.esc(c.boshlanish)}–${this.esc(c.tugash)}</span></div>
+						<div class="cv-info"><b>${this.esc(c.fan)}</b> · ${this.esc(c.guruh_nomi)}<div class="mini">asl: ${this.esc(c.asl_oqituvchi_nomi || "—")}${c.sabab ? ` · ${this.esc(c.sabab)}` : ""}</div></div>
+					</div>`).join("")}
+			</div>` : ""}
+
 			<div class="hafta">
 				${kunlar.map((k) => {
 					const list = (d.darslar || []).filter((x) => x.kun === k);
 					return `<div class="card kun-card ${k === d.bugun_kuni ? "bugun-card" : ""}">
 						<div class="box-t">${k} <span class="mini">${list.length} dars</span></div>
-						${list.map((x) => `<div class="w-row clickable" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}" style="--h:${this.rang(x.fan)}">
+						${list.map((x) => `<div class="w-row clickable ${x.ozgarish ? (x.ozgarish.tur === "Bekor" ? "w-bekor" : "w-cover") : ""}" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}" style="--h:${this.rang(x.fan)}" ${x.ozgarish ? `title="${x.ozgarish.tur === "Bekor" ? "Bekor qilindi" : "O'rinbosar: " + this.esc(x.ozgarish.yangi_oqituvchi_nomi || "")}"` : ""}>
 							<span class="no">${x.dars_raqami}</span>
 							<span class="t">${this.esc(x.boshlanish)}${x.tugash ? "–" + this.esc(x.tugash) : ""}</span>
 							<span class="f">${this.esc(x.fan)}</span>
 							<span class="g">${this.esc(x.sinflar || x.guruh_nomi || "")}</span>
-							${x.bugun ? `<span class="w-ok" title="O'tildi: ${this.esc((x.bugun || {}).mavzu || "")}">✓</span>` : ""}
+							${x.ozgarish ? `<span class="w-chg">${x.ozgarish.tur === "Bekor" ? "✕" : "↷"}</span>` : (x.bugun ? `<span class="w-ok" title="O'tildi: ${this.esc((x.bugun || {}).mavzu || "")}">✓</span>` : "")}
 						</div>`).join("") || `<div class="empty mini">—</div>`}
 					</div>`;
 				}).join("")}
