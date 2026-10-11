@@ -596,3 +596,58 @@ def test_kassa_fifo(student="EDU-STU-2026-00247", summa=8_000_000):
 	k.cancel()
 	frappe.db.commit()
 	print("\n(bekor qilindi — qoldiqlar qaytdi)")
+
+
+def test_adriel_stsenariy(student_like="Adriel"):
+	"""Foydalanuvchi skrinshotidagi holat: 2 800 000 kerak, 2 714 000 to'landi,
+	14 000 qaytim -> qoldiq 100 000 bo'lishi kerak."""
+	from frappe.utils import nowdate
+
+	from target_zenit.qarzdorlik import engine
+
+	tr = frappe.db.sql("""SELECT tr.name, tr.customer FROM `tabTolov Rejasi` tr
+		JOIN tabStudent s ON s.name=tr.student
+		WHERE s.student_name LIKE %s AND tr.holat='Faol' LIMIT 1""",
+		(student_like + "%",), as_dict=True)
+	if not tr:
+		print("Reja topilmadi")
+		return
+	tr = tr[0]
+	kassalar = []
+
+	def kassa(tur, summa):
+		k = frappe.get_doc({
+			"doctype": "Kassa", "date": nowdate(), "transaction_type": tur,
+			"company": "Target Zenit", "mode_of_payment": "Наличый UZS",
+			"cash_account": "Наличый UZS - TZ", "party_type": "Customer",
+			"party": tr.customer, "amount": summa, "remarks": "TEST stsenariy",
+		})
+		k.flags.ignore_permissions = True
+		k.insert()
+		k.submit()
+		kassalar.append(k)
+		return k
+
+	kassa("Приход", 2_714_000)
+	kassa("Расход", 14_000)
+	frappe.db.commit()
+	engine.recompute_plan(tr.name, sync_case=True)
+	frappe.db.commit()
+
+	rows = frappe.db.sql("""SELECT oy_label, amount, paid_amount, qaytim, outstanding, holat
+		FROM `tabTolov Rejasi Oyi` WHERE parent=%s AND holat!='Bekor'
+		ORDER BY due_date LIMIT 2""", (tr.name,), as_dict=True)
+	print("TO'LOV JADVALI:")
+	for r in rows:
+		print(f"  {r.oy_label[:28]:30} summa={r.amount:>11,.0f} to'langan={r.paid_amount:>11,.0f} "
+			  f"qaytim={r.qaytim:>9,.0f} qoldiq={r.outstanding:>11,.0f}  {r.holat}")
+	kerak = rows[0].amount - 2_714_000 + 14_000
+	print(f"\nKutilgan qoldiq: {kerak:,.0f} | chiqdi: {rows[0].outstanding:,.0f}",
+		  "✓ TO'G'RI" if abs(rows[0].outstanding - kerak) < 1 else "✗ XATO")
+
+	for k in reversed(kassalar):
+		k.cancel()
+	frappe.db.commit()
+	engine.recompute_plan(tr.name, sync_case=True)
+	frappe.db.commit()
+	print("(test kassalari bekor qilindi)")

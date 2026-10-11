@@ -674,10 +674,12 @@ def nightly():
 
 
 def on_payment(doc, method=None):
-	"""PE submit/cancel — shu mijoz rejasini darhol qayta hisoblash
-	(ota-ona to'lagan zahoti menejer ro'yxatidan tushsin)."""
+	"""PE submit/cancel — shu mijoz rejasini darhol qayta hisoblash.
+
+	To'lov (Receive) ham, kassadan QAYTIM (Pay) ham hisobga olinadi — qaytim
+	berilgan zahoti o'quvchining qarzi qayta hisoblanishi kerak."""
 	try:
-		if doc.party_type != "Customer" or doc.payment_type != "Receive":
+		if doc.party_type != "Customer" or doc.payment_type not in ("Receive", "Pay"):
 			return
 		for tr_name in frappe.get_all(
 			"Tolov Rejasi",
