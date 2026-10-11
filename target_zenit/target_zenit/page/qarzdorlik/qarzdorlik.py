@@ -116,7 +116,8 @@ def get_case(name: str):
 		months = [
 			{
 				"oy_label": r.oy_label, "due_date": r.due_date, "amount": r.amount,
-				"paid_amount": r.paid_amount, "outstanding": r.outstanding, "holat": r.holat,
+				"paid_amount": r.paid_amount, "qaytim": r.qaytim,
+				"outstanding": r.outstanding, "holat": r.holat,
 			}
 			for r in tr.oylar
 		]

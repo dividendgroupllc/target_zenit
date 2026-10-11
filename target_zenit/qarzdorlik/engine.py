@@ -65,6 +65,30 @@ def _payments_since(customer: str, from_date) -> float:
 	return total
 
 
+def _payments_split(customer: str, from_date):
+	"""(to'lov, qaytim) — UZS'da, alohida. Jadvalda ikkalasi alohida ustunda
+	ko'rinishi uchun kerak: "to'langan" brutto, "qaytim" esa qoldiqni oshiradi."""
+	if not customer:
+		return 0.0, 0.0
+	rows = frappe.db.sql(
+		"""SELECT payment_type, paid_from_account_currency f, paid_to_account_currency t,
+		          paid_amount, received_amount, posting_date
+		   FROM `tabPayment Entry`
+		   WHERE docstatus=1 AND party_type='Customer'
+		     AND payment_type IN ('Receive', 'Pay')
+		     AND party=%s AND posting_date >= %s""",
+		(customer, from_date),
+		as_dict=True,
+	)
+	tolov = qaytim = 0.0
+	for r in rows:
+		if r.payment_type == "Pay":
+			qaytim += _pe_uzs(r)
+		else:
+			tolov += _pe_uzs(r)
+	return tolov, qaytim
+
+
 def _pe_uzs(r) -> float:
 	"""Payment Entry qatorining UZS qiymati (yo'nalishdan qat'i nazar, musbat)."""
 	if r.f == "UZS":
@@ -205,24 +229,45 @@ def recompute_plan(tr_name: str, sync_case: bool = True):
 	try:
 		if sync_charges(tr):
 			tr = frappe.get_doc("Tolov Rejasi", tr_name)  # yangi qatorlar bilan qayta o'qish
-		total_paid = _payments_since(tr.customer, _plan_payment_window(tr))
+		jami_tolov, jami_qaytim = _payments_split(tr.customer, _plan_payment_window(tr))
+		total_paid = jami_tolov - jami_qaytim
 		today = getdate(nowdate())
 
 		rows = sorted(
 			[r for r in tr.oylar if r.holat != "Bekor"], key=lambda r: getdate(r.due_date)
 		)
-		pool = total_paid
+
+		# 1-bosqich: to'lovlar eskisidan boshlab (FIFO) taqsimlanadi
+		pool = jami_tolov
+		alloc_map = {}
+		for r in rows:
+			a = min(pool, flt(r.amount))
+			alloc_map[r.name] = a
+			pool -= a
+
+		# 2-bosqich: qaytim OXIRGI to'langan qatordan boshlab yechiladi (LIFO) —
+		# eski oylar to'langanicha qoladi, qaytim esa so'nggi to'lovdan olinadi
+		# va o'sha qatorning qoldig'ini oshiradi.
+		qaytim_map = {}
+		left_q = jami_qaytim
+		for r in reversed(rows):
+			take = min(left_q, alloc_map.get(r.name, 0.0))
+			qaytim_map[r.name] = take
+			left_q -= take
+		if left_q > 0.005 and rows:          # qaytim to'lovdan ko'p (kam uchraydi)
+			qaytim_map[rows[0].name] = qaytim_map.get(rows[0].name, 0.0) + left_q
+
 		qarz = 0.0
 		eng_eski = None
 		for r in rows:
 			amount = flt(r.amount)
-			alloc = min(pool, amount)
-			pool -= alloc
-			outstanding = amount - alloc
+			alloc = alloc_map.get(r.name, 0.0)
+			qayt = qaytim_map.get(r.name, 0.0)
+			outstanding = amount - alloc + qayt
 
 			if outstanding <= 0.005:
 				holat = "To'landi"
-			elif alloc > 0:
+			elif alloc - qayt > 0:
 				holat = "Qisman"
 			elif getdate(r.due_date) <= today:
 				holat = "Muddati keldi"
@@ -236,13 +281,15 @@ def recompute_plan(tr_name: str, sync_case: bool = True):
 
 			if (
 				flt(r.paid_amount) != alloc
+				or flt(r.qaytim) != qayt
 				or flt(r.outstanding) != outstanding
 				or r.holat != holat
 			):
 				frappe.db.set_value(
 					"Tolov Rejasi Oyi",
 					r.name,
-					{"paid_amount": alloc, "outstanding": outstanding, "holat": holat},
+					{"paid_amount": alloc, "qaytim": qayt,
+					 "outstanding": outstanding, "holat": holat},
 					update_modified=False,
 				)
 
@@ -253,6 +300,7 @@ def recompute_plan(tr_name: str, sync_case: bool = True):
 			{
 				"jami_hisoblangan": jami,
 				"jami_tolangan": min(total_paid, jami),
+				"jami_qaytim": jami_qaytim,
 				"qarz_bugun": qarz,
 				"eng_eski_muddat": eng_eski,
 				"avans_summa": max(total_paid - jami, 0),

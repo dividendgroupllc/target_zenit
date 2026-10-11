@@ -19,6 +19,7 @@
   "section_jami",
   "jami_hisoblangan",
   "jami_tolangan",
+  "jami_qaytim",
   "column_break_2",
   "qarz_bugun",
   "eng_eski_muddat",
@@ -124,6 +125,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "jami_qaytim",
+   "fieldtype": "Currency",
+   "label": "Jami qaytim",
+   "read_only": 1,
+   "description": "Kassadan qaytarib berilgan (to'lovdan ayiriladi)"
+  },
+  {
    "fieldname": "column_break_2",
    "fieldtype": "Column Break"
   },
@@ -149,7 +157,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-11 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Tolov Rejasi",

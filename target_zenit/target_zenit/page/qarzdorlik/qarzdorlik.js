@@ -237,10 +237,11 @@ class TZQarzPanel {
 					${this.statusPill(s.ishlov_status)} <span class="mini">mas'ul: ${this.esc(s.masul)}</span></div>`).join("")}</div>` : "";
 
 		const months = `<div class="box"><div class="box-t">To'lov jadvali</div>
-			<table class="tbl mini-tbl"><thead><tr><th>Oy</th><th>Muddat</th><th class="r">Summa</th><th class="r">To'langan</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
+			<table class="tbl mini-tbl"><thead><tr><th>Oy</th><th>Muddat</th><th class="r">Summa</th><th class="r">To'langan</th><th class="r">Qaytim</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
 			<tbody>${(d.months || []).map((m) => `
 				<tr class="mh-${this.esc(m.holat)}"><td>${this.esc(m.oy_label)}</td><td>${this.dmy(m.due_date)}</td>
 				<td class="r">${this.fmt(m.amount)}</td><td class="r">${this.fmt(m.paid_amount)}</td>
+				<td class="r ${m.qaytim ? "neg" : ""}">${m.qaytim ? "−" + this.fmt(m.qaytim) : "—"}</td>
 				<td class="r money">${this.fmt(m.outstanding)}</td><td>${this.esc(m.holat)}</td></tr>`).join("")}
 			</tbody></table></div>`;
 

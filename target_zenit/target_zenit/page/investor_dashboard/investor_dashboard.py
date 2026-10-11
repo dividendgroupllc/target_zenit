@@ -704,10 +704,12 @@ def _employee_advances():
 # O'quvchilar to'lovi (Education Fees)
 # ===========================================================================
 def _student_payments(company, from_date, to_date):
-    """O'quvchi to'lovlari — bevosita Payment Entry (Receive) asosida.
+    """O'quvchi to'lovlari — bevosita Payment Entry asosida.
     Maktabda Fees (schyot) ishlatilmaydi, faqat to'lovlar yoziladi → to'lovlarni
-    o'quvchi kesimida, izohlari (remarks) bilan ko'rsatamiz. Faqat customer_group='Student'
-    bo'lgan mijozlar; payment_type='Receive' (chiquvchi/xato 'Pay' yozuvlar chiqarib tashlanadi).
+    o'quvchi kesimida, izohlari (remarks) bilan ko'rsatamiz. Faqat customer_group='Student'.
+
+    DIQQAT: kassadan QAYTIM berilgan bo'lsa (Kassa "Расход" -> payment_type='Pay')
+    u MANFIY summa bilan qo'shiladi — aks holda "jami to'langan" oshib ketadi.
     Summa = KASSAGA TUSHGAN REAL PUL (received_amount), valyutasi = tushgan hisob valyutasi.
     Kassalar asosan so'm bo'lgani uchun ko'pchiligi so'm da chiqadi (USD $166.66 → 2 000 000 so'm).
     Yon ma'lumot sifatida o'quvchi to'lagan asl summa (paid_amount + paid_from valyutasi) ham beriladi."""
@@ -718,15 +720,19 @@ def _student_payments(company, from_date, to_date):
     try:
         rows = frappe.db.sql(
             f"""SELECT pe.name, pe.posting_date, pe.party, pe.party_name,
-                       pe.paid_amount, pe.paid_from_account_currency ccy,
-                       pe.received_amount, pe.paid_to_account_currency deposit_ccy,
-                       pe.base_paid_amount, pe.mode_of_payment, pe.paid_to,
+                       pe.payment_type,
+                       IF(pe.payment_type='Pay', -pe.paid_amount, pe.paid_amount) paid_amount,
+                       pe.paid_from_account_currency ccy,
+                       IF(pe.payment_type='Pay', -pe.received_amount, pe.received_amount) received_amount,
+                       pe.paid_to_account_currency deposit_ccy,
+                       IF(pe.payment_type='Pay', -pe.base_paid_amount, pe.base_paid_amount) base_paid_amount,
+                       pe.mode_of_payment, pe.paid_to,
                        pe.reference_no, k.remarks kassa_remarks, pe.remarks pe_remarks
                 FROM `tabPayment Entry` pe
                 JOIN `tabCustomer` c ON c.name = pe.party AND c.customer_group = 'Student'
                 LEFT JOIN `tabKassa` k ON k.name = pe.reference_no
                 WHERE pe.docstatus = 1 AND pe.party_type = 'Customer'
-                  AND pe.payment_type = 'Receive'
+                  AND pe.payment_type IN ('Receive', 'Pay')
                   AND pe.posting_date BETWEEN %(f)s AND %(t)s {_co(company, 'pe')}
                 ORDER BY pe.posting_date DESC, pe.name DESC""",
             {"f": from_date, "t": to_date, "company": company}, as_dict=True)
@@ -1906,19 +1912,20 @@ def get_students_detail():
             except Exception:
                 pass
 
-    # To'lovlar — Payment Entry (Receive, Student customer'lari), BUTUN tarix bo'yicha:
+    # To'lovlar — Payment Entry (Student customer'lari), BUTUN tarix bo'yicha:
     # har o'quvchi jami qancha to'lagan (kassaga tushgan real pul, valyuta kesimida)
-    # va oxirgi to'lov sanasi. Student → Customer bog'lami orqali.
+    # va oxirgi to'lov sanasi. QAYTIM (payment_type='Pay') ayiriladi.
     paymap = defaultdict(lambda: {"by_ccy": defaultdict(float), "count": 0, "last": ""})
     try:
         for r in frappe.db.sql(
                 """SELECT pe.party, pe.paid_to_account_currency ccy,
-                          IFNULL(SUM(pe.received_amount), 0) total,
-                          COUNT(*) n, MAX(pe.posting_date) last
+                          IFNULL(SUM(IF(pe.payment_type='Pay', -pe.received_amount,
+                                        pe.received_amount)), 0) total,
+                          SUM(pe.payment_type = 'Receive') n, MAX(pe.posting_date) last
                    FROM `tabPayment Entry` pe
                    JOIN `tabCustomer` c ON c.name = pe.party AND c.customer_group = 'Student'
                    WHERE pe.docstatus = 1 AND pe.party_type = 'Customer'
-                     AND pe.payment_type = 'Receive'
+                     AND pe.payment_type IN ('Receive', 'Pay')
                    GROUP BY pe.party, pe.paid_to_account_currency""", as_dict=True):
             p = paymap[r.party]
             p["by_ccy"][r.ccy or ccy] += flt(r.total)
