@@ -134,6 +134,11 @@ def get_case(name: str):
 			"jami_tolov": tolov,
 			"jami_qaytim": qaytim,
 			"sof": tolov - qaytim,
+			# Yangi qoidadan keyin jami to'lov bilan jadval farq qilishi MUMKIN:
+			# kitob/forma/yotoqxona nachisleniyasiga bog'lanmagan pul o'sha qatorga
+			# tushmaydi. Farq ko'rinib turishi uchun ikkisi ham ko'rsatiladi.
+			"jadvalga_tushgan": sum(flt(r.paid_amount) for r in tr.oylar),
+			"taqsimlanmagan": flt(tr.avans_summa),
 			"jadvalda_qaytim": sum(flt(r.qaytim) for r in tr.oylar),
 			"hisoblangan": str(tr.modified)[:16],
 		}

@@ -288,8 +288,14 @@ class TZQarzPanel {
 					<span>To'lov (kirim)</span><b>${this.fmt(d.hisob.jami_tolov)}</b>
 					<span>Qaytim (chiqim)</span><b class="${d.hisob.jami_qaytim ? "neg" : ""}">${d.hisob.jami_qaytim ? "−" + this.fmt(d.hisob.jami_qaytim) : "0"}</b>
 					<span>Sof to'lov</span><b>${this.fmt(d.hisob.sof)}</b>
+					<span>Jadvalga tushgan to'lov</span><b>${this.fmt(d.hisob.jadvalga_tushgan)}</b>
+					<span>Taqsimlanmagan (avans)</span><b>${this.fmt(d.hisob.taqsimlanmagan)}</b>
 					<span>Jadvalga yozilgan qaytim</span><b class="${Math.abs(d.hisob.jadvalda_qaytim - d.hisob.jami_qaytim) > 1 ? "neg" : ""}">${this.fmt(d.hisob.jadvalda_qaytim)}</b>
 				</div>
+				${d.hisob.taqsimlanmagan > 1
+					? `<div class="ogoh">ℹ Taqsimlanmagan pul bor. Kitob/forma/yotoqxona to'lovi
+						faqat kassada «Nachisleniya» tanlangan bo'lsa o'sha qatorga tushadi —
+						tanlanmagan bo'lsa pul avans bo'lib qoladi va o'quv to'loviga ketadi.</div>` : ""}
 				${Math.abs(d.hisob.jadvalda_qaytim - d.hisob.jami_qaytim) > 1
 					? `<div class="ogoh">⚠ Jadvaldagi qaytim kassadagidan farq qilyapti — reja eski hisobda qolgan.
 						«Qayta hisoblash» tugmasini bosing.</div>` : ""}

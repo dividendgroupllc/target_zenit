@@ -98,6 +98,97 @@ def _pe_uzs(r) -> float:
 	return flt(r.paid_amount) * _usd_uzs_rate(r.posting_date)
 
 
+def _ref_uzs(r) -> float:
+	"""Bog'langan summaning UZS qiymati.
+
+	`Payment Entry Reference.allocated_amount` kontragent hisobi valyutasida
+	bo'ladi (Receive'da paid_from, Pay'da paid_to). Bazada bu hisob UZS, lekin
+	kompaniya bazaviy valyutasi USD — shuning uchun valyutani tekshirmasdan
+	ishonib bo'lmaydi.
+	"""
+	cur = r.f if r.payment_type == "Receive" else r.t
+	if cur == "UZS":
+		return flt(r.allocated_amount)
+	return flt(r.allocated_amount) * _usd_uzs_rate(r.posting_date)
+
+
+def _linked_allocations(customer: str, from_date):
+	"""Sales Invoice -> UZS'da bog'langan summa. (to'lov, qaytim) alohida.
+
+	Faqat submit qilingan Payment Entry'lar. Kassir `Nachisleniya` maydonida
+	SI tanlagan bo'lsa, kassa.py o'sha SI'ga reference qo'shadi — shu yerda
+	aynan o'sha bog'lanishlar o'qiladi.
+	"""
+	if not customer:
+		return {}, {}
+	rows = frappe.db.sql(
+		"""SELECT per.reference_name si, pe.payment_type,
+		          pe.paid_from_account_currency f, pe.paid_to_account_currency t,
+		          pe.posting_date, per.allocated_amount
+		   FROM `tabPayment Entry Reference` per
+		   JOIN `tabPayment Entry` pe ON pe.name = per.parent
+		   WHERE per.reference_doctype='Sales Invoice'
+		     AND pe.docstatus=1 AND pe.party_type='Customer'
+		     AND pe.payment_type IN ('Receive', 'Pay')
+		     AND pe.party=%s AND pe.posting_date >= %s""",
+		(customer, from_date),
+		as_dict=True,
+	)
+	tolov, qaytim = {}, {}
+	for r in rows:
+		hedef = qaytim if r.payment_type == "Pay" else tolov
+		hedef[r.si] = hedef.get(r.si, 0.0) + _ref_uzs(r)
+	return tolov, qaytim
+
+
+def _si_outstanding(customer: str, from_date) -> dict:
+	"""Sales Invoice -> hujjatning O'ZIDAGI qoldiq (UZS).
+
+	Nega kerak: bog'langan Payment Entry'dan tashqari nachisleniya boshqa yo'l
+	bilan ham yopilishi mumkin (Journal Entry bilan tuzatish, chegirma, kredit-nota,
+	buxgalterlik reconciliation). Faqat Payment Entry bog'lanishiga qarab
+	hisoblasak, shunday yopilgan nachisleniya panelda NOTO'G'RI qarz bo'lib
+	turardi va qarz yig'uvchilar to'lagan odamga qo'ng'iroq qilardi.
+	"""
+	if not customer:
+		return {}
+	rows = frappe.db.sql(
+		"""SELECT name, grand_total, outstanding_amount
+		   FROM `tabSales Invoice`
+		   WHERE docstatus=1 AND customer=%s AND currency='UZS' AND posting_date >= %s""",
+		(customer, from_date),
+		as_dict=True,
+	)
+	return {r.name: (flt(r.grand_total), flt(r.outstanding_amount)) for r in rows}
+
+
+def _tuition_si_months(customer: str, from_date, cfg) -> dict:
+	"""O'quv to'lovi Sales Invoice -> "YYYY-MM".
+
+	O'quv to'lovi uchun har oyda bitta SI yoziladi va u rejaning oylik qatori
+	bilan AYNI narsani ifodalaydi, shuning uchun qator sifatida qo'shilmaydi
+	(istisno itemlar). Lekin kassir to'lovni shu SI'ga bog'lagan bo'lsa, pul
+	aynan o'sha oy qatoriga yozilishi kerak — moslik `custom_payment_month`
+	bo'yicha, u bo'sh bo'lsa SI sanasi bo'yicha.
+	"""
+	if not customer or not cfg.istisno_itemlar:
+		return {}
+	rows = frappe.db.sql(
+		"""SELECT DISTINCT si.name, si.custom_payment_month oy, si.posting_date
+		   FROM `tabSales Invoice` si
+		   JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+		   WHERE si.docstatus=1 AND si.customer=%s AND si.posting_date >= %s
+		     AND sii.item_code IN %s""",
+		(customer, from_date, tuple(cfg.istisno_itemlar)),
+		as_dict=True,
+	)
+	out = {}
+	for r in rows:
+		oy = (r.oy or "").strip()[:7]
+		out[r.name] = oy if len(oy) == 7 else getdate(r.posting_date).strftime("%Y-%m")
+	return out
+
+
 def get_payments(customer: str, from_date) -> list[dict]:
 	"""To'lovlar ro'yxati UZS'da — qaytimlar ham (manfiy summa bilan)."""
 	if not customer:
@@ -216,6 +307,134 @@ def sync_charges(tr) -> bool:
 	return changed
 
 
+# ------------------------------------------------------------- taqsimot
+def _taqsimot(tr, rows, jami_tolov: float, jami_qaytim: float):
+	"""To'lovlarni reja qatorlariga taqsimlaydi.
+
+	Qoida (2026-10-12 qarori — `kassa.py` dagi mantiq bilan bir xil):
+
+	  * **Kitob / Forma / Yotoqxona** (SI asosidagi qator) — FAQAT kassir o'sha
+	    Sales Invoice'ga bog'lab submit qilgan to'lov hisoblanadi. Bog'lanmagan
+	    bo'lsa qator to'lanmagan qoladi. Sabab: o'quvchida ikki xil to'lov bor
+	    va avtomatik (FIFO) taqsimot noto'g'ri nachisleniyani yopib qo'yardi.
+	  * **O'quv to'lovi SI'siga** bog'langan to'lov — o'sha SI oyining qatoriga
+	    yoziladi (o'quv SI'si qator sifatida qo'shilmaydi, chunki oylik qator
+	    allaqachon shu oyni ifodalaydi).
+	  * **Bog'lanmagan to'lov** — oylik qatorlarga FIFO, eskisidan boshlab.
+
+	Bog'langan pul FIFO polidan chiqariladi (ikki marta hisoblanmasligi uchun),
+	lekin egasi topilmasa polga QAYTARILADI — pul jadvaldan yo'qolmasligi kerak.
+
+	Qaytaradi: (alloc_map, qaytim_map, avans)
+	"""
+	cfg = _settings()
+	window = _plan_payment_window(tr)
+	return _taqsimla(
+		rows,
+		jami_tolov,
+		jami_qaytim,
+		*_linked_allocations(tr.customer, window),
+		_tuition_si_months(tr.customer, window, cfg),
+		_si_outstanding(tr.customer, window),
+	)
+
+
+def _taqsimla(
+	rows,
+	jami_tolov: float,
+	jami_qaytim: float,
+	linked_t: dict,
+	linked_q: dict,
+	tuition_si: dict,
+	si_qoldiq: dict,
+):
+	"""Taqsimotning toza (bazaga murojaat qilmaydigan) yadrosi.
+
+	Bazadan ajratilgani ataylab: bu pul hisobi, shuning uchun alohida
+	test qilinishi kerak — har bir qoida va chegara holati tekshiriladi.
+	"""
+	si_rows = [r for r in rows if r.manba_hujjat]
+	oy_rows = [r for r in rows if not r.manba_hujjat]
+
+	alloc, qaytim = {}, {}
+	pool = jami_tolov - sum(linked_t.values())
+	q_pool = jami_qaytim - sum(linked_q.values())
+	ishlangan = set()
+
+	# 1) SI qatorlari — faqat bog'langan to'lov, qaytim ham faqat bog'langan
+	for r in si_rows:
+		si = r.manba_hujjat
+		ishlangan.add(si)
+		got = linked_t.get(si, 0.0)
+		a = min(got, flt(r.amount))
+
+		# Buxgalteriya bilan solishtirish: nachisleniya Journal Entry yoki
+		# kredit-nota bilan yopilgan bo'lsa, bog'langan to'lov bo'lmasa ham
+		# qator yopilishi kerak. Bu farq POLDAN ayirilmaydi — u mijoz to'lovi
+		# emas, shuning uchun o'quv to'lovi polini kamaytirmasligi kerak.
+		jami_qold = si_qoldiq.get(si)
+		if jami_qold:
+			yopilgan = max(jami_qold[0] - jami_qold[1], 0.0)
+			a = max(a, min(yopilgan, flt(r.amount)))
+
+		alloc[r.name] = a
+		pool += got - min(got, flt(r.amount))   # qator summasidan ortig'i polga qaytadi
+
+		qq = linked_q.get(si, 0.0)
+		q = min(qq, a)
+		qaytim[r.name] = q
+		q_pool += qq - q
+
+	# 2) O'quv SI'siga bog'langan pul -> o'sha oyning qatoriga
+	oy_map = {getdate(r.due_date).strftime("%Y-%m"): r for r in oy_rows}
+	bogli_oy = {}
+	for si, oy in tuition_si.items():
+		ishlangan.add(si)
+		got = linked_t.get(si, 0.0)
+		qq = linked_q.get(si, 0.0)
+		r = oy_map.get(oy)
+		if not r:
+			pool += got                      # bu oyning qatori yo'q -> umumiy polga
+			q_pool += qq
+			continue
+		bor = bogli_oy.get(r.name, 0.0)
+		a = min(got, max(flt(r.amount) - bor, 0.0))
+		bogli_oy[r.name] = bor + a
+		pool += got - a
+		q = min(qq, a)
+		qaytim[r.name] = qaytim.get(r.name, 0.0) + q
+		q_pool += qq - q
+
+	# 3) Bog'langan, lekin bu rejada egasi yo'q pul (oyna tashqarisidagi SI va h.k.)
+	for si, got in linked_t.items():
+		if si not in ishlangan:
+			pool += got
+	for si, qq in linked_q.items():
+		if si not in ishlangan:
+			q_pool += qq
+
+	# 4) Bog'lanmagan pul — oylik qatorlarga FIFO
+	for r in oy_rows:
+		bor = bogli_oy.get(r.name, 0.0)
+		a = min(max(pool, 0.0), max(flt(r.amount) - bor, 0.0))
+		alloc[r.name] = bor + a
+		pool -= a
+
+	# 5) Bog'lanmagan qaytim — oxirgi to'langan OYLIK qatordan (LIFO).
+	#    SI qatorlariga tegilmaydi: ularning qaytimi faqat bog'langan bo'lishi kerak.
+	left_q = max(q_pool, 0.0)
+	for r in reversed(oy_rows):
+		bor = qaytim.get(r.name, 0.0)
+		take = min(left_q, max(alloc.get(r.name, 0.0) - bor, 0.0))
+		qaytim[r.name] = bor + take
+		left_q -= take
+	if left_q > 0.005 and oy_rows:           # qaytim to'lovdan ko'p (kam uchraydi)
+		b = oy_rows[0].name
+		qaytim[b] = qaytim.get(b, 0.0) + left_q
+
+	return alloc, qaytim, max(pool, 0.0)
+
+
 # ---------------------------------------------------------------- recompute
 def recompute_plan(tr_name: str, sync_case: bool = True):
 	"""Bitta Tolov Rejasi: SI nachisleniya sinxroni + FIFO taqsimot ->
@@ -230,32 +449,12 @@ def recompute_plan(tr_name: str, sync_case: bool = True):
 		if sync_charges(tr):
 			tr = frappe.get_doc("Tolov Rejasi", tr_name)  # yangi qatorlar bilan qayta o'qish
 		jami_tolov, jami_qaytim = _payments_split(tr.customer, _plan_payment_window(tr))
-		total_paid = jami_tolov - jami_qaytim
 		today = getdate(nowdate())
 
 		rows = sorted(
 			[r for r in tr.oylar if r.holat != "Bekor"], key=lambda r: getdate(r.due_date)
 		)
-
-		# 1-bosqich: to'lovlar eskisidan boshlab (FIFO) taqsimlanadi
-		pool = jami_tolov
-		alloc_map = {}
-		for r in rows:
-			a = min(pool, flt(r.amount))
-			alloc_map[r.name] = a
-			pool -= a
-
-		# 2-bosqich: qaytim OXIRGI to'langan qatordan boshlab yechiladi (LIFO) —
-		# eski oylar to'langanicha qoladi, qaytim esa so'nggi to'lovdan olinadi
-		# va o'sha qatorning qoldig'ini oshiradi.
-		qaytim_map = {}
-		left_q = jami_qaytim
-		for r in reversed(rows):
-			take = min(left_q, alloc_map.get(r.name, 0.0))
-			qaytim_map[r.name] = take
-			left_q -= take
-		if left_q > 0.005 and rows:          # qaytim to'lovdan ko'p (kam uchraydi)
-			qaytim_map[rows[0].name] = qaytim_map.get(rows[0].name, 0.0) + left_q
+		alloc_map, qaytim_map, avans = _taqsimot(tr, rows, jami_tolov, jami_qaytim)
 
 		qarz = 0.0
 		eng_eski = None
@@ -294,16 +493,20 @@ def recompute_plan(tr_name: str, sync_case: bool = True):
 				)
 
 		jami = sum(flt(r.amount) for r in rows)
+		# "Jami to'langan" — qatorlarga HAQIQATDA tushgan pul. Oldin bu barcha
+		# to'lovlar (jami bilan cheklangan) edi; endi bog'lanmagan kitob/forma
+		# puli qatorga tushmaydi, shuning uchun taqsimot natijasi olinadi —
+		# aks holda jadval qatorlari bilan jami bir-biriga mos kelmasdi.
 		frappe.db.set_value(
 			"Tolov Rejasi",
 			tr.name,
 			{
 				"jami_hisoblangan": jami,
-				"jami_tolangan": min(total_paid, jami),
+				"jami_tolangan": sum(alloc_map.values()),
 				"jami_qaytim": jami_qaytim,
 				"qarz_bugun": qarz,
 				"eng_eski_muddat": eng_eski,
-				"avans_summa": max(total_paid - jami, 0),
+				"avans_summa": avans,
 			},
 			update_modified=False,
 		)
