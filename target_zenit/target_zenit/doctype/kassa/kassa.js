@@ -913,6 +913,26 @@ function load_customer_invoices(frm) {
                     Ochiq nachisleniya yo'q — to'lov <b>avans</b> bo'lib qoladi.</div>`);
                 return;
             }
+            const fmt0 = (n) => frappe.format(n, { fieldtype: "Currency", options: "currency" });
+            // Nachisleniya TANLANMAGAN bo'lsa — hech narsa bog'lanmaydi (avto FIFO yo'q).
+            // O'quv to'lovi shu yo'l bilan ketadi; kitob/forma/yotoqxona uchun kassir tanlaydi.
+            if (!frm.doc.sales_invoice) {
+                show(`<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px">
+                    <div class="small" style="margin-bottom:6px">
+                        <b>Nachisleniya tanlanmagan</b> — to'lov hech qaysi hisob-fakturaga bog'lanmaydi
+                        (o'quv to'lovi shunday ketadi, qarzdorlik panelida oyma-oy ko'rinadi).<br>
+                        Kitob / forma / yotoqxona to'lovi bo'lsa — yuqoridagi
+                        <b>«Nachisleniya»</b> maydonidan kerakligini tanlang.</div>
+                    <table class="table table-bordered" style="margin:0;font-size:12px">
+                        <thead><tr><th>Sana</th><th>Ochiq nachisleniya</th><th class="text-right">Qoldiq</th></tr></thead>
+                        <tbody>${list.map((x) => `<tr>
+                            <td>${frappe.datetime.str_to_user(x.sana)}</td>
+                            <td><a href="/app/sales-invoice/${encodeURIComponent(x.name)}" target="_blank">${frappe.utils.escape_html(x.name)}</a>
+                                <div class="text-muted small">${frappe.utils.escape_html(x.itemlar || "")}</div></td>
+                            <td class="text-right">${fmt0(x.outstanding)}</td></tr>`).join("")}</tbody>
+                    </table></div>`);
+                return;
+            }
             const fmt = (n) => frappe.format(n, { fieldtype: "Currency", options: "currency" });
             const jami = list.reduce((a, x) => a + flt(x.outstanding), 0);
             const summa = flt(frm.doc.amount);
@@ -929,8 +949,7 @@ function load_customer_invoices(frm) {
             }
             show(`<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px">
                 <div class="small text-muted" style="margin-bottom:6px">
-                    ${frm.doc.sales_invoice ? "Tanlangan nachisleniya" : "Ochiq nachisleniyalar"} —
-                    to'lov shularga bog'lanadi${frm.doc.sales_invoice ? "" : " (eskisidan boshlab)"}</div>
+                    Tanlangan nachisleniya — to'lov shunga bog'lanadi</div>
                 <table class="table table-bordered" style="margin:0;font-size:12px">
                     <thead><tr><th>Sana</th><th>Hujjat</th><th class="text-right">Qoldiq</th>
                         <th class="text-right">Shu to'lovdan</th></tr></thead>

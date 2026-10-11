@@ -187,14 +187,19 @@ class Kassa(Document):
             left -= share
 
     def allocate_customer_invoices(self, pe):
-        """To'lovni mijozning ochiq nachisleniyalariga (Sales Invoice) taqsimlash.
+        """To'lovni FAQAT kassir tanlagan nachisleniyaga (Sales Invoice) bog'laydi.
 
-        - `sales_invoice` tanlangan bo'lsa -> faqat o'shanga;
-        - bo'sh bo'lsa -> eng eskisidan boshlab (FIFO) ochiq hisob-fakturalarga.
-        Ochiq nachisleniya bo'lmasa hech narsa bog'lanmaydi — to'lov AVANS bo'lib
-        qoladi va keyin nachisleniya yozilganda qo'lda ulash mumkin."""
+        DIQQAT — avtomatik (FIFO) taqsimot ATAYLAB YO'Q (qaror 2026-10-12):
+        o'quvchilarda ikki xil to'lov bor — har oylik o'quv to'lovi va bir martalik
+        kitob/forma/yotoqxona. Har kim har xil to'laydi, shuning uchun avtomatik
+        taqsimot noto'g'ri nachisleniyani yopib qo'yardi.
+          * kitob/forma/yotoqxona — kassir `Nachisleniya` maydonida o'zi tanlaydi;
+          * o'quv to'lovi — bog'lanmaydi, qarzdorlik panelida oyma-oy ko'rinadi.
+        """
         if self.party_type != "Customer" or self.transaction_type != "Приход":
             return
+        if not self.sales_invoice:
+            return          # tanlanmagan -> avans; o'quv to'lovi shu yo'l bilan ketadi
 
         party_account = pe.paid_from if pe.payment_type == "Receive" else pe.paid_to
         invoices = get_customer_invoices(

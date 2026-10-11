@@ -651,3 +651,53 @@ def test_adriel_stsenariy(student_like="Adriel"):
 	engine.recompute_plan(tr.name, sync_case=True)
 	frappe.db.commit()
 	print("(test kassalari bekor qilindi)")
+
+
+def test_faqat_tanlangan(student="EDU-STU-2026-00247"):
+	"""Yangi qoida: faqat kassir tanlagan nachisleniya bog'lanadi.
+	1) nachisleniya TANLANMAGAN -> hech narsa bog'lanmaydi (avans)
+	2) nachisleniya TANLANGAN   -> faqat o'shanga bog'lanadi"""
+	from frappe.utils import nowdate
+
+	from target_zenit.target_zenit.doctype.kassa.kassa import get_customer_invoices
+
+	cust = frappe.db.get_value("Student", student, "customer")
+	invs = get_customer_invoices(cust)
+	print(f"Mijoz: {cust} | ochiq nachisleniyalar: {len(invs)} ta")
+	for i in invs[:3]:
+		print(f"   {i['sana']}  {i['itemlar'][:22]:24} qoldiq {i['outstanding']:>12,.0f}")
+
+	def kassa(summa, inv=None):
+		k = frappe.get_doc({
+			"doctype": "Kassa", "date": nowdate(), "transaction_type": "Приход",
+			"company": "Target Zenit", "mode_of_payment": "Наличый UZS",
+			"cash_account": "Наличый UZS - TZ", "party_type": "Customer",
+			"party": cust, "amount": summa, "sales_invoice": inv,
+			"remarks": "TEST: faqat tanlangan qoida",
+		})
+		k.flags.ignore_permissions = True
+		k.insert()
+		k.submit()
+		frappe.db.commit()
+		pe = frappe.get_doc("Payment Entry", k.linked_entry)
+		return k, pe
+
+	print("\n1) Nachisleniya TANLANMAGAN (8 000 000):")
+	k1, pe1 = kassa(8_000_000)
+	print(f"   PE {pe1.name} -> bog'langan nachisleniyalar: {len(pe1.references)}",
+		  "✓ bog'lanmadi (avans)" if not pe1.references else "✗ BOG'LANDI")
+
+	print("\n2) Nachisleniya TANLANGAN (kitob/forma):")
+	kf = next((i for i in invs if "Kitob" in (i["itemlar"] or "")), invs[0])
+	k2, pe2 = kassa(kf["outstanding"], kf["name"])
+	print(f"   PE {pe2.name} -> ", end="")
+	for r in pe2.references:
+		print(f"{r.reference_name} = {r.allocated_amount:,.0f}", end=" ")
+	print("✓ faqat tanlangani" if len(pe2.references) == 1 else "✗")
+	qoldiq = frappe.db.get_value("Sales Invoice", kf["name"], "outstanding_amount")
+	print(f"   {kf['name']} qoldig'i: {kf['outstanding']:,.0f} -> {qoldiq:,.0f}")
+
+	for k in (k2, k1):
+		k.cancel()
+	frappe.db.commit()
+	print("\n(test kassalari bekor qilindi)")
