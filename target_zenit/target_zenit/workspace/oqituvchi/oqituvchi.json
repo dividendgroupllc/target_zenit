@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>O'qituvchi paneli</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Mening jadvalim\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Kunlik jadval\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">Baho / davomat</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Baholar hisoboti\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Dars natijalari\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">O'quv reja (mavzular)</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quv rejalar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Dars bajarilishi\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">Ma'lumotnoma</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Fanlar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sinflar\", \"col\": 3}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>O'qituvchi paneli</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Mening jadvalim\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Kunlik jadval\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">Baho / davomat</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Baho jurnali\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Baholar hisoboti\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Dars natijalari\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">O'quv reja (mavzular)</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quv rejalar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Dars bajarilishi\", \"col\": 3}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\">Ma'lumotnoma</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Fanlar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sinflar\", \"col\": 3}}]",
  "custom_blocks": [],
  "creation": "2026-10-11 15:00:00.000000",
  "docstatus": 0,
@@ -12,7 +12,7 @@
  "is_hidden": 0,
  "label": "O'qituvchi",
  "links": [],
- "modified": "2026-10-11 16:00:00.000000",
+ "modified": "2026-10-11 18:30:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "O'qituvchi",
@@ -105,6 +105,13 @@
    "label": "Sinflar",
    "link_to": "Student Group",
    "type": "DocType"
+  },
+  {
+   "color": "Purple",
+   "label": "Baho jurnali",
+   "link_to": "baho-jurnali",
+   "type": "Page",
+   "doc_view": ""
   }
  ],
  "title": "O'qituvchi"

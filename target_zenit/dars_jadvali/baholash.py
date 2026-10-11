@@ -178,6 +178,138 @@ def guruh_hisobot(guruh: str, chorak: str | None = None, fan: str | None = None)
 	return {"guruh": guruh, "chorak": chorak, "oquvchilar": natija}
 
 
+KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
+
+
+@frappe.whitelist()
+def jurnal_jadval(guruh: str, fan: str, chorak: str | None = None,
+                  versiya: str | None = None) -> dict:
+	"""eMaktab-uslub jurnal: o'quvchilar × dars sanalari matritsasi (baho/davomat).
+	Ustunlar — shu guruh+fan darslarining chorakdagi sanalari (bugungacha)."""
+	if not _menejermi() and not _mening_instructorim():
+		frappe.throw(_("Ruxsat yo'q."), frappe.PermissionError)
+	from datetime import timedelta
+	versiya = versiya or frappe.db.get_value("Jadval Versiyasi", {"holat": "Faol"}, "name") \
+		or frappe.db.get_value("Jadval Versiyasi", {}, "name")
+
+	# Chorak sana oralig'i
+	if chorak:
+		t = frappe.db.get_value("Academic Term", chorak, ["term_start_date", "term_end_date"], as_dict=True)
+		start, end = getdate(t.term_start_date), getdate(t.term_end_date)
+	else:
+		start, end = getdate("2000-01-01"), getdate(nowdate())
+	bugun = getdate(nowdate())
+	oxiri = min(end, bugun)
+
+	oquvchilar = frappe.get_all(
+		"Student Group Student",
+		filters={"parent": guruh, "parenttype": "Student Group", "active": 1},
+		fields=["student", "student_name", "group_roll_number"],
+		order_by="group_roll_number, student_name", limit_page_length=0)
+
+	# Darslar (jadval yozuvi) — shu guruh+fan
+	jys = frappe.get_all(
+		"Jadval Yozuvi", filters={"versiya": versiya, "guruh": guruh, "fan": fan},
+		fields=["name", "kun", "dars_raqami"], limit_page_length=0)
+
+	# Ustunlar: har jadval yozuvi uchun chorakdagi mos hafta kunlari sanalari
+	ustunlar = []
+	for jy in jys:
+		try:
+			wd = KUNLAR.index(jy.kun)
+		except ValueError:
+			continue
+		d = start
+		while d <= oxiri:
+			if d.weekday() == wd:
+				ustunlar.append({
+					"jadval_yozuvi": jy.name, "sana": str(d),
+					"kun": jy.kun, "dars_raqami": jy.dars_raqami,
+					"label": f"{d.day:02d}.{d.month:02d}",
+				})
+			d = d + timedelta(days=1)
+	ustunlar.sort(key=lambda x: (x["sana"], x["dars_raqami"] or 0))
+
+	# Mavjud natijalar
+	cells = {}
+	for r in frappe.get_all(
+		"Dars Natijasi",
+		filters={"guruh": guruh, "fan": fan, "sana": ["between", [start, end]]},
+		fields=["student", "jadval_yozuvi", "sana", "davomat", "baho"], limit_page_length=0):
+		cells[(r.student, r.jadval_yozuvi, str(r.sana))] = {"davomat": r.davomat, "baho": r.baho}
+
+	qatorlar = []
+	for o in oquvchilar:
+		kat = []
+		for u in ustunlar:
+			kat.append(cells.get((o.student, u["jadval_yozuvi"], u["sana"])))
+		qatorlar.append({
+			"student": o.student, "student_name": o.student_name,
+			"roll": o.group_roll_number, "kataklar": kat,
+		})
+	return {
+		"guruh": guruh, "fan": fan, "chorak": chorak,
+		"ustunlar": ustunlar, "qatorlar": qatorlar,
+	}
+
+
+@frappe.whitelist()
+def oquvchi_karta(student: str) -> dict:
+	"""Bitta o'quvchi hisobot kartasi: fan × chorak bo'yicha o'rtacha baho +
+	davomat (kelmadi/kasal/qatnashmadi) yig'indisi. Ota-ona/sinf rahbari uchun."""
+	if not _menejermi() and not _mening_instructorim():
+		frappe.throw(_("Ruxsat yo'q."), frappe.PermissionError)
+	ism = frappe.db.get_value("Student", student, "student_name")
+	rows = frappe.get_all(
+		"Dars Natijasi", filters={"student": student},
+		fields=["fan", "chorak", "davomat", "baho"], limit_page_length=0)
+	# choraklar tartibi
+	ch_order = [c.name for c in frappe.get_all(
+		"Academic Term", fields=["name"], order_by="term_start_date", limit_page_length=0)]
+	ch_label = {c.name: (c.term_name or c.name) for c in frappe.get_all(
+		"Academic Term", fields=["name", "term_name"], limit_page_length=0)}
+
+	cells = {}      # (fan, chorak) -> {baholar:[], kelmadi, kasal, qatnashmadi}
+	fanlar, choraklar_used = set(), set()
+	for r in rows:
+		fanlar.add(r.fan)
+		ch = r.chorak or "—"
+		choraklar_used.add(ch)
+		c = cells.setdefault((r.fan, ch), {"baholar": [], "kelmadi": 0, "kasal": 0, "qatnashmadi": 0})
+		if r.baho:
+			c["baholar"].append(r.baho)
+		k = {"Kelmadi": "kelmadi", "Kasal": "kasal", "Qatnashmadi": "qatnashmadi"}.get(r.davomat)
+		if k:
+			c[k] += 1
+
+	choraklar = [c for c in ch_order if c in choraklar_used] + \
+		[c for c in sorted(choraklar_used) if c not in ch_order]
+	jadval = []
+	for fan in sorted(fanlar):
+		qator = {"fan": fan, "choraklar": []}
+		hamma_baho = []
+		for ch in choraklar:
+			c = cells.get((fan, ch))
+			if c:
+				bh = c["baholar"]
+				hamma_baho += bh
+				qator["choraklar"].append({
+					"ortacha": round(sum(bh) / len(bh), 1) if bh else None,
+					"baho_soni": len(bh), "kelmadi": c["kelmadi"],
+					"kasal": c["kasal"], "qatnashmadi": c["qatnashmadi"],
+				})
+			else:
+				qator["choraklar"].append(None)
+		qator["yillik"] = round(sum(hamma_baho) / len(hamma_baho), 1) if hamma_baho else None
+		jadval.append(qator)
+
+	return {
+		"student": student, "ism": ism,
+		"choraklar": [{"name": c, "label": ch_label.get(c, c)} for c in choraklar],
+		"jadval": jadval,
+	}
+
+
 @frappe.whitelist()
 def choraklar() -> list[dict]:
 	"""Academic Term (choraklar) ro'yxati."""

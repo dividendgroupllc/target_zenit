@@ -22,8 +22,17 @@ def _vaqt_str(v) -> str:
 	return s[:5] if len(s) >= 5 else s
 
 
+KORISH = MENEJER | {"instructor", "o'qituvchi"}
+
+
 def _guard():
 	if not (MENEJER & {r.lower() for r in frappe.get_roles()}):
+		frappe.throw(_("Ruxsat yo'q."), frappe.PermissionError)
+
+
+def _guard_korish():
+	"""Read-only (ko'rish) — menejer VA o'qituvchilarga ruxsat."""
+	if not (KORISH & {r.lower() for r in frappe.get_roles()}):
 		frappe.throw(_("Ruxsat yo'q."), frappe.PermissionError)
 
 
@@ -161,7 +170,7 @@ def oqituvchilar(versiya: str | None = None, fan: str | None = None,
                  guruh: str | None = None) -> list[dict]:
 	"""Barcha o'qituvchilar + haftalik soat. fan/guruh berilsa — faqat shu fan/guruhда
 	dars o'tadigan o'qituvchilar."""
-	_guard()
+	_guard_korish()
 	versiya = _faol_versiya(versiya)
 	ins = frappe.get_all(
 		"Instructor",
@@ -194,7 +203,7 @@ def oqituvchilar(versiya: str | None = None, fan: str | None = None,
 @frappe.whitelist()
 def filtr_variantlari(versiya: str | None = None) -> dict:
 	"""Filtr dropdownlari uchun: fanlar (jadvaldagilar) + guruhlar (turi bo'yicha)."""
-	_guard()
+	_guard_korish()
 	versiya = _faol_versiya(versiya)
 	fanlar = sorted(set(
 		r.fan for r in frappe.get_all("Jadval Yozuvi", filters={"versiya": versiya},

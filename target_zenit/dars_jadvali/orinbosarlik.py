@@ -13,6 +13,7 @@ from target_zenit.dars_jadvali.oqituvchi_jadval import (
 	KUNLAR,
 	_faol_versiya,
 	_guard,
+	_guard_korish,
 	_mavjudlik_map,
 	_mavjudlikmi,
 	_vaqt_str,
@@ -36,7 +37,7 @@ def _ozgarishlar(sana, versiya):
 @frappe.whitelist()
 def kun_darslari(sana: str, oqituvchi: str | None = None, versiya: str | None = None) -> dict:
 	"""Shu sana (hafta kuni) uchun darslar + mavjud o'zgarishlar. oqituvchi berilsa — faqat uniki."""
-	_guard()
+	_guard_korish()
 	versiya = _faol_versiya(versiya)
 	kun = _kun_nomi(sana)
 	if not kun:
@@ -94,7 +95,7 @@ def _band_oqituvchilar_slotda(versiya, kun, dars, sana):
 @frappe.whitelist()
 def guruh_kun(sana: str, guruh: str, versiya: str | None = None) -> dict:
 	"""Bitta sinf/guruhning shu sanadagi darslari + o'zgarish overlay (o'quvchi/ota-ona ko'rinishi)."""
-	_guard()
+	_guard_korish()
 	versiya = _faol_versiya(versiya)
 	kun = _kun_nomi(sana)
 	nomi = frappe.db.get_value("Student Group", guruh, "student_group_name") or guruh

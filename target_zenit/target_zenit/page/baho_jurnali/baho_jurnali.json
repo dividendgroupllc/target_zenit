@@ -1,0 +1,8 @@
+{
+ "content": null, "creation": "2026-10-11 18:00:00", "docstatus": 0, "doctype": "Page",
+ "idx": 0, "modified": "2026-10-11 18:00:00.000000", "modified_by": "Administrator",
+ "module": "target_zenit", "name": "baho-jurnali", "owner": "Administrator",
+ "page_name": "baho-jurnali",
+ "roles": [{"role":"System Manager"},{"role":"Academics User"},{"role":"Education Manager"},{"role":"Zavuch"},{"role":"Instructor"},{"role":"O'qituvchi"}],
+ "script": null, "standard": "Yes", "style": null, "system_page": 0, "title": "Baho jurnali"
+}

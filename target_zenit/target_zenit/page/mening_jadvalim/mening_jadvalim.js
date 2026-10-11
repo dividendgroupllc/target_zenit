@@ -295,10 +295,8 @@ class TZMeningJadvalim {
 				});
 			},
 		});
-		if (bor) {
-			dlg.set_secondary_action_label(__("Davomat olish"));
-			dlg.set_secondary_action(() => { dlg.hide(); this.davomat(dars.jadval_yozuvi); });
-		}
+		dlg.set_secondary_action_label(__("📋 Baho / Davomat"));
+		dlg.set_secondary_action(() => { dlg.hide(); this.jurnalDialog(dars.jadval_yozuvi, dars.sana); });
 		dlg.show();
 	}
 

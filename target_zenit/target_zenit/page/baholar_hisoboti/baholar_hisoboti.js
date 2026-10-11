@@ -71,15 +71,42 @@ class TZBaholarHisoboti {
 		const html = `<table class="tbl"><thead><tr>
 			<th>O'quvchi</th><th class="r">O'rtacha baho</th><th class="r">Baho soni</th>
 			<th class="r kem">Kelmadi</th><th class="r kas">Kasal</th><th class="r qat">Qatnashmadi</th></tr></thead><tbody>
-			${d.oquvchilar.map((o) => `<tr>
-				<td>${this.esc(o.student_name)}</td>
+			${d.oquvchilar.map((o) => `<tr class="st-row" data-student="${this.esc(o.student)}" title="Hisobot kartasi — bosing">
+				<td><span class="st-link">${this.esc(o.student_name)}</span></td>
 				<td class="r"><b class="${o.ortacha >= 4 ? "g" : o.ortacha != null && o.ortacha < 3 ? "b" : ""}">${o.ortacha != null ? o.ortacha : "—"}</b></td>
 				<td class="r">${o.baho_soni}</td>
 				<td class="r kem">${o.kelmadi || ""}</td>
 				<td class="r kas">${o.kasal || ""}</td><td class="r qat">${o.qatnashmadi || ""}</td>
 			</tr>`).join("")}
 			</tbody></table>
-			<div class="note">«Keldi» belgilash shart emas — belgilanmagan o'quvchi kelgan hisoblanadi. Faqat kelmaganlar va baholar saqlanadi.</div>`;
+			<div class="note">«Keldi» belgilash shart emas — belgilanmagan o'quvchi kelgan hisoblanadi. O'quvchi ustiga bosib to'liq kartasini ko'ring.</div>`;
 		w.html(html);
+		w.find(".st-row").on("click", (e) => this.showCard($(e.currentTarget).data("student")));
+	}
+
+	showCard(student) {
+		const self = this;
+		frappe.call({
+			method: `${BH_M}.oquvchi_karta`, args: { student: student },
+			freeze: true, freeze_message: "Yuklanmoqda…",
+			callback: (r) => {
+				const d = r.message; if (!d) return;
+				const chs = d.choraklar || [];
+				const head = `<tr><th>Fan</th>${chs.map((c) => `<th class="r">${self.esc(c.label)}</th>`).join("")}<th class="r">Yillik</th></tr>`;
+				const cell = (c) => {
+					if (!c) return `<td class="r">—</td>`;
+					const abs = (c.kelmadi || c.kasal || c.qatnashmadi)
+						? `<span class="ab" title="kelmadi/kasal/qatnashmadi">${c.kelmadi || 0}/${c.kasal || 0}/${c.qatnashmadi || 0}</span>` : "";
+					return `<td class="r">${c.ortacha != null ? `<b>${c.ortacha}</b>` : "—"} ${abs}</td>`;
+				};
+				const rows = (d.jadval || []).map((f) => `<tr><td>${self.esc(f.fan)}</td>${f.choraklar.map(cell).join("")}<td class="r yil">${f.yillik != null ? `<b>${f.yillik}</b>` : "—"}</td></tr>`).join("")
+					|| `<tr><td colspan="9" class="empty">Baho yo'q</td></tr>`;
+				const html = `<div class="card-h">${self.esc(d.ism)}</div>
+					<div class="card-wrap"><table class="card-tbl"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
+					<div class="note">Katakda: <b>o'rtacha baho</b> · kichik — kelmadi/kasal/qatnashmadi soni.</div>`;
+				const dlg = new frappe.ui.Dialog({ title: __("Hisobot kartasi"), size: "large", fields: [{ fieldtype: "HTML", fieldname: "h", options: html }] });
+				dlg.show();
+			},
+		});
 	}
 }
