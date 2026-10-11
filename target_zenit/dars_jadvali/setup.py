@@ -170,10 +170,16 @@ def sinf_guruhlarini_belgila():
 
 def hammasi():
 	zavuch_roli()
+	oqituvchi_roli()
 	operator_ruxsatlari()
 	custom_fieldlar()
 	qongiroqlar()
 	sinf_guruhlarini_belgila()
+	try:
+		from target_zenit.dars_jadvali.baholash import choraklar_ornat
+		choraklar_ornat()
+	except Exception:
+		frappe.log_error("choraklar_ornat", frappe.get_traceback())
 	frappe.db.commit()
 	print("Dars jadvali setup tugadi.")
 
@@ -231,6 +237,56 @@ def zavuch_roli():
 		):
 			update_permission_property(dt, ZAVUCH, 0, prop, val, validate=False)
 	print(f"{ZAVUCH} ruxsatlari: {len(ZAVUCH_PERMS)} doctype")
+
+
+# ---------------------------------------------------------------- O'qituvchi roli
+OQITUVCHI = "O'qituvchi"
+
+# ERPNext/Education doctype'lari uchun Custom DocPerm (o'zimiznikilarga JSON'da).
+# O'qituvchi asosan O'QIYDI; baho/dars bajarilishini maxsus sahifalar orqali yozadi.
+# DIQQAT: Employee / Salary / Payment / GL — ATAYLAB BERILMAYDI (pul ma'lumoti).
+OQITUVCHI_PERMS = {
+	# doctype: (read, write, create, delete)
+	"Student Group": (1, 0, 0, 0),
+	"Student": (1, 0, 0, 0),
+	"Course": (1, 0, 0, 0),
+	"Instructor": (1, 0, 0, 0),
+	"Course Schedule": (1, 0, 0, 0),
+	"Student Attendance": (1, 0, 0, 0),
+	"Room": (1, 0, 0, 0),
+	"Academic Year": (1, 0, 0, 0),
+	"Academic Term": (1, 0, 0, 0),
+	"Program": (1, 0, 0, 0),
+}
+
+
+def oqituvchi_roli():
+	"""O'qituvchi roli + ruxsatlari. User YARATILMAYDI (foydalanuvchi o'zi qiladi).
+	O'z doctype'larimizga ruxsat JSON'da (Dars Natijasi/Oquv Reja/Dars Bajarilishi/
+	Jadval Yozuvi/Jadval Ozgarishi/Qongiroq Jadvali)."""
+	if not frappe.db.exists("Role", OQITUVCHI):
+		frappe.get_doc({
+			"doctype": "Role", "role_name": OQITUVCHI,
+			"desk_access": 1, "is_custom": 1,
+		}).insert(ignore_permissions=True)
+		print(f"Rol yaratildi: {OQITUVCHI}")
+
+	from frappe.permissions import add_permission, update_permission_property
+
+	for dt, (r, w, c, d) in OQITUVCHI_PERMS.items():
+		if not frappe.db.exists("DocType", dt):
+			continue
+		bor = frappe.db.exists(
+			"Custom DocPerm", {"parent": dt, "role": OQITUVCHI, "permlevel": 0}
+		) or frappe.db.exists("DocPerm", {"parent": dt, "role": OQITUVCHI, "permlevel": 0})
+		if not bor:
+			add_permission(dt, OQITUVCHI, 0)
+		for prop, val in (
+			("read", r), ("write", w), ("create", c), ("delete", d),
+			("report", 1), ("export", r), ("print", 1), ("share", 0),
+		):
+			update_permission_property(dt, OQITUVCHI, 0, prop, val, validate=False)
+	print(f"{OQITUVCHI} ruxsatlari: {len(OQITUVCHI_PERMS)} doctype")
 
 
 def zavuch_test(user="zavuch_test@target.local"):

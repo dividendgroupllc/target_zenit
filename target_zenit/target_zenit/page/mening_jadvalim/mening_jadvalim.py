@@ -7,6 +7,7 @@ import frappe
 from frappe.utils import add_days, getdate, nowdate
 
 from target_zenit import oquv_reja as oreja
+from target_zenit.dars_jadvali import baholash as bah
 
 KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
 
@@ -131,6 +132,18 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None):
 	natija["haftalik_soat"] = len(natija["darslar"])
 	natija["bugun_sana"] = str(bugun)
 	return natija
+
+
+@frappe.whitelist()
+def jurnal_oquvchilari(jadval_yozuvi: str, sana: str | None = None):
+	"""Baho/davomat jurnali uchun dars o'quvchilari (baholash modulida)."""
+	return bah.dars_oquvchilari(jadval_yozuvi, sana)
+
+
+@frappe.whitelist()
+def jurnal_saqla(jadval_yozuvi: str, sana: str, qatorlar):
+	"""Baho/davomat saqlash (baholash modulida)."""
+	return bah.natija_saqla(jadval_yozuvi, sana, qatorlar)
 
 
 @frappe.whitelist()

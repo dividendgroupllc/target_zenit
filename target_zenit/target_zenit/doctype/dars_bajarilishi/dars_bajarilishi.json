@@ -189,23 +189,47 @@
  "permissions": [
   {
    "role": "System Manager",
-   "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
   },
   {
    "role": "Zavuch",
-   "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
   },
   {
    "role": "Academics User",
-   "read": 1, "write": 1, "create": 1
+   "read": 1,
+   "write": 1,
+   "create": 1
   },
   {
    "role": "Education Manager",
-   "read": 1, "write": 1, "create": 1, "delete": 1
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
   },
   {
    "role": "Instructor",
    "read": 1
+  },
+  {
+   "role": "O'qituvchi",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "write": 1,
+   "create": 1
   }
  ],
  "sort_field": "modified",

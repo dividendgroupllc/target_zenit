@@ -80,7 +80,8 @@ class TZMeningJadvalim {
 							${this.ozgInfo(x)}
 						</div>
 						<div class="acts">
-							<button class="btn-belgila" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}">${x.bugun ? "✏️ O'zgartirish" : "📝 Darsni belgilash"}</button>
+							<button class="btn-jurnal" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}">📋 Baho/Davomat</button>
+								<button class="btn-belgila" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}">${x.bugun ? "✏️ Mavzu" : "📝 Mavzu"}</button>
 						</div>
 						<div class="chev">›</div>
 					</div>`).join("")
@@ -126,6 +127,70 @@ class TZMeningJadvalim {
 			const b = $(e.currentTarget);
 			this.darsDetal(b.data("jy"), b.data("sana"));
 		});
+		this.body.find(".btn-jurnal").on("click", (e) => {
+			e.stopPropagation();
+			const b = $(e.currentTarget);
+			this.jurnalDialog(b.data("jy"), b.data("sana"));
+		});
+	}
+
+	// Baho/Davomat jurnali — dars o'quvchilari ro'yxati
+	jurnalDialog(jy, sana) {
+		const self = this;
+		frappe.call({
+			method: `${MJ_M}.jurnal_oquvchilari`,
+			args: { jadval_yozuvi: jy, sana: sana },
+			freeze: true, freeze_message: "Yuklanmoqda…",
+			callback: (r) => { if (r.message) self.ochJurnal(r.message); },
+		});
+	}
+
+	ochJurnal(d) {
+		const self = this;
+		const esc = (s) => frappe.utils.escape_html(String(s == null ? "" : s));
+		const DAV = ["Keldi", "Kelmadi", "Kasal", "Qatnashmadi"];
+		if (!(d.oquvchilar || []).length) {
+			frappe.msgprint(__("Bu guruhda o'quvchilar ro'yxati yo'q (hali kiritilmagan)."));
+			return;
+		}
+		const rows = d.oquvchilar.map((o, i) => `
+			<tr data-student="${esc(o.student)}">
+				<td class="r">${o.roll || i + 1}</td>
+				<td>${esc(o.student_name)}</td>
+				<td><select class="j-dav">${DAV.map((v) => `<option value="${v}" ${o.davomat === v ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+				<td><input type="number" class="j-baho" min="1" max="100" value="${o.baho != null ? o.baho : ""}" ${o.davomat !== "Keldi" ? "disabled" : ""}></td>
+			</tr>`).join("");
+		const html = `
+			<div class="jur-head">${esc(d.fan)} · ${esc(d.guruh_nomi)} · ${esc(d.kun)}, ${d.dars_raqami}-dars · ${esc(self.dmy(d.sana))} ${d.chorak ? `· <span class="ch">${esc(d.chorak)}</span>` : ""}</div>
+			<div class="jur-hint">«Keldi» belgilash shart emas — faqat <b>kelmaganlar</b>ni belgilang va kerakli <b>baho</b>larni qo'ying.</div>
+			<div class="jur-wrap"><table class="jur-tbl"><thead><tr><th class="r">№</th><th>O'quvchi</th><th>Davomat</th><th>Baho</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+		const dlg = new frappe.ui.Dialog({
+			title: __("Baho / Davomat jurnali"), size: "large",
+			fields: [{ fieldtype: "HTML", fieldname: "j", options: html }],
+			primary_action_label: __("Saqlash"),
+			primary_action: () => {
+				const qatorlar = [];
+				dlg.$wrapper.find("tbody tr").each(function () {
+					const $t = $(this);
+					const dav = $t.find(".j-dav").val();
+					const bval = $t.find(".j-baho").val();
+					qatorlar.push({ student: $t.data("student"), davomat: dav, baho: bval ? Number(bval) : null });
+				});
+				frappe.call({
+					method: `${MJ_M}.jurnal_saqla`,
+					args: { jadval_yozuvi: d.jadval_yozuvi, sana: d.sana, qatorlar: JSON.stringify(qatorlar) },
+					freeze: true, freeze_message: "Saqlanmoqda…",
+					callback: (r) => { if (r.message) { frappe.show_alert({ message: __("Saqlandi: ") + r.message.saqlandi, indicator: "green" }); dlg.hide(); } },
+				});
+			},
+		});
+		// Davomat != Keldi bo'lsa baho o'chiriladi
+		dlg.$wrapper.on("change", ".j-dav", function () {
+			const $b = $(this).closest("tr").find(".j-baho");
+			if ($(this).val() === "Keldi") $b.prop("disabled", false);
+			else { $b.prop("disabled", true).val(""); }
+		});
+		dlg.show();
 	}
 
 	// O'quv reja holati matni (keyingi mavzu / o'tilgan / reja yo'q)

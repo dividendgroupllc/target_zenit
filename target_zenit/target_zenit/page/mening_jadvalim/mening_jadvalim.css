@@ -156,3 +156,18 @@
 .tz-mening .w-row.w-bekor .f, .tz-mening .w-row.w-bekor .g { text-decoration: line-through; }
 .tz-mening .w-chg { margin-left: auto; font-weight: 700; color: #1a7f37; }
 .tz-mening .w-row.w-bekor .w-chg { color: #c0392b; }
+
+/* Baho/Davomat jurnali */
+.tz-mening .btn-jurnal { background:#6d28d9; color:#fff; border:none; border-radius:9px; padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.tz-mening .btn-jurnal:hover { background:#5b21b6; }
+.jur-head { font-size:13px; font-weight:600; margin-bottom:10px; }
+.jur-head .ch { color:#6d28d9; }
+.jur-wrap { max-height:60vh; overflow:auto; border:1px solid var(--border-color,#e5e5e5); border-radius:8px; }
+.jur-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+.jur-tbl th, .jur-tbl td { border-bottom:1px solid var(--border-color,#eee); padding:5px 8px; text-align:left; }
+.jur-tbl th { position:sticky; top:0; background:var(--card,#fff); font-size:11px; text-transform:uppercase; color:#888; }
+.jur-tbl .r { text-align:right; width:36px; color:#888; }
+.jur-tbl .j-dav { border:1px solid var(--border-color,#ddd); border-radius:7px; padding:4px 6px; font-size:12.5px; }
+.jur-tbl .j-baho { width:60px; border:1px solid var(--border-color,#ddd); border-radius:7px; padding:4px 6px; font-size:13px; text-align:center; }
+.jur-tbl .j-baho:disabled { background:#f3f4f6; }
+.jur-hint { font-size:11.5px; color:#8a9099; margin-bottom:8px; }

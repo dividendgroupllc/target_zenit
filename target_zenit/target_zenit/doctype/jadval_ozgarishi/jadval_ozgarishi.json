@@ -23,21 +23,103 @@
   "kim_kiritdi"
  ],
  "fields": [
-  {"fieldname": "sana", "fieldtype": "Date", "label": "Sana", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
-  {"fieldname": "jadval_yozuvi", "fieldtype": "Link", "label": "Jadval yozuvi (dars)", "options": "Jadval Yozuvi", "reqd": 1, "in_standard_filter": 1},
-  {"fieldname": "tur", "fieldtype": "Select", "label": "Turi", "options": "O'rinbosar\nBekor\nXona o'zgarishi\nVaqt o'zgarishi", "default": "O'rinbosar", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
-  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "kun", "fieldtype": "Data", "label": "Kun", "read_only": 1},
-  {"fieldname": "dars_raqami", "fieldtype": "Int", "label": "Dars №", "read_only": 1},
-  {"fieldname": "guruh_nomi", "fieldtype": "Data", "label": "Guruh", "read_only": 1, "in_list_view": 1},
-  {"fieldname": "fan", "fieldtype": "Data", "label": "Fan", "read_only": 1, "in_list_view": 1},
-  {"fieldname": "section_1", "fieldtype": "Section Break"},
-  {"fieldname": "asl_oqituvchi", "fieldtype": "Link", "label": "Asl o'qituvchi", "options": "Instructor", "read_only": 1, "in_list_view": 1},
-  {"fieldname": "yangi_oqituvchi", "fieldtype": "Link", "label": "O'rinbosar o'qituvchi", "options": "Instructor", "in_standard_filter": 1},
-  {"fieldname": "column_break_2", "fieldtype": "Column Break"},
-  {"fieldname": "yangi_xona", "fieldtype": "Link", "label": "Yangi xona", "options": "Room"},
-  {"fieldname": "sabab", "fieldtype": "Small Text", "label": "Sabab"},
-  {"fieldname": "kim_kiritdi", "fieldtype": "Link", "label": "Kim kiritdi", "options": "User", "read_only": 1}
+  {
+   "fieldname": "sana",
+   "fieldtype": "Date",
+   "label": "Sana",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "jadval_yozuvi",
+   "fieldtype": "Link",
+   "label": "Jadval yozuvi (dars)",
+   "options": "Jadval Yozuvi",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "tur",
+   "fieldtype": "Select",
+   "label": "Turi",
+   "options": "O'rinbosar\nBekor\nXona o'zgarishi\nVaqt o'zgarishi",
+   "default": "O'rinbosar",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "kun",
+   "fieldtype": "Data",
+   "label": "Kun",
+   "read_only": 1
+  },
+  {
+   "fieldname": "dars_raqami",
+   "fieldtype": "Int",
+   "label": "Dars №",
+   "read_only": 1
+  },
+  {
+   "fieldname": "guruh_nomi",
+   "fieldtype": "Data",
+   "label": "Guruh",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "fan",
+   "fieldtype": "Data",
+   "label": "Fan",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "asl_oqituvchi",
+   "fieldtype": "Link",
+   "label": "Asl o'qituvchi",
+   "options": "Instructor",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "yangi_oqituvchi",
+   "fieldtype": "Link",
+   "label": "O'rinbosar o'qituvchi",
+   "options": "Instructor",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "yangi_xona",
+   "fieldtype": "Link",
+   "label": "Yangi xona",
+   "options": "Room"
+  },
+  {
+   "fieldname": "sabab",
+   "fieldtype": "Small Text",
+   "label": "Sabab"
+  },
+  {
+   "fieldname": "kim_kiritdi",
+   "fieldtype": "Link",
+   "label": "Kim kiritdi",
+   "options": "User",
+   "read_only": 1
+  }
  ],
  "links": [],
  "modified": "2026-10-10 16:00:00.000000",
@@ -45,11 +127,48 @@
  "name": "Jadval Ozgarishi",
  "owner": "Administrator",
  "permissions": [
-  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1},
-  {"role": "Zavuch", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1},
-  {"role": "Academics User", "read": 1, "write": 1, "create": 1},
-  {"role": "Education Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
-  {"role": "Instructor", "read": 1}
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Zavuch",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Academics User",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "Education Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Instructor",
+   "read": 1
+  },
+  {
+   "role": "O'qituvchi",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
