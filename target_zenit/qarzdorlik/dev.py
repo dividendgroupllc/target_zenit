@@ -701,3 +701,108 @@ def test_faqat_tanlangan(student="EDU-STU-2026-00247"):
 		k.cancel()
 	frappe.db.commit()
 	print("\n(test kassalari bekor qilindi)")
+
+
+def test_je_tolov(student="EDU-STU-2026-00247"):
+	"""Journal Entry orqali to'lov qarzdorlikda hisobga olinishini sinash:
+	1) JE kredit (debitorka) -> to'lov sifatida qo'shiladi;
+	2) JE debet -> qaytim sifatida ayiriladi;
+	3) JE nachisleniyaga bog'langan (reference) -> ikki marta hisoblanmaydi."""
+	from frappe.utils import flt, nowdate
+
+	from target_zenit.qarzdorlik import engine
+
+	tr_name = frappe.db.get_value("Tolov Rejasi", {"student": student, "holat": "Faol"}, "name")
+	tr = frappe.get_doc("Tolov Rejasi", tr_name)
+	cust, window = tr.customer, engine._plan_payment_window(tr)
+	debit_to = frappe.db.get_value(
+		"Sales Invoice", {"customer": cust, "docstatus": 1}, "debit_to") or "Debitors - TZ"
+	kassa_hisob = "Наличый UZS - TZ"
+
+	def hol(sarlavha):
+		t, q = engine._payments_split(cust, window)
+		engine.recompute_plan(tr_name, sync_case=True)
+		frappe.db.commit()
+		d = frappe.db.get_value(
+			"Tolov Rejasi", tr_name, ["jami_tolangan", "jami_qaytim", "qarz_bugun"], as_dict=True)
+		print(f"  {sarlavha:34} to'lov={t:>13,.0f} qaytim={q:>11,.0f} "
+			  f"| rejada to'langan={flt(d.jami_tolangan):>13,.0f} qarz={flt(d.qarz_bugun):>13,.0f}")
+		return t, q
+
+	print(f"O'quvchi: {tr.student_name} | mijoz: {cust} | hisob: {debit_to}")
+	t0, _q0 = hol("0) boshlang'ich")
+
+	def je(summa, yonalish, ref=None):
+		"""yonalish='kredit' -> to'lov; 'debet' -> qaytim."""
+		mijoz_qator = {
+			"account": debit_to, "party_type": "Customer", "party": cust,
+			"reference_type": "Sales Invoice" if ref else None, "reference_name": ref,
+		}
+		kassa_qator = {"account": kassa_hisob}
+		if yonalish == "kredit":
+			mijoz_qator["credit_in_account_currency"] = summa
+			kassa_qator["debit_in_account_currency"] = summa
+		else:
+			mijoz_qator["debit_in_account_currency"] = summa
+			kassa_qator["credit_in_account_currency"] = summa
+		d = frappe.get_doc({
+			"doctype": "Journal Entry", "voucher_type": "Journal Entry", "multi_currency": 1,
+			"company": "Target Zenit", "posting_date": nowdate(),
+			"user_remark": f"TEST JE {yonalish}", "accounts": [mijoz_qator, kassa_qator],
+		})
+		d.flags.ignore_permissions = True
+		d.insert()
+		# Nachisleniyaga bog'langan qatorda ERPNext hisob-faktura kursini
+		# qo'llaydi -> bazaviy (USD) tomonda tiyinlik farq chiqadi. Haqiqiy
+		# buxgalteriyada bu kurs farqi qatori bilan yopiladi — testda ham shunday.
+		farq = flt(d.total_debit) - flt(d.total_credit)
+		if abs(farq) > 0.005:
+			gl_hisob = frappe.db.get_value(
+				"Company", "Target Zenit", "exchange_gain_loss_account")
+			qator = {"account": gl_hisob}
+			qator["credit_in_account_currency" if farq > 0 else "debit_in_account_currency"] = abs(farq)
+			d.append("accounts", qator)
+			d.save()
+		d.submit()
+		frappe.db.commit()
+		return d
+
+	yaratilgan = []
+	j1 = je(5_000_000, "kredit")
+	yaratilgan.append(j1)
+	t1, q1 = hol("1) JE kredit +5 000 000")
+	print("     to'lov 5 000 000 ga oshdi" if abs(t1 - t0 - 5_000_000) < 1 else "     ✗ XATO")
+
+	j2 = je(1_500_000, "debet")
+	yaratilgan.append(j2)
+	_t2, q2 = hol("2) JE debet 1 500 000 (qaytim)")
+	print("     qaytim 1 500 000 ga oshdi" if abs(q2 - q1 - 1_500_000) < 1 else "     ✗ XATO")
+
+	si = frappe.db.get_value(
+		"Sales Invoice", {"customer": cust, "docstatus": 1, "outstanding_amount": [">", 0]},
+		["name", "outstanding_amount"], as_dict=True)
+	if si:
+		qator = next((r for r in tr.oylar if r.manba_hujjat == si.name), None)
+		j3 = je(flt(si.outstanding_amount), "kredit", ref=si.name)
+		yaratilgan.append(j3)
+		hol(f"3) JE {si.name} ga bog'langan")
+		tr2 = frappe.get_doc("Tolov Rejasi", tr_name)
+		q2_ = next((r for r in tr2.oylar if r.manba_hujjat == si.name), None)
+		if qator and q2_:
+			print(f"     SI qatori: to'langan {flt(qator.paid_amount):,.0f} -> "
+				  f"{flt(q2_.paid_amount):,.0f} | qoldiq {flt(q2_.outstanding):,.0f}")
+		jami = sum(flt(r.paid_amount) for r in tr2.oylar)
+		print(f"     jadval jami to'langan={jami:,.0f} vs sof to'lov="
+			  f"{engine._payments_since(cust, window):,.0f}")
+
+	print("\n  Panel ro'yxati (ilk 6):")
+	for r in engine.get_payments(cust, window)[:6]:
+		print(f"    {r['posting_date']}  {r['doctype']:<14} {r['amount_uzs']:>13,.0f}  {r['mode_of_payment']}")
+
+	for d in reversed(yaratilgan):
+		d.reload()
+		d.cancel()
+	frappe.db.commit()
+	engine.recompute_plan(tr_name, sync_case=True)
+	frappe.db.commit()
+	hol("4) hammasi bekor qilingandan keyin")

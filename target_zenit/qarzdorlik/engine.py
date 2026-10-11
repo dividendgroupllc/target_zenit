@@ -17,6 +17,8 @@ from fnmatch import fnmatch
 import frappe
 from frappe.utils import add_days, date_diff, flt, getdate, nowdate
 
+from target_zenit.qarzdorlik.setup import OY_NOMI
+
 YOPIQ_STATUSLAR = ("Yopildi - To'landi", "Yopildi - Boshqa")
 
 
@@ -36,57 +38,120 @@ def _settings():
 
 
 def _payments_since(customer: str, from_date) -> float:
-	"""Mijozning from_date'dan beri SOF to'lovi, UZS'da (to'lov − qaytim).
-
-	DIQQAT 1: kompaniya bazaviy valyutasi USD, shartnomalar esa UZS — shuning uchun
-	base_paid_amount (USD) ISHLATILMAYDI:
-	  - UZS'dan to'lov: paid_amount (UZS);
-	  - USD to'lov UZS kassaga: received_amount (UZS);
-	  - USD -> USD: o'sha kungi USD->UZS kurs (Currency Exchange) bilan.
-
-	DIQQAT 2: kassadan QAYTIM berilgan bo'lsa (Kassa "Расход" -> Payment Entry
-	payment_type='Pay'), u AYIRILADI — aks holda o'quvchi to'lagandan ko'proq
-	to'lagan bo'lib ko'rinadi va qarzi kam chiqadi."""
-	if not customer:
-		return 0.0
-	rows = frappe.db.sql(
-		"""SELECT payment_type, paid_from_account_currency f, paid_to_account_currency t,
-		          paid_amount, received_amount, posting_date
-		   FROM `tabPayment Entry`
-		   WHERE docstatus=1 AND party_type='Customer'
-		     AND payment_type IN ('Receive', 'Pay')
-		     AND party=%s AND posting_date >= %s""",
-		(customer, from_date),
-		as_dict=True,
-	)
-	total = 0.0
-	for r in rows:
-		total += _pe_uzs(r) * (-1 if r.payment_type == "Pay" else 1)
-	return total
+	"""Mijozning from_date'dan beri SOF to'lovi, UZS'da (to'lov − qaytim)."""
+	tolov, qaytim = _payments_split(customer, from_date)
+	return tolov - qaytim
 
 
 def _payments_split(customer: str, from_date):
 	"""(to'lov, qaytim) — UZS'da, alohida. Jadvalda ikkalasi alohida ustunda
 	ko'rinishi uchun kerak: "to'langan" brutto, "qaytim" esa qoldiqni oshiradi."""
+	tolov = qaytim = 0.0
+	for r in _tolov_qatorlari(customer, from_date):
+		if r["qaytim"]:
+			qaytim += r["uzs"]
+		else:
+			tolov += r["uzs"]
+	return tolov, qaytim
+
+
+def _tolov_qatorlari(customer: str, from_date) -> list[dict]:
+	"""Mijozning BARCHA to'lov harakatlari UZS'da, bitta normallashgan ro'yxat.
+
+	Ikki manba hisobga olinadi:
+	  1. Payment Entry — kassa orqali (Receive = to'lov, Pay = qaytim);
+	  2. Journal Entry — qo'lda provodka (debitorka hisobiga KREDIT = to'lov,
+	     DEBET = qaytim/qo'shimcha hisoblanma). Buxgalter ba'zi to'lovlarni
+	     (o'zaro hisob-kitob, bank, ko'chirma) Journal Entry bilan yozadi —
+	     ular ham o'quvchining to'lovi sifatida ko'rinishi kerak.
+
+	DIQQAT: kompaniya bazaviy valyutasi USD, shartnomalar esa UZS — shuning uchun
+	bazaviy (USD) summalar to'g'ridan-to'g'ri ISHLATILMAYDI:
+	  - UZS hisobdan/hisobga: account currency summasi;
+	  - USD hisob: o'sha kungi USD->UZS kurs (Currency Exchange) bilan o'giriladi.
+
+	Qaytar qiymat: [{name, doctype, posting_date, uzs (musbat), qaytim, mode, remarks}]
+	"""
 	if not customer:
-		return 0.0, 0.0
-	rows = frappe.db.sql(
-		"""SELECT payment_type, paid_from_account_currency f, paid_to_account_currency t,
-		          paid_amount, received_amount, posting_date
+		return []
+	out = []
+
+	for r in frappe.db.sql(
+		"""SELECT name, posting_date, payment_type, paid_from_account_currency f,
+		          paid_to_account_currency t, paid_amount, received_amount,
+		          remarks, mode_of_payment
 		   FROM `tabPayment Entry`
 		   WHERE docstatus=1 AND party_type='Customer'
 		     AND payment_type IN ('Receive', 'Pay')
 		     AND party=%s AND posting_date >= %s""",
 		(customer, from_date),
 		as_dict=True,
+	):
+		uzs = _pe_uzs(r)
+		if uzs <= 0.005:
+			continue
+		out.append(
+			{
+				"name": r.name,
+				"doctype": "Payment Entry",
+				"posting_date": r.posting_date,
+				"uzs": uzs,
+				"qaytim": r.payment_type == "Pay",
+				"mode": r.mode_of_payment or "",
+				"currency": r.f,
+				"remarks": (r.remarks or "")[:140],
+			}
+		)
+
+	# Journal Entry — bitta provodkada shu mijozga bir nechta qator bo'lishi
+	# mumkin, shuning uchun hujjat bo'yicha yig'indisi olinadi (sof harakat).
+	je_rows = frappe.db.sql(
+		"""SELECT jea.parent nom, je.posting_date, je.voucher_type, je.user_remark,
+		          jea.account_currency cur,
+		          jea.debit_in_account_currency debit_acc,
+		          jea.credit_in_account_currency credit_acc,
+		          jea.debit debit_base, jea.credit credit_base
+		   FROM `tabJournal Entry Account` jea
+		   JOIN `tabJournal Entry` je ON je.name = jea.parent
+		   JOIN `tabAccount` a ON a.name = jea.account
+		   WHERE je.docstatus=1 AND jea.party_type='Customer' AND jea.party=%s
+		     AND je.posting_date >= %s AND a.account_type='Receivable'""",
+		(customer, from_date),
+		as_dict=True,
 	)
-	tolov = qaytim = 0.0
-	for r in rows:
-		if r.payment_type == "Pay":
-			qaytim += _pe_uzs(r)
+	je_map = {}
+	for r in je_rows:
+		# kredit = debitorka kamaydi = to'lov (musbat); debet = aksincha (manfiy)
+		if r.cur == "UZS":
+			net = flt(r.credit_acc) - flt(r.debit_acc)
 		else:
-			tolov += _pe_uzs(r)
-	return tolov, qaytim
+			net = (flt(r.credit_base) - flt(r.debit_base)) * _usd_uzs_rate(r.posting_date)
+		d = je_map.setdefault(
+			r.nom,
+			{
+				"name": r.nom,
+				"doctype": "Journal Entry",
+				"posting_date": r.posting_date,
+				"uzs": 0.0,
+				"qaytim": False,
+				"mode": r.voucher_type or "Journal Entry",
+				"currency": r.cur,
+				"remarks": (r.user_remark or "")[:140],
+			},
+		)
+		d["uzs"] += net
+	for d in je_map.values():
+		# FAQAT sof KREDIT to'lov deb olinadi. Sof DEBET — bu QAYTIM EMAS:
+		# bazada debitorkaga debet yozadigan provodkalar nachisleniya
+		# (o'qish puli hisoblash, opening tuzatish, xodim bilan o'zaro hisob) —
+		# ularni qaytim deb hisoblasak o'quvchining to'lovi kamayib, qarzi
+		# ikki marta ko'rinardi. Haqiqiy qaytim kassadan beriladi (Payment Entry 'Pay').
+		if d["uzs"] <= 0.005:
+			continue
+		out.append(d)
+
+	out.sort(key=lambda x: (str(x["posting_date"]), x["name"]), reverse=True)
+	return out
 
 
 def _pe_uzs(r) -> float:
@@ -138,6 +203,30 @@ def _linked_allocations(customer: str, from_date):
 	for r in rows:
 		hedef = qaytim if r.payment_type == "Pay" else tolov
 		hedef[r.si] = hedef.get(r.si, 0.0) + _ref_uzs(r)
+
+	# Journal Entry bilan nachisleniyaga bog'langan summalar (buxgalterlik
+	# reconciliation / o'zaro hisob). Ularni ham shu yerda o'qish SHART: aks
+	# holda JE summasi ham SI qatorini yopardi, ham o'quv to'lovi poliga
+	# tushardi — ya'ni ikki marta hisoblanardi.
+	for r in frappe.db.sql(
+		"""SELECT jea.reference_name si, je.posting_date, jea.account_currency cur,
+		          jea.debit_in_account_currency debit_acc,
+		          jea.credit_in_account_currency credit_acc,
+		          jea.debit debit_base, jea.credit credit_base
+		   FROM `tabJournal Entry Account` jea
+		   JOIN `tabJournal Entry` je ON je.name = jea.parent
+		   WHERE je.docstatus=1 AND jea.party_type='Customer' AND jea.party=%s
+		     AND je.posting_date >= %s
+		     AND jea.reference_type='Sales Invoice' AND jea.reference_name IS NOT NULL""",
+		(customer, from_date),
+		as_dict=True,
+	):
+		if r.cur == "UZS":
+			net = flt(r.credit_acc) - flt(r.debit_acc)
+		else:
+			net = (flt(r.credit_base) - flt(r.debit_base)) * _usd_uzs_rate(r.posting_date)
+		if net > 0.005:            # kredit = nachisleniyani yopgan to'lov
+			tolov[r.si] = tolov.get(r.si, 0.0) + net
 	return tolov, qaytim
 
 
@@ -190,37 +279,21 @@ def _tuition_si_months(customer: str, from_date, cfg) -> dict:
 
 
 def get_payments(customer: str, from_date) -> list[dict]:
-	"""To'lovlar ro'yxati UZS'da — qaytimlar ham (manfiy summa bilan)."""
-	if not customer:
-		return []
-	rows = frappe.db.sql(
-		"""SELECT name, posting_date, payment_type, paid_from_account_currency f,
-		          paid_to_account_currency t, paid_amount, received_amount,
-		          remarks, mode_of_payment
-		   FROM `tabPayment Entry`
-		   WHERE docstatus=1 AND party_type='Customer'
-		     AND payment_type IN ('Receive', 'Pay')
-		     AND party=%s AND posting_date >= %s
-		   ORDER BY posting_date DESC""",
-		(customer, from_date),
-		as_dict=True,
-	)
-	out = []
-	for r in rows:
-		uzs = _pe_uzs(r)
-		qaytim = r.payment_type == "Pay"
-		out.append(
-			{
-				"name": r.name,
-				"posting_date": r.posting_date,
-				"qaytim": 1 if qaytim else 0,
-				"amount_uzs": -uzs if qaytim else uzs,
-				"currency": r.f,
-				"mode_of_payment": r.mode_of_payment,
-				"remarks": (r.remarks or "")[:140],
-			}
-		)
-	return out
+	"""To'lovlar ro'yxati UZS'da — Payment Entry va Journal Entry birgalikda,
+	qaytimlar manfiy summa bilan (panelda ko'rsatish uchun)."""
+	return [
+		{
+			"name": r["name"],
+			"doctype": r["doctype"],
+			"posting_date": r["posting_date"],
+			"qaytim": 1 if r["qaytim"] else 0,
+			"amount_uzs": -r["uzs"] if r["qaytim"] else r["uzs"],
+			"currency": r["currency"],
+			"mode_of_payment": r["mode"],
+			"remarks": r["remarks"],
+		}
+		for r in _tolov_qatorlari(customer, from_date)
+	]
 
 
 def _usd_uzs_rate(date) -> float:
@@ -296,6 +369,50 @@ def sync_charges(tr) -> bool:
 		)
 		changed = True
 
+	# O'quv to'lovi nachisleniyasi bor, LEKIN rejada o'sha oyning qatori yo'q.
+	# Bu investor farzandlari / grantchilarda uchraydi: ularning Student'dagi
+	# tarifi 0 bo'lgani uchun oylik qatorlar yaratilmaydi, ammo buxgalteriya
+	# har oy "O'qitish xizmati" nachisleniyasini yozadi va uni Journal Entry
+	# bilan yopadi. Qator bo'lmasa bu pul "avans"da qolib, oyma-oy ko'rinmasdi —
+	# shuning uchun nachisleniyaning O'ZI qator bo'ladi.
+	oquv_si = _tuition_si_months(tr.customer, _plan_payment_window(tr), cfg)
+	if oquv_si:
+		bor_oylar = {
+			getdate(r.due_date).strftime("%Y-%m")
+			for r in tr.oylar
+			if not r.manba_hujjat and r.holat != "Bekor"
+		}
+		kerak = [si for si, oy in oquv_si.items() if oy not in bor_oylar and si not in mavjud]
+		# `mavjud` dan allaqachon qator bo'lganlarini olib tashlaymiz (idempotent)
+		for si in list(oquv_si):
+			mavjud.pop(si, None)
+		if kerak:
+			for si in frappe.db.sql(
+				"""SELECT si.name, si.posting_date, si.custom_payment_month oy,
+				          GROUP_CONCAT(DISTINCT sii.item_code SEPARATOR ' + ') itemlar,
+				          SUM(sii.net_amount) amount
+				   FROM `tabSales Invoice` si
+				   JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+				   WHERE si.name IN %s GROUP BY si.name HAVING amount > 0""",
+				(tuple(kerak),),
+				as_dict=True,
+			):
+				oy = oquv_si.get(si.name) or getdate(si.posting_date).strftime("%Y-%m")
+				yil, oy_raqam = oy.split("-")
+				label = f"{OY_NOMI.get(int(oy_raqam), oy_raqam)} {yil}"
+				tr.append(
+					"oylar",
+					{
+						"oy_label": label,
+						"due_date": si.posting_date,
+						"amount": flt(si.amount),
+						"holat": "Kutilmoqda",
+						"manba_hujjat": si.name,
+						"izoh": "O'quv to'lovi nachisleniyasi (SI)",
+					},
+				)
+				changed = True
+
 	# SI bekor bo'lgan/o'chirilgan qatorlar
 	for r in mavjud.values():
 		if r.holat != "Bekor":
@@ -329,12 +446,20 @@ def _taqsimot(tr, rows, jami_tolov: float, jami_qaytim: float):
 	"""
 	cfg = _settings()
 	window = _plan_payment_window(tr)
+	# Qator sifatida qo'shilgan o'quv nachisleniyasi "oyga bog'lash" bosqichida
+	# QAYTA ishlanmasligi kerak — aks holda bitta pul ikki marta hisoblanardi.
+	qator_manba = {r.manba_hujjat for r in rows if r.manba_hujjat}
+	oquv_si = {
+		si: oy
+		for si, oy in _tuition_si_months(tr.customer, window, cfg).items()
+		if si not in qator_manba
+	}
 	return _taqsimla(
 		rows,
 		jami_tolov,
 		jami_qaytim,
 		*_linked_allocations(tr.customer, window),
-		_tuition_si_months(tr.customer, window, cfg),
+		oquv_si,
 		_si_outstanding(tr.customer, window),
 	)
 
@@ -893,6 +1018,26 @@ def on_payment(doc, method=None):
 	except Exception:
 		# To'lov o'tkazishni hech qachon bloklamaymiz
 		frappe.log_error(frappe.get_traceback(), f"qarzdorlik on_payment: {doc.name}")
+
+
+def on_journal_entry(doc, method=None):
+	"""Journal Entry submit/cancel — provodkada mijoz (Customer) qatnashgan
+	bo'lsa, shu o'quvchi(lar) rejasini darhol qayta hisoblash. Buxgalter to'lovni
+	Journal Entry bilan yozsa ham panel darhol yangilanadi."""
+	try:
+		mijozlar = {
+			r.party for r in (doc.accounts or []) if r.party_type == "Customer" and r.party
+		}
+		for mijoz in mijozlar:
+			for tr_name in frappe.get_all(
+				"Tolov Rejasi",
+				filters={"customer": mijoz, "holat": "Faol"},
+				pluck="name",
+			):
+				recompute_plan(tr_name, sync_case=True)
+	except Exception:
+		# Provodka o'tkazishni hech qachon bloklamaymiz
+		frappe.log_error(frappe.get_traceback(), f"qarzdorlik on_journal_entry: {doc.name}")
 
 
 def on_invoice(doc, method=None):

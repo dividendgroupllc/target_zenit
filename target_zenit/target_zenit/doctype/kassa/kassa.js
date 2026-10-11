@@ -11,6 +11,15 @@ const LEGACY_DIVIDEND_TYPES = ["Дивиденд", "Дивиденд 1", "Див
 frappe.ui.form.on("Kassa", {
     onload: function(frm) {
         frm.trigger("clear_copied_linked_document");
+
+        // Frappe yangi hujjatni ochganda qiymati bor HAR BIR Link maydon
+        // triggerini majburan ishga tushiradi (`__run_link_triggers`, form.js).
+        // Boshqa hujjatdan ochilganda (Sales Invoice -> "Kassa (to'lov)")
+        // `company` ham uzatiladi, va `company` handleri kontragentni tozalaydi.
+        // Natijada kontragent va uning ismi bo'sh qolib ketardi.
+        // Joriy qiymatni shu yerda eslab qolamiz — triggerlar ishga tushganda
+        // "o'zgarmagan" deb hisoblanadi va tozalash bajarilmaydi.
+        frm._tz_company = frm.doc.company;
         // Yangi hujjatda "За какой месяц" darhol BUGUNGI oyni ko'rsatsin
         // (saqlashni kutmasdan) — kerak bo'lsa operator ro'yxatdan boshqasini tanlaydi.
         if (frm.is_new() && !frm.doc.payment_month) {
@@ -26,6 +35,14 @@ frappe.ui.form.on("Kassa", {
 
         // "Тип контрагента" ro'yxati: standart party'lar + CoA'dagi xarajat papkalari
         frm.trigger("load_party_type_options");
+
+        // Boshqa hujjatdan ochilgan yangi Kassa (masalan Sales Invoice'dagi
+        // "Kassa (to'lov)" tugmasi) — `frappe.new_doc` qiymatlarni hujjatga
+        // TO'G'RIDAN-TO'G'RI yozadi, shuning uchun `party` triggeri ISHGA
+        // TUSHMAYDI. Natijada u to'ldiradigan maydonlar bo'sh qoladi:
+        // kontragent ismi, sinf va kontragent valyutasi (valyuta summa
+        // hisobiga ta'sir qiladi). Shu holatni o'zimiz to'ldiramiz.
+        frm.trigger("tz_fill_party_derived");
 
         // Xarajat hisoblari — faqat tanlangan papka ichidan
         frm.set_query("expense_account", function() {
@@ -84,16 +101,21 @@ frappe.ui.form.on("Kassa", {
     },
 
     company: function(frm) {
+        const ozgardi = frm._tz_company !== frm.doc.company;
+        frm._tz_company = frm.doc.company;
+
         frm._cash_account_to_currency = "";
-        frm.set_value("mode_of_payment", "");
-        frm.set_value("cash_account", "");
-        frm.set_value("balance", 0);
-        frm.set_value("cash_account_to_currency", "");
-        frm.set_value("target_amount_currency", "");
-        // Xarajat papkalari kompaniyaga bog'liq — turni ham qayta tanlash kerak
-        frm.set_value("party_type", "");
-        frm.set_value("party", "");
-        frm.set_value("expense_account", "");
+        if (ozgardi) {
+            frm.set_value("mode_of_payment", "");
+            frm.set_value("cash_account", "");
+            frm.set_value("balance", 0);
+            frm.set_value("cash_account_to_currency", "");
+            frm.set_value("target_amount_currency", "");
+            // Xarajat papkalari kompaniyaga bog'liq — turni ham qayta tanlash kerak
+            frm.set_value("party_type", "");
+            frm.set_value("party", "");
+            frm.set_value("expense_account", "");
+        }
         frm.trigger("load_party_type_options");
         frm.trigger("sync_currency_fields");
         frm.trigger("update_exchange_fields");
@@ -586,6 +608,19 @@ frappe.ui.form.on("Kassa", {
         }
 
         frm.refresh_fields();
+    },
+
+    /**
+     * Kontragentdan kelib chiqadigan maydonlar bo'sh bo'lsa to'ldiradi.
+     * Faqat YANGI hujjatda ishlaydi — saqlangan hujjatdagi qiymatlarni
+     * qayta yozib yubormaslik uchun.
+     */
+    tz_fill_party_derived: function(frm) {
+        if (!frm.is_new() || !frm.doc.party || !frm.doc.party_type) return;
+        if (frm.doc.party_name && frm.doc.party_currency) return;   // allaqachon to'la
+        if (frm._tz_party_filled === frm.doc.party) return;          // bir marta yetarli
+        frm._tz_party_filled = frm.doc.party;
+        frm.trigger("party");
     },
 
     party: function(frm) {

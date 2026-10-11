@@ -205,7 +205,13 @@ doc_events = {
 	"Journal Entry": {
 		# Oy — har doim posting date'dan (buxgalter sanani o'sha oyga suradi)
 		"validate": "target_zenit.journal_entry.sync_month_from_posting_date",
-		"on_submit": "target_zenit.journal_entry.link_employee_advances",
+		"on_submit": [
+			"target_zenit.journal_entry.link_employee_advances",
+			# Buxgalter o'quvchi to'lovini Journal Entry bilan yozsa ham
+			# qarzdorlik darhol qayta hisoblanadi
+			"target_zenit.qarzdorlik.engine.on_journal_entry",
+		],
+		"on_cancel": "target_zenit.qarzdorlik.engine.on_journal_entry",
 	},
 	"Sales Invoice": {
 		"validate": "target_zenit.journal_entry.sync_month_from_posting_date",

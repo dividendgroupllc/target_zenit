@@ -163,3 +163,10 @@
   background:var(--warn-wash); color:var(--warn-ink); border:1px solid var(--warn); }
 .tz-qarz .btn-recalc { background:var(--card); border:1px solid var(--line-strong); border-radius:10px;
   padding:9px 14px; font-size:13px; cursor:pointer; color:var(--ink); }
+
+/* Journal Entry (qo'lda provodka) orqali tushgan to'lov belgisi */
+.tag-je {
+	display: inline-block; padding: 0 5px; border-radius: 3px;
+	background: var(--bg-blue, #e7f0fd); color: var(--text-on-blue, #1a5bb8);
+	font-size: 10px; font-weight: 600;
+}

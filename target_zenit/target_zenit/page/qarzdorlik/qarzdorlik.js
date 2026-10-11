@@ -249,10 +249,12 @@ class TZQarzPanel {
 				? ` · sof: ${this.fmt((d.payments || []).reduce((a, p) => a + p.amount_uzs, 0))}` : ""}</div>
 			${(d.payments || []).length ? `<table class="tbl mini-tbl"><tbody>
 				${d.payments.slice(0, 12).map((p) => `
-					<tr class="${p.qaytim ? "qaytim" : ""}"><td>${this.dmy(p.posting_date)}
+					<tr class="${p.qaytim ? "qaytim" : ""}"><td>
+						<a href="/app/${frappe.router.slug(p.doctype || "Payment Entry")}/${encodeURIComponent(p.name)}"
+						   target="_blank">${this.dmy(p.posting_date)}</a>
 						${p.qaytim ? `<div class="mini">qaytim</div>` : ""}</td>
 					<td class="r money ${p.qaytim ? "neg" : ""}">${this.fmt(p.amount_uzs)}</td>
-					<td class="mini">${this.esc(p.mode_of_payment || "")} ${p.currency !== "UZS" ? "(" + this.esc(p.currency) + ")" : ""}</td></tr>`).join("")}
+					<td class="mini">${p.doctype === "Journal Entry" ? `<span class="tag-je">provodka</span> ` : ""}${this.esc(p.mode_of_payment || "")} ${p.currency !== "UZS" ? "(" + this.esc(p.currency) + ")" : ""}</td></tr>`).join("")}
 			</tbody></table>` : `<div class="mini">To'lov yo'q</div>`}</div>`;
 
 		const tl = `<div class="box"><div class="box-t">Timeline</div>
