@@ -148,3 +148,7 @@
 .tz-qarz .tl-head { font-size:13px; }
 .tz-qarz .tl-body { font-size:13px; color:var(--ink-2); margin-top:2px; white-space:pre-wrap; }
 .tz-qarz .tl-ptp { font-size:12px; color:var(--good-ink); margin-top:2px; font-weight:600; }
+
+/* Kassadan qaytim (Расход) — to'lovlar ro'yxatida ajralib tursin */
+.tz-qarz .mini-tbl tr.qaytim { background:var(--bad-wash); }
+.tz-qarz .mini-tbl td.neg { color:var(--bad-ink); }

@@ -51,7 +51,11 @@ app_include_js = [
 
 # include js in doctype views
 # Student formasi: shartnoma summalarini jonli hisoblash (tarif/foiz -> yakuniy/oylik)
-doctype_js = {"Student": "public/js/student_tarif.js"}
+doctype_js = {
+	"Student": "public/js/student_tarif.js",
+	# Sales Invoice -> "Kassa (to'lov)" tugmasi (nachisleniyadan kassaga o'tish)
+	"Sales Invoice": "public/js/sales_invoice_kassa.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}

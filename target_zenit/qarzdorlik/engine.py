@@ -36,45 +36,55 @@ def _settings():
 
 
 def _payments_since(customer: str, from_date) -> float:
-	"""Mijozning from_date'dan beri tushgan to'lovlari, UZS'da.
+	"""Mijozning from_date'dan beri SOF to'lovi, UZS'da (to'lov − qaytim).
 
-	DIQQAT: kompaniya bazaviy valyutasi USD, shartnomalar esa UZS — shuning uchun
+	DIQQAT 1: kompaniya bazaviy valyutasi USD, shartnomalar esa UZS — shuning uchun
 	base_paid_amount (USD) ISHLATILMAYDI:
 	  - UZS'dan to'lov: paid_amount (UZS);
 	  - USD to'lov UZS kassaga: received_amount (UZS);
-	  - USD -> USD: o'sha kungi USD->UZS kurs (Currency Exchange) bilan."""
+	  - USD -> USD: o'sha kungi USD->UZS kurs (Currency Exchange) bilan.
+
+	DIQQAT 2: kassadan QAYTIM berilgan bo'lsa (Kassa "Расход" -> Payment Entry
+	payment_type='Pay'), u AYIRILADI — aks holda o'quvchi to'lagandan ko'proq
+	to'lagan bo'lib ko'rinadi va qarzi kam chiqadi."""
 	if not customer:
 		return 0.0
 	rows = frappe.db.sql(
-		"""SELECT paid_from_account_currency f, paid_to_account_currency t,
+		"""SELECT payment_type, paid_from_account_currency f, paid_to_account_currency t,
 		          paid_amount, received_amount, posting_date
 		   FROM `tabPayment Entry`
-		   WHERE docstatus=1 AND payment_type='Receive' AND party_type='Customer'
+		   WHERE docstatus=1 AND party_type='Customer'
+		     AND payment_type IN ('Receive', 'Pay')
 		     AND party=%s AND posting_date >= %s""",
 		(customer, from_date),
 		as_dict=True,
 	)
 	total = 0.0
 	for r in rows:
-		if r.f == "UZS":
-			total += flt(r.paid_amount)
-		elif r.t == "UZS":
-			total += flt(r.received_amount)
-		else:
-			total += flt(r.paid_amount) * _usd_uzs_rate(r.posting_date)
+		total += _pe_uzs(r) * (-1 if r.payment_type == "Pay" else 1)
 	return total
 
 
+def _pe_uzs(r) -> float:
+	"""Payment Entry qatorining UZS qiymati (yo'nalishdan qat'i nazar, musbat)."""
+	if r.f == "UZS":
+		return flt(r.paid_amount)
+	if r.t == "UZS":
+		return flt(r.received_amount)
+	return flt(r.paid_amount) * _usd_uzs_rate(r.posting_date)
+
+
 def get_payments(customer: str, from_date) -> list[dict]:
-	"""To'lovlar ro'yxati UZS ekvivalenti bilan (panel kartasi uchun)."""
+	"""To'lovlar ro'yxati UZS'da — qaytimlar ham (manfiy summa bilan)."""
 	if not customer:
 		return []
 	rows = frappe.db.sql(
-		"""SELECT name, posting_date, paid_from_account_currency f,
+		"""SELECT name, posting_date, payment_type, paid_from_account_currency f,
 		          paid_to_account_currency t, paid_amount, received_amount,
 		          remarks, mode_of_payment
 		   FROM `tabPayment Entry`
-		   WHERE docstatus=1 AND payment_type='Receive' AND party_type='Customer'
+		   WHERE docstatus=1 AND party_type='Customer'
+		     AND payment_type IN ('Receive', 'Pay')
 		     AND party=%s AND posting_date >= %s
 		   ORDER BY posting_date DESC""",
 		(customer, from_date),
@@ -82,17 +92,14 @@ def get_payments(customer: str, from_date) -> list[dict]:
 	)
 	out = []
 	for r in rows:
-		if r.f == "UZS":
-			uzs = flt(r.paid_amount)
-		elif r.t == "UZS":
-			uzs = flt(r.received_amount)
-		else:
-			uzs = flt(r.paid_amount) * _usd_uzs_rate(r.posting_date)
+		uzs = _pe_uzs(r)
+		qaytim = r.payment_type == "Pay"
 		out.append(
 			{
 				"name": r.name,
 				"posting_date": r.posting_date,
-				"amount_uzs": uzs,
+				"qaytim": 1 if qaytim else 0,
+				"amount_uzs": -uzs if qaytim else uzs,
 				"currency": r.f,
 				"mode_of_payment": r.mode_of_payment,
 				"remarks": (r.remarks or "")[:140],

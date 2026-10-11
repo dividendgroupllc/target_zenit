@@ -22,7 +22,7 @@ frappe.ui.form.on("Kassa", {
         frm._cash_account_to_currency = frm._cash_account_to_currency || "";
         frm.trigger("clear_copied_linked_document");
         apply_payment_month_options(frm);
-        load_employee_accrual(frm);
+        load_nachisleniya(frm);
 
         // "Тип контрагента" ro'yxati: standart party'lar + CoA'dagi xarajat papkalari
         frm.trigger("load_party_type_options");
@@ -177,7 +177,16 @@ frappe.ui.form.on("Kassa", {
     },
 
     payment_month: function(frm) {
-        load_employee_accrual(frm);
+        load_nachisleniya(frm);
+    },
+
+    sales_invoice: function(frm) {
+        load_customer_invoices(frm);
+    },
+
+    amount: function(frm) {
+        // Summani o'zgartirganda "shu to'lovdan" ustuni qayta hisoblanadi
+        if (frm.doc.party_type === "Customer") load_customer_invoices(frm);
     },
 
     transaction_type: function(frm) {
@@ -591,7 +600,7 @@ frappe.ui.form.on("Kassa", {
             }
 
             // O'quvchining sinfi — to'lovdan OLDIN ko'rinishi uchun darhol yuklanadi
-            if (frm.doc.party_type === "Employee") load_employee_accrual(frm);
+            load_nachisleniya(frm);
 
             if (frm.doc.party_type === "Customer") {
                 frappe.call({
@@ -881,6 +890,67 @@ function apply_payment_month_options(frm) {
 // Xodim + oy tanlanganda — o'sha oy uchun yozilgan nachisleniyani ko'rsatish.
 // Uch holat bor: (1) bog'lanadigan nachisleniya bor; (2) nachisleniya bor, lekin
 // BOSHQA qarz hisobida — bog'lanmaydi, ogohlantiramiz; (3) umuman yo'q — avans.
+// Mijoz (o'quvchi) tanlanganda — uning OCHIQ nachisleniyalari (Sales Invoice).
+// Xodim nachisleniyasi bilan bir xil mantiq: to'lov shularga bog'lanadi.
+function load_customer_invoices(frm) {
+    const box = frm.get_field("nachisleniya_html");
+    if (!box || !box.$wrapper) return;
+    const show = (html) => box.$wrapper.html(html);
+
+    if (frm.doc.party_type !== "Customer" || frm.doc.transaction_type !== "Приход" || !frm.doc.party) {
+        return;   // boshqa holatlarni load_employee_accrual boshqaradi
+    }
+    if (frm.doc.docstatus === 1) { show_payment_links(frm, show); return; }
+
+    show(`<div class="text-muted small">Nachisleniyalar tekshirilyapti…</div>`);
+    frappe.call({
+        method: "target_zenit.target_zenit.doctype.kassa.kassa.get_customer_invoices",
+        args: { customer: frm.doc.party, company: frm.doc.company, invoice: frm.doc.sales_invoice || null },
+        callback: (r) => {
+            const list = r.message || [];
+            if (!list.length) {
+                show(`<div class="alert alert-warning" style="padding:8px 10px;margin:0">
+                    Ochiq nachisleniya yo'q — to'lov <b>avans</b> bo'lib qoladi.</div>`);
+                return;
+            }
+            const fmt = (n) => frappe.format(n, { fieldtype: "Currency", options: "currency" });
+            const jami = list.reduce((a, x) => a + flt(x.outstanding), 0);
+            const summa = flt(frm.doc.amount);
+            let qoldiq = summa, rows = "";
+            for (const x of list) {
+                const ulush = Math.min(qoldiq, flt(x.outstanding));
+                qoldiq -= ulush;
+                rows += `<tr>
+                    <td>${frappe.datetime.str_to_user(x.sana)}</td>
+                    <td><a href="/app/sales-invoice/${encodeURIComponent(x.name)}" target="_blank">${frappe.utils.escape_html(x.name)}</a>
+                        <div class="text-muted small">${frappe.utils.escape_html(x.itemlar || "")}</div></td>
+                    <td class="text-right">${fmt(x.outstanding)}</td>
+                    <td class="text-right"><b style="color:var(--green-600)">${ulush > 0.005 ? fmt(ulush) : "—"}</b></td></tr>`;
+            }
+            show(`<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px">
+                <div class="small text-muted" style="margin-bottom:6px">
+                    ${frm.doc.sales_invoice ? "Tanlangan nachisleniya" : "Ochiq nachisleniyalar"} —
+                    to'lov shularga bog'lanadi${frm.doc.sales_invoice ? "" : " (eskisidan boshlab)"}</div>
+                <table class="table table-bordered" style="margin:0;font-size:12px">
+                    <thead><tr><th>Sana</th><th>Hujjat</th><th class="text-right">Qoldiq</th>
+                        <th class="text-right">Shu to'lovdan</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                    <tfoot><tr><td colspan="2"><b>Jami ochiq</b></td>
+                        <td class="text-right"><b>${fmt(jami)}</b></td>
+                        <td class="text-right"><b>${fmt(summa - qoldiq)}</b></td></tr></tfoot>
+                </table>
+                ${qoldiq > 0.005 ? `<div class="small text-muted" style="margin-top:4px">
+                    Ortiqcha ${fmt(qoldiq)} — avans bo'lib qoladi</div>` : ""}
+            </div>`);
+        },
+    });
+}
+
+function load_nachisleniya(frm) {
+    if (frm.doc.party_type === "Customer") load_customer_invoices(frm);
+    else load_employee_accrual(frm);
+}
+
 function load_employee_accrual(frm) {
     const box = frm.get_field("nachisleniya_html");
     if (!box || !box.$wrapper) return;

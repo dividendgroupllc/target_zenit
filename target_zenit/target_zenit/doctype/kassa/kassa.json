@@ -29,6 +29,7 @@
   "party_currency",
   "column_break_2",
   "payment_month",
+  "sales_invoice",
   "nachisleniya_html",
   "expense_account",
   "expense_account_name",
@@ -228,10 +229,10 @@
   },
   {
    "depends_on": "eval:doc.party_type === 'Customer' && doc.student_group",
-   "description": "\u041e\u0301quvchi qaysi sinfga (guruhga) tegishli",
+   "description": "О́quvchi qaysi sinfga (guruhga) tegishli",
    "fieldname": "student_group",
    "fieldtype": "Data",
-   "label": "\u0421\u0438\u043d\u0444 (\u0433\u0440\u0443\u043f\u043f\u0430)",
+   "label": "Синф (группа)",
    "read_only": 1
   },
   {
@@ -295,13 +296,21 @@
    "fieldname": "payment_month",
    "fieldtype": "Autocomplete",
    "in_standard_filter": 1,
-   "label": "\u0417\u0430 \u043a\u0430\u043a\u043e\u0439 \u043c\u0435\u0441\u044f\u0446"
+   "label": "За какой месяц"
+  },
+  {
+   "fieldname": "sales_invoice",
+   "label": "Nachisleniya (Sales Invoice)",
+   "fieldtype": "Link",
+   "options": "Sales Invoice",
+   "depends_on": "eval:doc.party_type=='Customer' && doc.transaction_type=='Приход'",
+   "description": "Bo'sh qoldirilsa — to'lov eng eski to'lanmagan nachisleniyalardan boshlab avtomatik taqsimlanadi"
   },
   {
    "depends_on": "eval:doc.party_type === 'Employee'",
    "fieldname": "nachisleniya_html",
    "fieldtype": "HTML",
-   "label": "\u041d\u0430\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u0435 \u0437\u0430 \u043c\u0435\u0441\u044f\u0446"
+   "label": "Начисление за месяц"
   },
   {
    "fieldname": "section_break_details",
@@ -356,7 +365,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-20 22:00:00.000000",
+ "modified": "2026-10-11 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Kassa",

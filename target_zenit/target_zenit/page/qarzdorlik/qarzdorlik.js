@@ -244,10 +244,13 @@ class TZQarzPanel {
 				<td class="r money">${this.fmt(m.outstanding)}</td><td>${this.esc(m.holat)}</td></tr>`).join("")}
 			</tbody></table></div>`;
 
-		const pays = `<div class="box"><div class="box-t">To'lovlar (${(d.payments || []).length})</div>
+		const pays = `<div class="box"><div class="box-t">To'lovlar (${(d.payments || []).length})${(d.payments || []).some((p) => p.qaytim)
+				? ` · sof: ${this.fmt((d.payments || []).reduce((a, p) => a + p.amount_uzs, 0))}` : ""}</div>
 			${(d.payments || []).length ? `<table class="tbl mini-tbl"><tbody>
 				${d.payments.slice(0, 12).map((p) => `
-					<tr><td>${this.dmy(p.posting_date)}</td><td class="r money">${this.fmt(p.amount_uzs)}</td>
+					<tr class="${p.qaytim ? "qaytim" : ""}"><td>${this.dmy(p.posting_date)}
+						${p.qaytim ? `<div class="mini">qaytim</div>` : ""}</td>
+					<td class="r money ${p.qaytim ? "neg" : ""}">${this.fmt(p.amount_uzs)}</td>
 					<td class="mini">${this.esc(p.mode_of_payment || "")} ${p.currency !== "UZS" ? "(" + this.esc(p.currency) + ")" : ""}</td></tr>`).join("")}
 			</tbody></table>` : `<div class="mini">To'lov yo'q</div>`}</div>`;
 

@@ -138,6 +138,9 @@ class Kassa(Document):
         # Shunda "qaysi oy uchun" yorliqdan emas, haqiqiy nachisleniyadan kelib chiqadi
         # va qarzdorlik avtomatik yopiladi.
         self.allocate_employee_accruals(pe)
+        # O'quvchi/mijoz to'lovi — ochiq nachisleniyalarga (Sales Invoice) bog'lanadi,
+        # shunda "qaysi nachisleniya uchun to'langani" tizimda ko'rinadi.
+        self.allocate_customer_invoices(pe)
 
         pe.flags.ignore_permissions = True
         pe.insert()
@@ -179,6 +182,38 @@ class Kassa(Document):
                 "reference_name": a["journal_entry"],
                 "total_amount": flt(a["total"]),
                 "outstanding_amount": flt(a["outstanding"]),
+                "allocated_amount": share,
+            })
+            left -= share
+
+    def allocate_customer_invoices(self, pe):
+        """To'lovni mijozning ochiq nachisleniyalariga (Sales Invoice) taqsimlash.
+
+        - `sales_invoice` tanlangan bo'lsa -> faqat o'shanga;
+        - bo'sh bo'lsa -> eng eskisidan boshlab (FIFO) ochiq hisob-fakturalarga.
+        Ochiq nachisleniya bo'lmasa hech narsa bog'lanmaydi — to'lov AVANS bo'lib
+        qoladi va keyin nachisleniya yozilganda qo'lda ulash mumkin."""
+        if self.party_type != "Customer" or self.transaction_type != "Приход":
+            return
+
+        party_account = pe.paid_from if pe.payment_type == "Receive" else pe.paid_to
+        invoices = get_customer_invoices(
+            self.party, self.company, account=party_account, invoice=self.sales_invoice)
+        if not invoices:
+            return
+
+        left = flt(pe.paid_amount if pe.payment_type == "Receive" else pe.received_amount)
+        for inv in invoices:
+            if left <= 0.005:
+                break
+            share = min(left, flt(inv["outstanding"]))
+            if share <= 0.005:
+                continue
+            pe.append("references", {
+                "reference_doctype": "Sales Invoice",
+                "reference_name": inv["name"],
+                "total_amount": flt(inv["total"]),
+                "outstanding_amount": flt(inv["outstanding"]),
                 "allocated_amount": share,
             })
             left -= share
@@ -1294,3 +1329,50 @@ def get_kassa_payment_links(kassa):
 
     currency = frappe.db.get_value("Payment Entry", pe_name, "paid_to_account_currency")
     return {"payment_entry": pe_name, "links": links, "currency": currency}
+
+
+@frappe.whitelist()
+def get_customer_invoices(customer, company=None, account=None, invoice=None):
+    """Mijozning (o'quvchining) ochiq nachisleniyalari — Sales Invoice qoldiqlari.
+
+    Xodim nachisleniyalari (get_employee_accruals) bilan bir xil mantiq:
+      * faqat qoldig'i bor hisob-fakturalar, eskisidan yangisiga;
+      * `account` berilsa — faqat SHU qarz hisobidagilari bog'lanadi (ERPNext
+        talabi), boshqalari ham qaytariladi, lekin `linkable=0` belgisi bilan;
+      * `invoice` berilsa — faqat o'sha bitta hisob-faktura.
+    """
+    if not customer:
+        return []
+
+    shart = ["si.docstatus = 1", "si.customer = %(c)s", "si.outstanding_amount > 0.005"]
+    args = {"c": customer, "inv": invoice, "co": company}
+    if company:
+        shart.append("si.company = %(co)s")
+    if invoice:
+        shart.append("si.name = %(inv)s")
+
+    rows = frappe.db.sql(
+        f"""SELECT si.name, si.posting_date, si.due_date, si.debit_to,
+                   si.grand_total, si.outstanding_amount, si.currency,
+                   (SELECT GROUP_CONCAT(DISTINCT sii.item_code ORDER BY sii.idx SEPARATOR ' + ')
+                    FROM `tabSales Invoice Item` sii WHERE sii.parent = si.name) itemlar
+            FROM `tabSales Invoice` si
+            WHERE {' AND '.join(shart)}
+            ORDER BY si.posting_date ASC, si.name ASC""",
+        args, as_dict=True)
+
+    out = []
+    for r in rows:
+        out.append({
+            "name": r.name,
+            "sana": str(r.posting_date),
+            "muddat": str(r.due_date) if r.due_date else "",
+            "itemlar": r.itemlar or "",
+            "total": flt(r.grand_total),
+            "outstanding": flt(r.outstanding_amount),
+            "currency": r.currency,
+            "account": r.debit_to,
+            # Faqat to'lovning kontragent hisobidagi fakturaga bog'lanish mumkin
+            "linkable": 1 if (not account or r.debit_to == account) else 0,
+        })
+    return [x for x in out if x["linkable"]] if account else out

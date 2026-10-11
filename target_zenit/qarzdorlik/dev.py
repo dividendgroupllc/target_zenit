@@ -515,3 +515,84 @@ def test_si_avto(student="EDU-STU-2026-00591"):
 	oxiri = frappe.db.count("Tolov Rejasi Oyi", {"parent": tr.name, "holat": ["!=", "Bekor"]})
 	print(f"SI bekor qilindi -> faol qatorlar: {oxiri}",
 		  "✓ qator Bekor bo'ldi" if oxiri == oldin_q else "✗")
+
+
+def test_si_kassa_pe(student="EDU-STU-2026-00247"):
+	"""To'liq zanjir: Sales Invoice -> Kassa -> Payment Entry (bog'langan holda)."""
+	from frappe.utils import nowdate
+
+	from target_zenit.target_zenit.doctype.kassa.kassa import get_customer_invoices
+
+	cust = frappe.db.get_value("Student", student, "customer")
+	invs = get_customer_invoices(cust)
+	if not invs:
+		print("Ochiq nachisleniya yo'q:", cust)
+		return
+	inv = invs[0]
+	print(f"Mijoz: {cust}")
+	print(f"Nachisleniya: {inv['name']} | {inv['itemlar']} | qoldiq {inv['outstanding']:,.0f}")
+
+	k = frappe.get_doc({
+		"doctype": "Kassa", "date": nowdate(), "transaction_type": "Приход",
+		"company": frappe.db.get_value("Sales Invoice", inv["name"], "company"),
+		"mode_of_payment": "Наличый UZS", "cash_account": "Наличый UZS - TZ",
+		"party_type": "Customer", "party": cust,
+		"sales_invoice": inv["name"], "amount": inv["outstanding"],
+		"remarks": "TEST: SI -> Kassa -> PE zanjiri",
+	})
+	k.flags.ignore_permissions = True
+	k.insert()
+	k.submit()
+	frappe.db.commit()
+	print(f"\nKassa: {k.name} -> yaratilgan hujjat: {k.linked_doctype} {k.linked_entry}")
+
+	pe = frappe.get_doc("Payment Entry", k.linked_entry)
+	print(f"PE: {pe.name} | {pe.paid_amount:,.0f} {pe.paid_from_account_currency}")
+	print("PE references (nachisleniyaga bog'lanish):")
+	for r in pe.references:
+		print(f"   {r.reference_doctype} {r.reference_name} -> taqsimlandi {r.allocated_amount:,.0f}")
+	qoldiq = frappe.db.get_value("Sales Invoice", inv["name"], "outstanding_amount")
+	print(f"\nNachisleniya qoldig'i: {inv['outstanding']:,.0f} -> {qoldiq:,.0f}",
+		  "✓ YOPILDI" if qoldiq <= 0.005 else "(qisman)")
+
+	# tozalash
+	k.cancel()
+	frappe.db.commit()
+	oxirgi = frappe.db.get_value("Sales Invoice", inv["name"], "outstanding_amount")
+	print(f"Kassa bekor qilindi -> nachisleniya qoldig'i qaytdi: {oxirgi:,.0f}",
+		  "✓" if abs(oxirgi - inv["outstanding"]) < 1 else "✗")
+
+
+def test_kassa_fifo(student="EDU-STU-2026-00247", summa=8_000_000):
+	"""Faktura TANLANMAGAN holat: to'lov eng eskisidan boshlab taqsimlanadimi?"""
+	from frappe.utils import nowdate
+
+	from target_zenit.target_zenit.doctype.kassa.kassa import get_customer_invoices
+
+	cust = frappe.db.get_value("Student", student, "customer")
+	oldin = get_customer_invoices(cust)
+	print(f"Ochiq nachisleniyalar ({cust}):")
+	for i in oldin[:4]:
+		print(f"   {i['sana']}  {i['name']:24} {i['itemlar'][:20]:22} qoldiq {i['outstanding']:>12,.0f}")
+
+	k = frappe.get_doc({
+		"doctype": "Kassa", "date": nowdate(), "transaction_type": "Приход",
+		"company": frappe.db.get_value("Sales Invoice", oldin[0]["name"], "company"),
+		"mode_of_payment": "Наличый UZS", "cash_account": "Наличый UZS - TZ",
+		"party_type": "Customer", "party": cust, "amount": summa,
+		"remarks": "TEST: faktura tanlanmagan — FIFO",
+	})
+	k.flags.ignore_permissions = True
+	k.insert()
+	k.submit()
+	frappe.db.commit()
+
+	pe = frappe.get_doc("Payment Entry", k.linked_entry)
+	print(f"\nKassa {k.name} -> PE {pe.name} ({summa:,.0f} so'm) taqsimoti:")
+	for r in pe.references:
+		print(f"   {r.reference_name:24} -> {r.allocated_amount:>12,.0f}")
+	print(f"   Taqsimlanmagan (avans): {summa - sum(r.allocated_amount for r in pe.references):,.0f}")
+
+	k.cancel()
+	frappe.db.commit()
+	print("\n(bekor qilindi — qoldiqlar qaytdi)")
