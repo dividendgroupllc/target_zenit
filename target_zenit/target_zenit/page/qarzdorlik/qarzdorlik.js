@@ -282,8 +282,23 @@ class TZQarzPanel {
 				</div>
 			</div>
 			${cheklov}
+			${d.hisob ? `<div class="box hisob">
+				<div class="box-t">Hisob tafsiloti — nega shunday chiqdi</div>
+				<div class="hisob-grid">
+					<span>To'lov (kirim)</span><b>${this.fmt(d.hisob.jami_tolov)}</b>
+					<span>Qaytim (chiqim)</span><b class="${d.hisob.jami_qaytim ? "neg" : ""}">${d.hisob.jami_qaytim ? "−" + this.fmt(d.hisob.jami_qaytim) : "0"}</b>
+					<span>Sof to'lov</span><b>${this.fmt(d.hisob.sof)}</b>
+					<span>Jadvalga yozilgan qaytim</span><b class="${Math.abs(d.hisob.jadvalda_qaytim - d.hisob.jami_qaytim) > 1 ? "neg" : ""}">${this.fmt(d.hisob.jadvalda_qaytim)}</b>
+				</div>
+				${Math.abs(d.hisob.jadvalda_qaytim - d.hisob.jami_qaytim) > 1
+					? `<div class="ogoh">⚠ Jadvaldagi qaytim kassadagidan farq qilyapti — reja eski hisobda qolgan.
+						«Qayta hisoblash» tugmasini bosing.</div>` : ""}
+				<div class="mini">Davr: ${this.dmy(d.hisob.davr_boshi)} dan · oxirgi hisob: ${this.esc(d.hisob.hisoblangan)}
+					· <a href="/app/tolov-rejasi/${encodeURIComponent(d.hisob.reja)}" target="_blank">reja ↗</a></div>
+			</div>` : ""}
 			<div class="d-actions">
 				<button class="btn-call">📞 Qo'ng'iroq natijasi</button>
+				<button class="btn-recalc">↻ Qayta hisoblash</button>
 				<a class="btn-doc" href="/app/qarz-ishi/${encodeURIComponent(c.name)}">Ishni ochish ↗</a>
 				${this.data.rahbar ? `<button class="btn-reassign">Mas'ulni almashtirish</button>` : ""}
 			</div>
@@ -291,6 +306,19 @@ class TZQarzPanel {
 		`);
 
 		this.body.find(".btn-call").on("click", () => this.call_dialog());
+		this.body.find(".btn-recalc").on("click", () => {
+			frappe.call({
+				method: `${QARZ_M}.qayta_hisobla`,
+				args: { case: this.detail.case.name },
+				freeze: true, freeze_message: "Qayta hisoblanmoqda…",
+				callback: (r) => {
+					this.detail = r.message;
+					this.render_detail();
+					frappe.show_alert({ message: "Qayta hisoblandi", indicator: "green" });
+					this.load();
+				},
+			});
+		});
 		this.body.find(".btn-reassign").on("click", () => this.reassign_dialog());
 	}
 

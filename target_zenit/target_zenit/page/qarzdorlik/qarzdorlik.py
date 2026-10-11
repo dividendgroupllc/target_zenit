@@ -110,7 +110,7 @@ def get_case(name: str):
 	_guard()
 	qi = frappe.get_doc("Qarz Ishi", name)
 
-	months, payments = [], []
+	months, payments, hisob = [], [], None
 	if qi.tolov_rejasi:
 		tr = frappe.get_doc("Tolov Rejasi", qi.tolov_rejasi)
 		months = [
@@ -124,6 +124,19 @@ def get_case(name: str):
 		from target_zenit.qarzdorlik import engine
 
 		payments = engine.get_payments(tr.customer, engine._plan_payment_window(tr))
+
+		# Hisob tafsiloti — "nega bunday chiqdi" savoliga javob (UI'da ko'rinadi)
+		tolov, qaytim = engine._payments_split(tr.customer, engine._plan_payment_window(tr))
+		hisob = {
+			"reja": tr.name,
+			"customer": tr.customer,
+			"davr_boshi": engine._plan_payment_window(tr),
+			"jami_tolov": tolov,
+			"jami_qaytim": qaytim,
+			"sof": tolov - qaytim,
+			"jadvalda_qaytim": sum(flt(r.qaytim) for r in tr.oylar),
+			"hisoblangan": str(tr.modified)[:16],
+		}
 
 	# Timeline: aloqa yozuvlari + va'dalar, xronologik (yangi tepada)
 	ays = frappe.get_all(
@@ -175,6 +188,7 @@ def get_case(name: str):
 		"case": qi.as_dict(no_nulls=False),
 		"months": months,
 		"payments": payments,
+		"hisob": hisob,
 		"ays": ays,
 		"ptps": ptps,
 		"guardians": guardians,
@@ -216,3 +230,19 @@ def reassign(case: str, masul: str):
 		frappe.throw("Mas'ulni faqat rahbar (Sales Manager) almashtira oladi.")
 	frappe.db.set_value("Qarz Ishi", case, "masul", masul)
 	return {"ok": 1}
+
+
+@frappe.whitelist()
+def qayta_hisobla(case: str):
+	"""«Qayta hisoblash» tugmasi — shu o'quvchining rejasini qaytadan hisoblaydi.
+	Kod yangilangandan keyin eski qiymatlar qolib ketsa shu yerdan tuzatiladi
+	(kechasi nightly baribir hammasini qayta hisoblaydi)."""
+	_guard()
+	tr = frappe.db.get_value("Qarz Ishi", case, "tolov_rejasi")
+	if not tr:
+		frappe.throw("Bu ishga to'lov rejasi bog'lanmagan.")
+	from target_zenit.qarzdorlik import engine
+
+	engine.recompute_plan(tr, sync_case=True)
+	frappe.db.commit()
+	return get_case(case)

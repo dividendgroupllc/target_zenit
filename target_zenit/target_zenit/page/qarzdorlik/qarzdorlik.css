@@ -152,3 +152,14 @@
 /* Kassadan qaytim (Расход) — to'lovlar ro'yxatida ajralib tursin */
 .tz-qarz .mini-tbl tr.qaytim { background:var(--bad-wash); }
 .tz-qarz .mini-tbl td.neg { color:var(--bad-ink); }
+
+/* Hisob tafsiloti — "nega shunday chiqdi" bloki */
+.tz-qarz .box.hisob { background:var(--card); }
+.tz-qarz .hisob-grid { display:grid; grid-template-columns:1fr auto; gap:3px 12px; font-size:12.5px; }
+.tz-qarz .hisob-grid span { color:var(--ink-2); }
+.tz-qarz .hisob-grid b { text-align:right; font-variant-numeric:tabular-nums; }
+.tz-qarz .hisob-grid b.neg, .tz-qarz .mini-tbl td.neg { color:var(--bad-ink); }
+.tz-qarz .ogoh { margin-top:6px; padding:6px 8px; border-radius:8px; font-size:12px;
+  background:var(--warn-wash); color:var(--warn-ink); border:1px solid var(--warn); }
+.tz-qarz .btn-recalc { background:var(--card); border:1px solid var(--line-strong); border-radius:10px;
+  padding:9px 14px; font-size:13px; cursor:pointer; color:var(--ink); }
