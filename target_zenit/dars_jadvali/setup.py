@@ -265,8 +265,7 @@ def workspace_yorliqlari():
 		ws = frappe.get_doc("Workspace", ws_name)
 		if any((sc.label or "") == nom for sc in ws.shortcuts):
 			continue
-		ws.append("shortcuts", {"label": nom, "type": tur, "link_to": link,
-		                        "doc_view": "" if tur == "DocType" else ""})
+		ws.append("shortcuts", {"label": nom, "type": tur, "link_to": link, "doc_view": ""})
 		# content'ga ham qo'shamiz (panelda ko'rinishi uchun)
 		try:
 			content = _json.loads(ws.content or "[]")

@@ -110,10 +110,10 @@ def yaxlit(x: float, usul: str | None = None) -> int | None:
 	usul = usul or olish().get("yaxlitlash") or "Matematik"
 	import math
 	if usul == "Yuqoriga":
-		return int(math.ceil(x - 1e-9))
+		return math.ceil(x - 1e-9)
 	if usul == "Pastga":
-		return int(math.floor(x + 1e-9))
-	return int(math.floor(x + 0.5))  # Matematik: 3.5 -> 4
+		return math.floor(x + 1e-9)
+	return math.floor(x + 0.5)  # Matematik: 3.5 -> 4
 
 
 def chorak_hisobla(ballar: list[dict], s: dict | None = None) -> dict:

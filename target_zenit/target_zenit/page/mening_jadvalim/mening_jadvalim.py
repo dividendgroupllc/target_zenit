@@ -250,7 +250,6 @@ def kun_paneli(oqituvchi: str | None = None, kun_soni: int = 14) -> dict:
 		return natija
 
 	jy_nomlar = list({d["name"] for d, _ in nomzod})
-	sanalar = sorted({s for _, s in nomzod})
 
 	# Bekor qilingan / boshqaga berilgan darslarni chiqarib tashlash
 	ozg = {}
