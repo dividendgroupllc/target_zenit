@@ -180,8 +180,107 @@ def hammasi():
 		choraklar_ornat()
 	except Exception:
 		frappe.log_error("choraklar_ornat", frappe.get_traceback())
+	baholash_sozlash()
+	workspace_yorliqlari()
 	frappe.db.commit()
 	print("Dars jadvali setup tugadi.")
+
+
+# ------------------------------------------------- Baholash sozlamalari (zavuch uchun)
+# Standart baho turlari (vazn = chorak bahosi «Vaznli» hisoblanganda ishlatiladi)
+BAHO_TURLARI = [
+	("Og'zaki", "O", 1.0),
+	("Uy vazifa", "UV", 1.0),
+	("Mustaqil ish", "MI", 1.5),
+	("Nazorat ishi", "NI", 3.0),
+	("Chorak nazorati", "CHN", 3.0),
+]
+
+
+def baholash_sozlash():
+	"""«Baholash Sozlamalari» (Single) va standart «Baho Turi» ro'yxati — idempotent.
+	Zavuch bu yerda baho shkalasi, chorak bahosi usuli, kechikish va uy vazifa
+	qoidalarini belgilaydi."""
+	if not frappe.db.exists("DocType", "Baho Turi"):
+		return
+	for nom, qisqa, vazn in BAHO_TURLARI:
+		if not frappe.db.exists("Baho Turi", nom):
+			frappe.get_doc({
+				"doctype": "Baho Turi", "turi": nom, "qisqa": qisqa,
+				"vazn": vazn, "faol": 1,
+			}).insert(ignore_permissions=True)
+			print(f"Baho Turi yaratildi: {nom}")
+
+	# Single yozuv — birinchi marta standart qiymatlar bilan yaratiladi
+	if frappe.db.exists("DocType", "Baholash Sozlamalari") \
+			and not frappe.db.get_singles_value("Baholash Sozlamalari", "shkala"):
+		doc = frappe.get_single("Baholash Sozlamalari")
+		doc.shkala = "5 ballik"
+		doc.max_baho = 5
+		doc.otish_bahosi = 3
+		doc.past_baho = 3
+		doc.chorak_usuli = "O'rtacha"
+		doc.yaxlitlash = "Matematik"
+		doc.min_baho_soni = 3
+		doc.tuzatish_muddati_kun = 7
+		doc.kechikish_yoqilgan = 1
+		doc.kechikish_daqiqa = 10
+		doc.kechikish_yoqlik = 3
+		doc.uv_tekshirish = 1
+		doc.uv_default_max_ball = 5
+		doc.uv_bajarmaslik_limit = 2
+		doc.rag_qizil_ortacha = 3
+		doc.rag_sariq_ortacha = 4
+		doc.rag_qizil_davomat = 80
+		doc.rag_sariq_davomat = 90
+		doc.ketma_ket_past = 3
+		doc.trend_sezgirlik = 0.3
+		doc.save(ignore_permissions=True)
+		print("Baholash Sozlamalari yaratildi (5 ballik, o'rtacha)")
+	try:
+		from target_zenit.dars_jadvali import sozlamalar as _soz
+		_soz.kesh_tozalash()
+	except Exception:
+		pass
+
+
+# ----------------------------------------------------- Workspace yorliqlari
+YORLIQLAR = [
+	# (workspace, shortcut nomi, tur, link/doctype)
+	("Zavuch", "Baholash sozlamalari", "DocType", "Baholash Sozlamalari"),
+	("Zavuch", "Baho turlari", "DocType", "Baho Turi"),
+	("Zavuch", "Chorak baholari", "DocType", "Chorak Bahosi"),
+	("O'qituvchi", "Chorak baholari", "DocType", "Chorak Bahosi"),
+	("O'qituvchi", "Uy vazifa natijalari", "DocType", "Uy Vazifa Natijasi"),
+]
+
+
+def workspace_yorliqlari():
+	"""Zavuch va O'qituvchi panellariga baholash yorliqlari (idempotent)."""
+	import json as _json
+
+	for ws_name, nom, tur, link in YORLIQLAR:
+		if not frappe.db.exists("Workspace", ws_name) or not frappe.db.exists("DocType", link):
+			continue
+		ws = frappe.get_doc("Workspace", ws_name)
+		if any((sc.label or "") == nom for sc in ws.shortcuts):
+			continue
+		ws.append("shortcuts", {"label": nom, "type": tur, "link_to": link,
+		                        "doc_view": "" if tur == "DocType" else ""})
+		# content'ga ham qo'shamiz (panelda ko'rinishi uchun)
+		try:
+			content = _json.loads(ws.content or "[]")
+		except Exception:
+			content = []
+		if not any(c.get("data", {}).get("shortcut_name") == nom for c in content):
+			if not any(c.get("data", {}).get("text", "").find("Baholash") >= 0 for c in content):
+				content.append({"type": "header",
+				                "data": {"text": "<span class=\"h5\">Baholash</span>", "col": 12}})
+			content.append({"type": "shortcut", "data": {"shortcut_name": nom, "col": 3}})
+			ws.content = _json.dumps(content)
+		ws.flags.ignore_permissions = True
+		ws.save(ignore_permissions=True)
+		print(f"Workspace «{ws_name}» -> yorliq «{nom}»")
 
 
 # ---------------------------------------------------------------- Zavuch roli

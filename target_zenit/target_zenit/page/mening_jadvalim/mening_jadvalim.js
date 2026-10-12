@@ -38,9 +38,34 @@ class TZMeningJadvalim {
 		frappe.call({
 			method: `${MJ_M}.get_data`,
 			args: { oqituvchi: this.oqituvchi },
-			callback: (r) => { this.data = r.message || {}; this.render(); },
+			callback: (r) => { this.data = r.message || {}; this.render(); this.loadPanel(); },
 			error: () => this.body.html(`<div class="loading">Xatolik.</div>`),
 		});
+	}
+
+	// «Qoldirilgan ishlarim» + «Diqqat talab qiladi» — alohida (sahifa tez chiqishi uchun)
+	loadPanel() {
+		frappe.call({
+			method: `${MJ_M}.kun_paneli`,
+			args: { oqituvchi: this.oqituvchi },
+			callback: (r) => { this.panel = r.message || {}; this.renderPanel(); },
+		});
+	}
+
+	trendBelgi(t) { return t > 0 ? `<span class="tr up">▲</span>` : (t < 0 ? `<span class="tr dn">▼</span>` : ""); }
+
+	// «Qiladigan ishlarim», kun qaydnomasi va «Diqqat talab qiladi» — endi
+	// «Kunlik reja» (/app/kunlik-jadval) sahifasida. Bu sahifa faqat JADVAL.
+	renderPanel() {
+		const p = this.panel || {};
+		const qJami = p.qoldirilgan_jami || 0;
+		const dJami = p.diqqat_jami || 0;
+		const q = [];
+		if (qJami) q.push(`⚠️ ${qJami} ish qoldi`);
+		if (dJami) q.push(`🚩 ${dJami} o'quvchi diqqat talab qiladi`);
+		this.body.find(".sub-q").html(q.length
+			? ` · <a class="q-link" href="#">${q.join(" · ")} — kunlik rejada</a>` : "");
+		this.body.find(".q-link").on("click", (e) => { e.preventDefault(); frappe.set_route("kunlik-jadval"); });
 	}
 
 	render() {
@@ -57,44 +82,32 @@ class TZMeningJadvalim {
 			<div class="topbar">
 				<div>
 					<h1>${this.esc(d.oqituvchi_nomi || "Mening jadvalim")}</h1>
-					<div class="sub">${this.esc(d.versiya || "")} · haftalik ${d.haftalik_soat || 0} dars · bugun ${this.esc(d.bugun_kuni)}</div>
+					<div class="sub">${this.esc(d.versiya || "")} · haftalik ${d.haftalik_soat || 0} dars · bugun ${this.esc(d.bugun_kuni)}<span class="sub-q"></span></div>
 				</div>
 				<div class="spacer"></div>
 				${d.menejer ? `<select class="foqituvchi">
 					<option value="">— o'qituvchini tanlang —</option>
 					${(d.oqituvchilar || []).map((o) => `<option value="${this.esc(o.name)}" ${o.name === d.oqituvchi ? "selected" : ""}>${this.esc(o.instructor_name)}</option>`).join("")}
 				</select>` : ""}
+				<button class="refresh" data-act="mavzu" title="Butun chorak mavzularini bir martada biriktirish">📘 Mavzular</button>
 				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
 			</div>
 
-			<div class="card bugun">
-				<div class="box-t">Bugungi darslar — ${this.esc(d.bugun_kuni)}</div>
-				<div class="hint mini">Darsni belgilash uchun ustiga bosing</div>
-				${bugungi.length ? bugungi.map((x) => `
-					<div class="bugun-row clickable" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}" style="--h:${this.rang(x.fan)}">
-						<div class="vaqt"><b>${x.dars_raqami}</b><span>${this.esc(x.boshlanish)}–${this.esc(x.tugash)}</span></div>
-						<div class="info">
-							<div class="fan">${this.esc(x.fan)}</div>
-							<div class="guruh">${this.esc(x.guruh_nomi || x.guruh)}${x.sinflar ? ` · ${this.esc(x.sinflar)}` : ""}</div>
-							<div class="reja">${this.rejaInfo(x)}</div>
-							${this.ozgInfo(x)}
-						</div>
-						<div class="acts">
-							<button class="btn-jurnal" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}">📋 Baho/Davomat</button>
-								<button class="btn-belgila" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}">${x.bugun ? "✏️ Mavzu" : "📝 Mavzu"}</button>
-						</div>
-						<div class="chev">›</div>
-					</div>`).join("")
-					: `<div class="empty">Bugun dars yo'q</div>`}
+			<div class="card kunlik-cta">
+				<div class="kc-l">
+					<b>📌 Bugun — ${this.esc(d.bugun_kuni)}:</b> ${bugungi.length} dars
+					<span class="mini">kun qaydnomasi (nima o'tildi, nechta baho, uy vazifa) va qilinmagan ishlar «Kunlik reja»da</span>
+				</div>
+				<button class="kc-go" data-act="kunlik">Kunlik rejani ochish →</button>
 			</div>
 
-			${(d.cover_vazifalar || []).length ? `
+			${(d.cover_vazifalar || []).filter((c) => c.sana !== d.bugun_sana).length ? `
 			<div class="card cover-card">
-				<div class="box-t">🔄 O'rinbosarlik vazifalaringiz (shu hafta)</div>
-				${d.cover_vazifalar.map((c) => `
+				<div class="box-t">🔄 Zavuch yuklagan qo'shimcha darslar (shu hafta, boshqa kunlar)</div>
+				${d.cover_vazifalar.filter((c) => c.sana !== d.bugun_sana).map((c) => `
 					<div class="cv-row">
 						<div class="cv-when"><b>${this.esc(this.kunQisqa(c.kun))}</b> ${this.esc(this.dmy(c.sana))}<span>${this.esc(c.boshlanish)}–${this.esc(c.tugash)}</span></div>
-						<div class="cv-info"><b>${this.esc(c.fan)}</b> · ${this.esc(c.guruh_nomi)}<div class="mini">asl: ${this.esc(c.asl_oqituvchi_nomi || "—")}${c.sabab ? ` · ${this.esc(c.sabab)}` : ""}</div></div>
+						<div class="cv-info"><b>${this.esc(c.fan)}</b> · ${this.esc(c.guruh_nomi)}<div class="mini">asl o'qituvchi: ${this.esc(c.asl_oqituvchi_nomi || "—")}${c.sabab ? ` · ${this.esc(c.sabab)}` : ""}</div></div>
 					</div>`).join("")}
 			</div>` : ""}
 
@@ -115,22 +128,18 @@ class TZMeningJadvalim {
 			</div>
 		`);
 
+		if (this.panel) this.renderPanel();
 		this.body.find(`[data-act="reload"]`).on("click", () => this.load());
+		this.body.find(`[data-act="kunlik"]`).on("click", () => frappe.set_route("kunlik-jadval"));
+		this.body.find(`[data-act="mavzu"]`).on("click", () => {
+			if (!window.tz_mavzu_dialog) { frappe.show_alert({ message: "Sahifani yangilang (Ctrl+Shift+R)", indicator: "orange" }); return; }
+			window.tz_mavzu_dialog({ onsave: () => this.load() });
+		});
 		this.body.find(".foqituvchi").on("change", (e) => { this.oqituvchi = e.target.value; this.load(); });
-		// Dars qatoriga bosilganda — to'liq ma'lumot dialogi
-		this.body.find(".bugun-row.clickable, .w-row.clickable").on("click", (e) => {
+		// Darsga (bugungi karta yoki haftalik yacheyka) bosilsa — dars sessiyasi kokpiti
+		this.body.find(".today-card.clickable, .w-row.clickable").on("click", (e) => {
 			const r = $(e.currentTarget);
-			this.darsDetal(r.data("jy"), r.data("sana"));
-		});
-		this.body.find(".btn-belgila").on("click", (e) => {
-			e.stopPropagation();
-			const b = $(e.currentTarget);
-			this.darsDetal(b.data("jy"), b.data("sana"));
-		});
-		this.body.find(".btn-jurnal").on("click", (e) => {
-			e.stopPropagation();
-			const b = $(e.currentTarget);
-			this.jurnalDialog(b.data("jy"), b.data("sana"));
+			frappe.set_route("dars-sessiya", r.data("jy"), r.data("sana"));
 		});
 	}
 

@@ -1,0 +1,171 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:UV-{#####}",
+ "creation": "2026-10-12 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "jadval_yozuvi",
+  "sana",
+  "muddat",
+  "max_ball",
+  "tekshiriladi",
+  "column_break_1",
+  "guruh",
+  "fan",
+  "oqituvchi",
+  "chorak",
+  "section_1",
+  "vazifa",
+  "izoh",
+  "fayl"
+ ],
+ "fields": [
+  {
+   "fieldname": "jadval_yozuvi",
+   "fieldtype": "Link",
+   "label": "Dars (jadval yozuvi)",
+   "options": "Jadval Yozuvi",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "sana",
+   "fieldtype": "Date",
+   "label": "Sana",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "muddat",
+   "fieldtype": "Date",
+   "label": "Muddat (deadline)",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "max_ball",
+   "fieldtype": "Int",
+   "label": "Maksimal ball"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "guruh",
+   "fieldtype": "Link",
+   "label": "Guruh",
+   "options": "Student Group",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "fan",
+   "fieldtype": "Link",
+   "label": "Fan",
+   "options": "Course",
+   "in_standard_filter": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "oqituvchi",
+   "fieldtype": "Link",
+   "label": "O'qituvchi",
+   "options": "Instructor",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "chorak",
+   "fieldtype": "Link",
+   "label": "Chorak",
+   "options": "Academic Term",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "section_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "vazifa",
+   "fieldtype": "Text",
+   "label": "Vazifa",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Small Text",
+   "label": "Izoh / pояснение"
+  },
+  {
+   "fieldname": "fayl",
+   "fieldtype": "Attach",
+   "label": "Fayl ilova"
+  },
+  {
+   "default": "1",
+   "fieldname": "tekshiriladi",
+   "fieldtype": "Check",
+   "label": "Tekshiriladi",
+   "description": "Yoqilsa — keyingi darsда «kim bajardi / ball» ro'yxati chiqadi"
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-12 10:00:00.000000",
+ "module": "target_zenit",
+ "name": "Uy Vazifa",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Zavuch",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Academics User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Education Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Instructor",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "O'qituvchi",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,46 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:UVN-{#####}",
+ "creation": "2026-10-12 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "uy_vazifa", "student", "student_name", "column_break_1", "holat", "ball", "max_ball",
+  "section_2", "guruh", "fan", "sana", "column_break_2", "chorak", "oqituvchi", "izoh"
+ ],
+ "fields": [
+  {"fieldname": "uy_vazifa", "fieldtype": "Link", "label": "Uy vazifa", "options": "Uy Vazifa", "reqd": 1, "in_standard_filter": 1},
+  {"fieldname": "student", "fieldtype": "Link", "label": "O'quvchi", "options": "Student", "reqd": 1, "in_standard_filter": 1},
+  {"fieldname": "student_name", "fieldtype": "Data", "label": "O'quvchi ismi", "fetch_from": "student.student_name", "read_only": 1, "in_list_view": 1},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"default": "Bajardi", "fieldname": "holat", "fieldtype": "Select", "label": "Holat", "options": "Bajardi\nQisman\nBajarmadi", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "ball", "fieldtype": "Int", "label": "Ball", "in_list_view": 1},
+  {"fieldname": "max_ball", "fieldtype": "Int", "label": "Max ball", "fetch_from": "uy_vazifa.max_ball", "read_only": 1},
+  {"fieldname": "section_2", "fieldtype": "Section Break"},
+  {"fieldname": "guruh", "fieldtype": "Link", "label": "Guruh", "options": "Student Group", "in_standard_filter": 1},
+  {"fieldname": "fan", "fieldtype": "Link", "label": "Fan", "options": "Course", "in_standard_filter": 1},
+  {"fieldname": "sana", "fieldtype": "Date", "label": "Vazifa sanasi", "in_list_view": 1},
+  {"fieldname": "column_break_2", "fieldtype": "Column Break"},
+  {"fieldname": "chorak", "fieldtype": "Link", "label": "Chorak", "options": "Academic Term", "in_standard_filter": 1},
+  {"fieldname": "oqituvchi", "fieldtype": "Link", "label": "O'qituvchi", "options": "Instructor"},
+  {"fieldname": "izoh", "fieldtype": "Small Text", "label": "Izoh"}
+ ],
+ "links": [],
+ "modified": "2026-10-12 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Uy Vazifa Natijasi",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "print": 1, "share": 1},
+  {"role": "Zavuch", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "print": 1},
+  {"role": "Academics User", "read": 1, "write": 1, "create": 1, "delete": 1},
+  {"role": "Education Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+  {"role": "Instructor", "read": 1, "write": 1, "create": 1, "delete": 1},
+  {"role": "O'qituvchi", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "print": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

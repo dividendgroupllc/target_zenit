@@ -1,0 +1,50 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:CHB-{#####}",
+ "creation": "2026-10-12 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "student", "student_name", "fan", "guruh", "column_break_1", "chorak", "oqituvchi",
+  "section_baho", "baho", "hisoblangan", "usul", "column_break_2", "qolda", "baho_soni", "ortacha",
+  "section_izoh", "izoh"
+ ],
+ "fields": [
+  {"fieldname": "student", "fieldtype": "Link", "label": "O'quvchi", "options": "Student", "reqd": 1, "in_standard_filter": 1},
+  {"fieldname": "student_name", "fieldtype": "Data", "label": "O'quvchi ismi", "fetch_from": "student.student_name", "read_only": 1, "in_list_view": 1},
+  {"fieldname": "fan", "fieldtype": "Link", "label": "Fan", "options": "Course", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "guruh", "fieldtype": "Link", "label": "Guruh", "options": "Student Group", "in_standard_filter": 1},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "chorak", "fieldtype": "Link", "label": "Chorak", "options": "Academic Term", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "oqituvchi", "fieldtype": "Link", "label": "O'qituvchi", "options": "Instructor", "in_standard_filter": 1},
+  {"fieldname": "section_baho", "fieldtype": "Section Break", "label": "Chorak bahosi"},
+  {"fieldname": "baho", "fieldtype": "Int", "label": "Chorak bahosi", "in_list_view": 1, "description": "Yakuniy (jurnalda turadigan) baho"},
+  {"fieldname": "hisoblangan", "fieldtype": "Float", "label": "Tizim hisobladi", "precision": "2", "read_only": 1},
+  {"fieldname": "usul", "fieldtype": "Select", "label": "Usul", "options": "O'rtacha\nVaznli\nQo'lda", "read_only": 1},
+  {"fieldname": "column_break_2", "fieldtype": "Column Break"},
+  {"default": "0", "fieldname": "qolda", "fieldtype": "Check", "label": "Qo'lda o'zgartirilgan", "read_only": 1},
+  {"fieldname": "baho_soni", "fieldtype": "Int", "label": "Ballar soni", "read_only": 1},
+  {"fieldname": "ortacha", "fieldtype": "Float", "label": "Oddiy o'rtacha", "precision": "2", "read_only": 1},
+  {"fieldname": "section_izoh", "fieldtype": "Section Break"},
+  {"fieldname": "izoh", "fieldtype": "Small Text", "label": "Izoh"}
+ ],
+ "links": [],
+ "modified": "2026-10-12 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Chorak Bahosi",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "print": 1, "share": 1},
+  {"role": "Zavuch", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "print": 1},
+  {"role": "Academics User", "read": 1, "write": 1, "create": 1},
+  {"role": "Education Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+  {"role": "Instructor", "read": 1, "write": 1, "create": 1},
+  {"role": "O'qituvchi", "read": 1, "write": 1, "create": 1, "report": 1, "export": 1, "print": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

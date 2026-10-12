@@ -171,3 +171,153 @@
 .jur-tbl .j-baho { width:60px; border:1px solid var(--border-color,#ddd); border-radius:7px; padding:4px 6px; font-size:13px; text-align:center; }
 .jur-tbl .j-baho:disabled { background:#f3f4f6; }
 .jur-hint { font-size:11.5px; color:#8a9099; margin-bottom:8px; }
+
+/* Bugungi guruh kartachalari (qayta dizayn) */
+.tz-mening .today-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.tz-mening .today-card { border: 1px solid var(--line, #e3e8f0); border-left: 4px solid hsl(var(--h) 55% 50%); border-radius: 11px; padding: 10px 12px; cursor: pointer; background: hsl(var(--h) 62% 96%); transition: transform .07s, box-shadow .07s; }
+[data-theme="dark"] .tz-mening .today-card { background: hsl(var(--h) 40% 15%); }
+.tz-mening .today-card:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.tz-mening .today-card.t-bekor { opacity: .6; } .tz-mening .today-card.t-bekor .t-guruh { text-decoration: line-through; }
+.tz-mening .today-card .t-time { font-size: 10.5px; color: var(--muted); }
+.tz-mening .today-card .t-guruh { font-size: 16px; font-weight: 800; margin-top: 1px; }
+.tz-mening .today-card .t-fan { font-size: 12.5px; font-weight: 600; color: hsl(var(--h) 55% 32%); }
+[data-theme="dark"] .tz-mening .today-card .t-fan { color: hsl(var(--h) 65% 78%); }
+.tz-mening .today-card .t-reja { font-size: 10.5px; color: var(--muted); margin-top: 4px; min-height: 13px; }
+.tz-mening .today-card .t-ok { color: #1a7f37; font-weight: 600; }
+
+/* ---------- Qoldirilgan ishlar (Kundalik uslubi) ---------- */
+.tz-mening .card-warn { border-left: 3px solid #f0a020; }
+.tz-mening .ql { display: flex; flex-direction: column; }
+.tz-mening .q-row {
+	display: grid; grid-template-columns: 22px 62px minmax(120px, 1fr) minmax(160px, 2fr) 72px;
+	align-items: center; gap: 8px; padding: 6px 8px; border-top: 1px solid var(--border-color);
+	font-size: 12px;
+}
+.tz-mening .q-row:first-child { border-top: 0; }
+.tz-mening .q-row.clickable { cursor: pointer; }
+.tz-mening .q-row.clickable:hover { background: var(--bg-light-gray, #f4f5f6); }
+.tz-mening .q-ik { font-size: 13px; }
+.tz-mening .q-d { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tz-mening .q-f { font-weight: 600; }
+.tz-mening .q-m { color: #b06000; }
+.tz-mening .q-go { text-align: right; color: var(--text-muted); font-size: 11px; opacity: 0; }
+.tz-mening .q-row:hover .q-go { opacity: 1; }
+
+/* ---------- Diqqat talab qiladi ---------- */
+.tz-mening .dl { display: flex; flex-direction: column; }
+.tz-mening .d-row {
+	display: grid; grid-template-columns: 10px minmax(120px, 1.2fr) minmax(100px, 1fr) 64px 2fr;
+	align-items: center; gap: 8px; padding: 6px 8px; border-top: 1px solid var(--border-color);
+	font-size: 12px;
+}
+.tz-mening .d-row:first-child { border-top: 0; }
+.tz-mening .d-dot { width: 8px; height: 8px; border-radius: 50%; background: #8bc34a; }
+.tz-mening .d-row.r-sariq .d-dot { background: #f5b301; }
+.tz-mening .d-row.r-qizil .d-dot { background: #e4572e; }
+.tz-mening .d-nm { font-weight: 600; }
+.tz-mening .d-g { color: var(--text-muted); }
+.tz-mening .d-b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.tz-mening .tr.up { color: #2e9b57; }
+.tz-mening .tr.dn { color: #e4572e; }
+.tz-mening .d-fl { display: flex; flex-wrap: wrap; gap: 4px; }
+.tz-mening .fl {
+	background: var(--bg-light-gray, #f4f5f6); border: 1px solid var(--border-color);
+	border-radius: 10px; padding: 1px 7px; font-size: 10.5px; color: var(--text-muted);
+}
+
+/* ===================== BUGUN — kun qaydnomasi (2026-10-12) ===================== */
+.tz-mening .bugun-card2 { padding-bottom: 6px; }
+
+/* Kun yakuni — raqamlar qatori */
+.tz-mening .ky-strip {
+	display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 12px;
+}
+.tz-mening .ky {
+	display: flex; flex-direction: column; align-items: flex-start;
+	border: 1px solid var(--line, #e3e8f0); border-radius: 10px;
+	padding: 6px 11px; min-width: 86px; background: var(--card, #fff);
+}
+.tz-mening .ky b { font-size: 17px; font-weight: 800; line-height: 1.1; }
+.tz-mening .ky span { font-size: 10.5px; color: var(--muted, #8a9099); }
+.tz-mening .ky.ok { background: #f2fbf4; border-color: #bfe3c8; }
+.tz-mening .ky.ok b { color: #1a7f37; }
+.tz-mening .ky.warn { background: #fff8e8; border-color: #e8d59a; }
+.tz-mening .ky.warn b { color: #b06000; }
+.tz-mening .ky.extra { background: #eef4ff; border-color: #bed0f7; }
+.tz-mening .ky.extra b { color: #2f6fed; }
+
+.tz-mening .extra-ban {
+	background: #eef4ff; border: 1px solid #bed0f7; color: #1e4fb8;
+	border-radius: 10px; padding: 7px 12px; font-size: 12.5px; margin-bottom: 10px;
+}
+
+/* Dars qatori — batafsil */
+.tz-mening .bd-list { display: flex; flex-direction: column; gap: 9px; }
+.tz-mening .bd-row {
+	display: grid; grid-template-columns: 74px 1fr; gap: 12px;
+	border: 1px solid var(--line, #e3e8f0); border-left: 4px solid #cfd6e0;
+	border-radius: 12px; padding: 10px 12px; cursor: pointer; background: var(--card, #fff);
+	transition: box-shadow .08s, transform .08s;
+}
+.tz-mening .bd-row:hover { box-shadow: 0 3px 12px rgba(0,0,0,.09); transform: translateY(-1px); }
+.tz-mening .bd-row.b-hozir { border-left-color: #2f6fed; background: #f6f9ff; }
+.tz-mening .bd-row.b-tugal { border-left-color: #58b56e; }
+.tz-mening .bd-row.b-qolgan { border-left-color: #f0a020; background: #fffdf6; }
+.tz-mening .bd-row.b-kelajak { border-left-color: #cfd6e0; }
+.tz-mening .bd-row.b-bekor { opacity: .6; cursor: default; border-left-color: #d8443c; }
+.tz-mening .bd-row.b-bekor .bd-g { text-decoration: line-through; }
+.tz-mening .bd-row.b-berilgan { opacity: .75; border-left-color: #9aa3b2; }
+
+.tz-mening .bd-time { text-align: center; border-right: 1px solid var(--line, #eef1f4); padding-right: 8px; }
+.tz-mening .bd-no { font-size: 10px; color: var(--muted, #8a9099); text-transform: uppercase; }
+.tz-mening .bd-hh { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tz-mening .bd-mm { font-size: 11px; color: var(--muted, #8a9099); font-variant-numeric: tabular-nums; }
+
+.tz-mening .bd-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.tz-mening .bd-g { font-size: 16px; font-weight: 800; }
+.tz-mening .bd-f { font-size: 13px; font-weight: 600; color: #2f6fed; }
+.tz-mening .bd-x, .tz-mening .bd-n { font-size: 11px; color: var(--muted, #8a9099); }
+.tz-mening .bg { font-size: 11px; border-radius: 10px; padding: 1px 8px; font-weight: 600; }
+.tz-mening .bg.hozir { background: #2f6fed; color: #fff; }
+.tz-mening .bg.extra { background: #eef4ff; color: #1e4fb8; border: 1px solid #bed0f7; }
+.tz-mening .bg.bekor { background: #fde7e5; color: #b3271f; }
+.tz-mening .bg.berilgan { background: #f1f3f6; color: #5c6572; }
+
+.tz-mening .bd-lines { display: flex; flex-direction: column; gap: 3px; }
+.tz-mening .bd-l { display: grid; grid-template-columns: 18px 72px 1fr; gap: 6px; align-items: baseline; font-size: 12.5px; }
+.tz-mening .bd-l .ik { font-size: 12px; }
+.tz-mening .bd-l .lb { color: var(--muted, #8a9099); font-size: 11.5px; }
+.tz-mening .bd-l .vl b { font-weight: 700; }
+.tz-mening .bd-l .vl b.r { color: #d8443c; } .tz-mening .bd-l .vl b.y { color: #b06000; }
+.tz-mening .bd-l .iz { font-style: italic; }
+.tz-mening .warn-t { color: #b06000; }
+@media (max-width: 760px) {
+	.tz-mening .bd-row { grid-template-columns: 56px 1fr; }
+	.tz-mening .bd-l { grid-template-columns: 16px 1fr; }
+	.tz-mening .bd-l .lb { display: none; }
+}
+
+/* Checklist chiplari */
+.tz-mening .bd-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; align-items: center; }
+.tz-mening .chip {
+	font-size: 11px; border-radius: 10px; padding: 2px 9px; border: 1px solid var(--line, #e3e8f0);
+}
+.tz-mening .chip.ok { background: #f2fbf4; border-color: #bfe3c8; color: #1a7f37; font-weight: 600; }
+.tz-mening .chip.no { background: var(--card, #fff); color: #9aa3b2; }
+.tz-mening .chip.rem { background: #fff8e8; border-color: #e8d59a; color: #b06000; }
+.tz-mening .bd-go { margin-left: auto; font-size: 11px; color: var(--muted, #8a9099); opacity: 0; }
+.tz-mening .bd-row:hover .bd-go { opacity: 1; }
+
+/* Kunlik rejaga yo'naltiruvchi eslatma (qiladigan ishlar o'sha yerda) */
+.tz-mening .sub .q-link { color: #b06000; font-weight: 600; text-decoration: none; }
+.tz-mening .sub .q-link:hover { text-decoration: underline; }
+
+/* «Kunlik reja»ga o'tish chaqiruvi (kun qaydnomasi shu yerda emas) */
+.tz-mening .kunlik-cta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tz-mening .kunlik-cta .kc-l { flex: 1; min-width: 200px; font-size: 13px; }
+.tz-mening .kunlik-cta .kc-l .mini { display: block; margin-top: 2px; }
+.tz-mening .kunlik-cta .kc-go {
+	background: #2f6fed; color: #fff; border: none; border-radius: 9px;
+	padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.tz-mening .kunlik-cta .kc-go:hover { filter: brightness(.93); }

@@ -33,6 +33,8 @@ app_include_js = [
 	"/assets/target_zenit/js/pl_pdf_button.js?v=20260825",
 	"/assets/target_zenit/js/balance_sheet_pdf.js?v=20260825",
 	"/assets/target_zenit/js/payment_month.js?v=20260921",
+	# O'quv reja: «Chorak mavzularini biriktirish» dialogi (tz_mavzu_dialog)
+	"/assets/target_zenit/js/mavzu_import.js?v=20261012",
 ]
 
 # include js, css files in header of web template

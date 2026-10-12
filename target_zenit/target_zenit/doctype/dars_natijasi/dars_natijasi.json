@@ -9,7 +9,9 @@
   "student",
   "student_name",
   "davomat",
+  "kechikish_min",
   "baho",
+  "baho_turi",
   "column_break_1",
   "jadval_yozuvi",
   "guruh",
@@ -42,7 +44,7 @@
    "fieldname": "davomat",
    "fieldtype": "Select",
    "label": "Davomat",
-   "options": "Keldi\nKelmadi\nKasal\nQatnashmadi",
+   "options": "Keldi\nKechikdi\nKelmadi\nKasal\nQatnashmadi",
    "default": "Keldi",
    "reqd": 1,
    "in_list_view": 1,
@@ -53,7 +55,7 @@
    "fieldtype": "Int",
    "label": "Baho",
    "in_list_view": 1,
-   "description": "Faqat 'Keldi' bo'lsa"
+   "description": "Faqat 'Keldi' yoki 'Kechikdi' bo'lsa"
   },
   {
    "fieldname": "column_break_1",
@@ -115,6 +117,21 @@
    "fieldname": "izoh",
    "fieldtype": "Small Text",
    "label": "Izoh"
+  },
+  {
+   "fieldname": "kechikish_min",
+   "fieldtype": "Int",
+   "label": "Kechikish (daqiqa)",
+   "depends_on": "eval:doc.davomat=='Kechikdi'",
+   "description": "Dars boshlanganidan necha daqiqa keyin kelgani"
+  },
+  {
+   "fieldname": "baho_turi",
+   "fieldtype": "Link",
+   "label": "Baho turi",
+   "options": "Baho Turi",
+   "in_standard_filter": 1,
+   "description": "Chorak bahosi «Vaznli» hisoblansa — vazn shu turdan olinadi"
   }
  ],
  "links": [],

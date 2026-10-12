@@ -9,7 +9,12 @@ import frappe
 from frappe import _
 from frappe.utils import getdate, nowdate
 
-DAVOMAT = ("Keldi", "Kelmadi", "Kasal", "Qatnashmadi")
+from target_zenit.dars_jadvali import sozlamalar as soz
+
+# Davomat holatlari — sozlamalardan (kechikish yoqilgan/o'chirilgan)
+DAVOMAT = soz.DAVOMAT_HAMMASI
+BORLIK = soz.BORLIK   # ("Keldi", "Kechikdi") — darsда bo'lgan, baho qo'yish mumkin
+YOQLIK = soz.YOQLIK   # ("Kelmadi", "Kasal", "Qatnashmadi")
 MENEJER = {"system manager", "zavuch", "academics user", "education manager"}
 
 
@@ -64,7 +69,8 @@ def dars_oquvchilari(jadval_yozuvi: str, sana: str | None = None) -> dict:
 	mavjud = {r.student: r for r in frappe.get_all(
 		"Dars Natijasi",
 		filters={"jadval_yozuvi": jadval_yozuvi, "sana": getdate(sana)},
-		fields=["name", "student", "davomat", "baho", "izoh"], limit_page_length=0)}
+		fields=["name", "student", "davomat", "baho", "izoh", "kechikish_min", "baho_turi",
+		        "modified"], limit_page_length=0)}
 
 	qatorlar = []
 	for o in oquvchilar:
@@ -75,6 +81,8 @@ def dars_oquvchilari(jadval_yozuvi: str, sana: str | None = None) -> dict:
 			"davomat": m.davomat if m else "Keldi",
 			"baho": m.baho if m else None,
 			"izoh": m.izoh if m else None,
+			"kechikish_min": m.kechikish_min if m else None,
+			"baho_turi": m.baho_turi if m else None,
 			"saqlangan": bool(m),
 		})
 	return {
@@ -83,6 +91,8 @@ def dars_oquvchilari(jadval_yozuvi: str, sana: str | None = None) -> dict:
 		"kun": jy.kun, "dars_raqami": jy.dars_raqami, "sana": str(sana),
 		"chorak": _chorak(sana),
 		"oquvchilar": qatorlar,
+		"sozlamalar": soz.olish(),
+		"tuzatish_mumkin": soz.tuzatish_mumkinmi(sana, menejer=_menejermi()),
 	}
 
 
@@ -97,6 +107,11 @@ def natija_saqla(jadval_yozuvi: str, sana: str, qatorlar) -> dict:
 	if not jy:
 		frappe.throw(_("Dars topilmadi."))
 	_ruxsat(jy.oqituvchi)
+	s = soz.olish()
+	menejer = _menejermi()
+	if not soz.tuzatish_mumkinmi(sana, menejer=menejer, s=s):
+		frappe.throw(_("Bu darsning bahosini o'zgartirish muddati o'tgan ({0} kun). "
+		               "Zavuchga murojaat qiling.").format(s.get("tuzatish_muddati_kun")))
 	chorak = _chorak(sana)
 	n = 0
 	for q in qatorlar:
@@ -104,13 +119,23 @@ def natija_saqla(jadval_yozuvi: str, sana: str, qatorlar) -> dict:
 		if not student:
 			continue
 		davomat = q.get("davomat") or "Keldi"
+		if davomat == "Kechikdi" and not s.get("kechikish_yoqilgan"):
+			davomat = "Keldi"
+		if davomat not in soz.DAVOMAT_HAMMASI:
+			davomat = "Keldi"
 		baho = q.get("baho")
-		baho = int(baho) if (baho not in (None, "", 0) and davomat == "Keldi") else None
+		# Baho faqat darsда bo'lganlarga (Keldi/Kechikdi)
+		baho = int(baho) if (baho not in (None, "", 0) and davomat in soz.BORLIK) else None
+		if baho and s.get("max_baho") and baho > s["max_baho"]:
+			frappe.throw(_("Baho {0} dan katta bo'lishi mumkin emas (shkala: {1}).").format(
+				s["max_baho"], s.get("shkala")))
+		kech = q.get("kechikish_min")
+		kech = int(kech) if (davomat == "Kechikdi" and kech not in (None, "", 0)) else None
 		mavjud = frappe.db.get_value(
 			"Dars Natijasi", {"jadval_yozuvi": jadval_yozuvi, "sana": getdate(sana), "student": student}, "name")
-		# "Belgilanmagan = Keldi": Keldi + baho yo'q => yozuv saqlanmaydi
-		# (faqat kelmaganlar va baholar yoziladi). Eski bo'sh yozuv bo'lsa — o'chiriladi.
-		if davomat == "Keldi" and not baho:
+		# "Belgilanmagan = Keldi": Keldi + baho yo'q + izoh yo'q => yozuv saqlanmaydi
+		# (faqat kelmaganlar, kechikkanlar va baholar yoziladi). Eski bo'sh yozuv — o'chiriladi.
+		if davomat == "Keldi" and not baho and not (q.get("izoh") or "").strip():
 			if mavjud:
 				frappe.delete_doc("Dars Natijasi", mavjud, ignore_permissions=True)
 			continue
@@ -118,6 +143,7 @@ def natija_saqla(jadval_yozuvi: str, sana: str, qatorlar) -> dict:
 			"student": student, "jadval_yozuvi": jadval_yozuvi, "guruh": jy.guruh,
 			"fan": jy.fan, "oqituvchi": jy.oqituvchi, "sana": getdate(sana),
 			"chorak": chorak, "davomat": davomat, "baho": baho, "izoh": q.get("izoh"),
+			"kechikish_min": kech, "baho_turi": q.get("baho_turi"),
 		}
 		if mavjud:
 			d = frappe.get_doc("Dars Natijasi", mavjud)
@@ -162,10 +188,11 @@ def guruh_hisobot(guruh: str, chorak: str | None = None, fan: str | None = None)
 	for r in rows:
 		a = agg.setdefault(r.student, {
 			"student": r.student, "student_name": r.student_name,
-			"baholar": [], "keldi": 0, "kelmadi": 0, "kasal": 0, "qatnashmadi": 0})
+			"baholar": [], "keldi": 0, "kechikdi": 0, "kelmadi": 0, "kasal": 0, "qatnashmadi": 0})
 		if r.baho:
 			a["baholar"].append(r.baho)
-		key = {"Keldi": "keldi", "Kelmadi": "kelmadi", "Kasal": "kasal", "Qatnashmadi": "qatnashmadi"}.get(r.davomat)
+		key = {"Keldi": "keldi", "Kechikdi": "kechikdi", "Kelmadi": "kelmadi",
+		       "Kasal": "kasal", "Qatnashmadi": "qatnashmadi"}.get(r.davomat)
 		if key:
 			a[key] += 1
 	natija = []
@@ -275,10 +302,12 @@ def oquvchi_karta(student: str) -> dict:
 		fanlar.add(r.fan)
 		ch = r.chorak or "—"
 		choraklar_used.add(ch)
-		c = cells.setdefault((r.fan, ch), {"baholar": [], "kelmadi": 0, "kasal": 0, "qatnashmadi": 0})
+		c = cells.setdefault((r.fan, ch), {"baholar": [], "kechikdi": 0, "kelmadi": 0,
+		                                   "kasal": 0, "qatnashmadi": 0})
 		if r.baho:
 			c["baholar"].append(r.baho)
-		k = {"Kelmadi": "kelmadi", "Kasal": "kasal", "Qatnashmadi": "qatnashmadi"}.get(r.davomat)
+		k = {"Kechikdi": "kechikdi", "Kelmadi": "kelmadi", "Kasal": "kasal",
+		     "Qatnashmadi": "qatnashmadi"}.get(r.davomat)
 		if k:
 			c[k] += 1
 
@@ -296,6 +325,7 @@ def oquvchi_karta(student: str) -> dict:
 				qator["choraklar"].append({
 					"ortacha": round(sum(bh) / len(bh), 1) if bh else None,
 					"baho_soni": len(bh), "kelmadi": c["kelmadi"],
+					"kechikdi": c["kechikdi"],
 					"kasal": c["kasal"], "qatnashmadi": c["qatnashmadi"],
 				})
 			else:
@@ -353,3 +383,185 @@ def choraklar_ornat():
 				"term_start_date": b, "term_end_date": e,
 			}).insert(ignore_permissions=True)
 	frappe.db.commit()
+
+
+@frappe.whitelist()
+def oquvchi_toliq(student: str, chorak: str | None = None, fan: str | None = None,
+                  limit: int = 300) -> dict:
+	"""O'quvchi haqida HAMMA ma'lumot — dars kokpitida ism ustiga bosilganda.
+
+	Qaytaradi: shaxsiy ma'lumot + ko'rsatkichlar + fan bo'yicha xulosa +
+	baholar/davomat tarixi (qachon, qaysi fandan, qaysi darsда, **qaysi mavzu uchun**,
+	qanday turdagi baho, izoh) + uy vazifa tarixi.
+	"""
+	if not _menejermi() and not _mening_instructorim():
+		frappe.throw(_("Ruxsat yo'q."), frappe.PermissionError)
+	s = soz.olish()
+
+	st = frappe.db.get_value(
+		"Student", student,
+		["name", "student_name", "image", "student_mobile_number", "student_email_id",
+		 "date_of_birth", "joining_date"], as_dict=True) or {}
+
+	# Guruhlar (sinf/to'garak) va jurnal raqami
+	guruhlar = []
+	for r in frappe.get_all(
+		"Student Group Student", filters={"student": student, "active": 1},
+		fields=["parent", "group_roll_number"], limit_page_length=0):
+		nomi = frappe.db.get_value("Student Group", r.parent, "student_group_name") or r.parent
+		guruhlar.append({"guruh": r.parent, "nomi": nomi, "roll": r.group_roll_number})
+
+	# Ota-ona (bo'lsa)
+	vasiylar = []
+	try:
+		for g in frappe.get_all(
+			"Student Guardian", filters={"parent": student, "parenttype": "Student"},
+			fields=["guardian", "guardian_name", "relation"], limit_page_length=0):
+			tel = frappe.db.get_value("Guardian", g.guardian, "mobile_number")
+			vasiylar.append({"ism": g.guardian_name or g.guardian,
+			                 "aloqa": g.relation, "tel": tel})
+	except Exception:
+		pass
+
+	# ------------------------------------------------ baholar / davomat tarixi
+	filtr = {"student": student}
+	if chorak:
+		filtr["chorak"] = chorak
+	if fan:
+		filtr["fan"] = fan
+	natijalar = frappe.get_all(
+		"Dars Natijasi", filters=filtr,
+		fields=["name", "sana", "fan", "guruh", "davomat", "baho", "baho_turi",
+		        "kechikish_min", "izoh", "jadval_yozuvi", "chorak", "oqituvchi", "modified"],
+		order_by="sana desc", limit_page_length=int(limit))
+
+	# Mavzu: shu guruh+fan+sana bo'yicha o'tilgan dars
+	mavzu_map = {}
+	if natijalar:
+		juft = {(r.guruh, r.fan) for r in natijalar if r.guruh and r.fan}
+		sanalar = list({str(r.sana) for r in natijalar})
+		for g, f in juft:
+			for b in frappe.get_all(
+				"Dars Bajarilishi",
+				filters={"guruh": g, "fan": f, "sana": ["in", sanalar]},
+				fields=["sana", "mavzu", "tartib", "holat"], limit_page_length=0):
+				mavzu_map[(g, f, str(b.sana))] = b
+
+	# Dars slotining vaqti / raqami
+	jy_map = {}
+	jylar = list({r.jadval_yozuvi for r in natijalar if r.jadval_yozuvi})
+	if jylar:
+		for j in frappe.get_all(
+			"Jadval Yozuvi", filters={"name": ["in", jylar]},
+			fields=["name", "dars_raqami", "boshlanish", "tugash", "kun", "xona", "guruh_nomi"],
+			limit_page_length=0):
+			jy_map[j.name] = j
+
+	KUN_NOM = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+	tarix = []
+	for r in natijalar:
+		j = jy_map.get(r.jadval_yozuvi) or {}
+		b = mavzu_map.get((r.guruh, r.fan, str(r.sana))) or {}
+		tarix.append({
+			"sana": str(r.sana),
+			"kun": j.get("kun") or KUN_NOM[getdate(r.sana).weekday()],
+			"fan": r.fan,
+			"guruh_nomi": j.get("guruh_nomi") or r.guruh,
+			"dars_raqami": j.get("dars_raqami"),
+			"vaqt": _vaqt_qisqa(j.get("boshlanish")),
+			"xona": j.get("xona"),
+			"mavzu": b.get("mavzu"),
+			"mavzu_tartib": b.get("tartib"),
+			"davomat": r.davomat,
+			"kechikish_min": r.kechikish_min,
+			"baho": r.baho,
+			"baho_turi": r.baho_turi,
+			"izoh": r.izoh,
+			"chorak": r.chorak,
+			"oqituvchi": r.oqituvchi,
+		})
+
+	# ------------------------------------------------ fan bo'yicha xulosa
+	xulosa = {}
+	for t in tarix:
+		x = xulosa.setdefault(t["fan"], {
+			"fan": t["fan"], "ballar": [], "yoqlik": 0, "kechikish": 0, "darslar": 0})
+		x["darslar"] += 1
+		if t["baho"]:
+			x["ballar"].append(t["baho"])
+		if t["davomat"] in soz.YOQLIK:
+			x["yoqlik"] += 1
+		elif t["davomat"] == "Kechikdi":
+			x["kechikish"] += 1
+
+	# Uy vazifa bajarmagani (fan bo'yicha)
+	uv_filtr = {"student": student}
+	if chorak:
+		uv_filtr["chorak"] = chorak
+	if fan:
+		uv_filtr["fan"] = fan
+	uy_vazifalar = []
+	uv_yoq = {}
+	for r in frappe.get_all(
+		"Uy Vazifa Natijasi", filters=uv_filtr,
+		fields=["uy_vazifa", "fan", "sana", "holat", "ball", "max_ball", "izoh"],
+		order_by="sana desc", limit_page_length=100):
+		vazifa = frappe.db.get_value("Uy Vazifa", r.uy_vazifa, "vazifa")
+		uy_vazifalar.append({
+			"sana": str(r.sana) if r.sana else None, "fan": r.fan, "vazifa": vazifa,
+			"holat": r.holat, "ball": r.ball, "max_ball": r.max_ball, "izoh": r.izoh,
+		})
+		if r.holat == "Bajarmadi":
+			uv_yoq[r.fan] = uv_yoq.get(r.fan, 0) + 1
+
+	fanlar = []
+	for x in xulosa.values():
+		bh = x.pop("ballar")
+		# Ballar sana bo'yicha o'sish tartibida kerak (trend uchun)
+		o_bh = [t["baho"] for t in reversed(tarix) if t["fan"] == x["fan"] and t["baho"]]
+		k = soz.korsatkich(o_bh, darslar=x["darslar"], yoqlik=x["yoqlik"],
+		                   kechikish=x["kechikish"], uv_bajarmagan=uv_yoq.get(x["fan"], 0), s=s)
+		x.update({
+			"baho_soni": len(bh),
+			"ortacha": k["ortacha"], "trend": k["trend"], "rang": k["rang"],
+			"davomat_foiz": k["davomat_foiz"], "bayroqlar": k["bayroqlar"],
+			"uv_bajarmagan": uv_yoq.get(x["fan"], 0),
+			"ballar": o_bh[-12:],
+		})
+		fanlar.append(x)
+	fanlar.sort(key=lambda x: x["fan"] or "")
+
+	# Umumiy ko'rsatkich (hamma fan)
+	hamma_ball = [t["baho"] for t in reversed(tarix) if t["baho"]]
+	umumiy = soz.korsatkich(
+		hamma_ball, darslar=len(tarix),
+		yoqlik=sum(1 for t in tarix if t["davomat"] in soz.YOQLIK),
+		kechikish=sum(1 for t in tarix if t["davomat"] == "Kechikdi"),
+		uv_bajarmagan=sum(uv_yoq.values()), s=s)
+
+	# Chorak baholari (qo'yilgan bo'lsa)
+	chorak_baholari = frappe.get_all(
+		"Chorak Bahosi", filters={"student": student},
+		fields=["fan", "chorak", "baho", "hisoblangan", "qolda"], limit_page_length=0)
+
+	return {
+		"student": st, "guruhlar": guruhlar, "vasiylar": vasiylar,
+		"chorak": chorak, "fan": fan,
+		"choraklar": choraklar(),
+		"umumiy": umumiy,
+		"fanlar": fanlar,
+		"tarix": tarix,
+		"uy_vazifalar": uy_vazifalar,
+		"chorak_baholari": chorak_baholari,
+		"sozlamalar": s,
+	}
+
+
+def _vaqt_qisqa(v) -> str:
+	"""Time/timedelta -> 'HH:MM'."""
+	if not v:
+		return ""
+	if hasattr(v, "total_seconds"):
+		jami = int(v.total_seconds())
+		return f"{jami // 3600:02d}:{(jami % 3600) // 60:02d}"
+	return str(v)[:5]
