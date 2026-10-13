@@ -23,14 +23,10 @@ def _menejermi() -> bool:
 
 
 def _mening_instructorim() -> str | None:
-	user = frappe.session.user
-	emp = frappe.db.get_value("Employee", {"user_id": user}, "name")
-	if emp:
-		ins = frappe.db.get_value("Instructor", {"employee": emp}, "name")
-		if ins:
-			return ins
-	full_name = frappe.db.get_value("User", user, "full_name")
-	return frappe.db.get_value("Instructor", {"instructor_name": full_name}, "name")
+	"""Instructor'ni ID bo'yicha aniqlaydi (ism o'zgarishiga chidamli) — ism_sync.py."""
+	from target_zenit.ism_sync import joriy_instructor
+
+	return joriy_instructor()
 
 
 def _ruxsat(jy_oqituvchi):

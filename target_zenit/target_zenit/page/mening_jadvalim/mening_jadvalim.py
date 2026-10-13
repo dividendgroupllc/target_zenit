@@ -25,15 +25,15 @@ def _vaqt_str(v) -> str:
 
 
 def _mening_instructorim():
-	"""Joriy foydalanuvchining Instructor yozuvi (Employee orqali yoki to'g'ridan)."""
-	user = frappe.session.user
-	emp = frappe.db.get_value("Employee", {"user_id": user}, "name")
-	if emp:
-		ins = frappe.db.get_value("Instructor", {"employee": emp}, "name")
-		if ins:
-			return ins
-	full_name = frappe.db.get_value("User", user, "full_name")
-	return frappe.db.get_value("Instructor", {"instructor_name": full_name}, "name")
+	"""Joriy foydalanuvchining Instructor yozuvi.
+
+	Aniqlash ID bo'yicha boradi (Employee.user_id -> Instructor.employee); ism
+	bo'yicha moslashtirish faqat oxirgi chora, chunki xodim ismi pasport bo'yicha
+	o'zgartirilganda Instructor docname'i eskicha qolib ketadi — ism_sync.py.
+	"""
+	from target_zenit.ism_sync import joriy_instructor
+
+	return joriy_instructor()
 
 
 @frappe.whitelist()

@@ -3082,34 +3082,40 @@ ISH_KUNLARI = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma"]
 
 
 def _normal_tokenlar(ism: str) -> set:
-    """Ismni taqqoslash uchun normallash: kichik harf, apostroflarsiz, 4+ belgili so'zlar."""
-    s = (ism or "").lower()
-    for a, b in (("‘", ""), ("’", ""), ("ʻ", ""), ("'", ""), ("`", ""), ("-", " ")):
-        s = s.replace(a, b)
-    s = re.sub(r"[^a-zа-яё ]", " ", s)
-    for a, b in (("ye", "e"), ("kh", "x"), ("dj", "j"), ("gh", "g"), ("q", "k")):
-        s = s.replace(a, b)
-    return {w for w in s.split() if len(w) >= 4}
+    """Ismni taqqoslash uchun normallash — ism_sync.ism_tokenlari."""
+    from target_zenit.ism_sync import ism_tokenlari
+
+    return ism_tokenlari(ism)
 
 
-def _turniket_kunlari(from_date, to_date) -> dict:
-    """person_name -> {sanalar}. Turniketda xodimlar Employee'ga bog'lanmagan,
-    shuning uchun ism bo'yicha moslashtiriladi (eng yaxshi variant tanlanadi)."""
+def _turniket_kunlari(from_date, to_date):
+    """Turniket kunlari: (ism -> {sanalar}, Employee ID -> {sanalar}).
+
+    Turniketdagi ko'pchilik yozuv Employee'ga bog'lanmagan (xodimning
+    attendance_device_id to'ldirilmagan), shuning uchun ism bo'yicha
+    moslashtirishga to'g'ri keladi. Bog'langan yozuvlar bo'lsa — ular ID
+    bo'yicha ishlatiladi, bu ism o'zgarishiga chidamli.
+    """
     rows = frappe.db.sql(
-        """SELECT person_name, DATE(event_time) sana
+        """SELECT person_name, employee, DATE(event_time) sana
            FROM `tabTerminal Checkin`
-           WHERE person_name IS NOT NULL AND person_name != ''
-             AND DATE(event_time) BETWEEN %(f)s AND %(t)s
-           GROUP BY person_name, DATE(event_time)""",
+           WHERE DATE(event_time) BETWEEN %(f)s AND %(t)s
+           GROUP BY person_name, employee, DATE(event_time)""",
         {"f": from_date, "t": to_date}, as_dict=True)
-    out = defaultdict(set)
+    ism_boyicha, emp_boyicha = defaultdict(set), defaultdict(set)
     for r in rows:
-        out[r.person_name].add(str(r.sana))
-    return out
+        if r.employee:
+            emp_boyicha[r.employee].add(str(r.sana))
+        if r.person_name:
+            ism_boyicha[r.person_name].add(str(r.sana))
+    return ism_boyicha, emp_boyicha
 
 
-def _turniket_moslash(instructor_nomi: str, emp_nomi: str, turniket: dict):
-    """Instructor/Employee ismini turniketdagi ism bilan moslashtirish."""
+def _turniket_moslash(instructor_nomi: str, emp_nomi: str, turniket: dict,
+                      employee: str | None = None, emp_boyicha: dict | None = None):
+    """Turniket kunlarini xodimga bog'lash: avval ID bo'yicha, keyin ism bo'yicha."""
+    if employee and emp_boyicha and emp_boyicha.get(employee):
+        return employee, emp_boyicha[employee]
     kerak = _normal_tokenlar(instructor_nomi) | _normal_tokenlar(emp_nomi)
     if not kerak:
         return None, set()
@@ -3176,7 +3182,7 @@ def get_oqituvchi_samaradorligi(from_date=None, to_date=None, versiya=None):
         tabel[r.xodim] = cint(r.kun)
 
     # --- 4) Turniket (fakt) ---
-    turniket = _turniket_kunlari(from_date, to_date)
+    turniket, turniket_emp = _turniket_kunlari(from_date, to_date)
 
     # Davrdagi hafta kunlari -> sanalar
     kun_sanalari = defaultdict(list)
@@ -3204,7 +3210,8 @@ def get_oqituvchi_samaradorligi(from_date=None, to_date=None, versiya=None):
         kutilgan_sanalar = {s for k in dars_kunlari for s in kun_sanalari.get(k, [])}
 
         pn, kelgan_sanalar = _turniket_moslash(
-            ins.instructor_name, emp.employee_name if emp else "", turniket)
+            ins.instructor_name, emp.employee_name if emp else "", turniket,
+            employee=ins.employee, emp_boyicha=turniket_emp)
         kelgan_darsli = kutilgan_sanalar & kelgan_sanalar
 
         out.append({

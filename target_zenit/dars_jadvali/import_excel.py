@@ -18,6 +18,8 @@ import re
 
 import frappe
 
+from target_zenit.ism_sync import instructor_topish
+
 KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
 
 # Fan kodi -> to'liq nom (Excel "Izoh" varag'i va umumiy bilim asosida)
@@ -234,7 +236,9 @@ def oqituvchilar_yarat(yacheykalar, dry_run=0):
 		if not employee and not vakant:
 			employee = frappe.db.get_value("Employee", {"employee_name": toliq}, "name")
 
-		mavjud = frappe.db.get_value("Instructor", {"instructor_name": toliq}, "name")
+		# Mavjud Instructor'ni ID/ism/so'z bo'yicha izlaymiz — xodim ismi pasport
+		# bo'yicha o'zgartirilgan bo'lsa ham dublikat yaratilmasligi uchun
+		mavjud = instructor_topish(toliq, employee)
 		if vakant:
 			natija["vakant"].append(toliq)
 		elif employee:
@@ -261,7 +265,8 @@ def oqituvchilar_yarat(yacheykalar, dry_run=0):
 def _instructor(nom_xom: str) -> str | None:
 	nom = _oqituvchi_nomi(nom_xom)
 	toliq = TOLIQ_ISM.get(nom, nom)
-	return frappe.db.get_value("Instructor", {"instructor_name": toliq}, "name")
+	employee = frappe.db.get_value("Employee", {"employee_name": EMPLOYEE_MAP.get(nom) or toliq}, "name")
+	return instructor_topish(toliq, employee)
 
 
 # ------------------------------------------- 3. guruhlar va bloklar

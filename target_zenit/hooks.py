@@ -164,7 +164,15 @@ doc_events = {
 	# customer_name tahrirlansa — Kassa'dagi party_name ham yangilanadi
 	"Customer": {
 		"before_insert": "target_zenit.customer.set_customer_defaults",
-		"on_update": "target_zenit.customer.update_kassa_party_name",
+		"on_update": [
+			"target_zenit.customer.update_kassa_party_name",
+			# customer_name o'zgarsa — Sales Invoice/Payment Entry/… dagi
+			# muzlab qolgan nusxalar ham yangilanadi (ism_sync.py ga qarang)
+			"target_zenit.ism_sync.customer_on_update",
+		],
+	},
+	"Supplier": {
+		"on_update": "target_zenit.ism_sync.supplier_on_update",
 	},
 	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish;
 	# ketgan o'quvchining to'lov rejasida kelgusi oylar bekor qilinadi
@@ -185,6 +193,9 @@ doc_events = {
 		"on_update": [
 			"target_zenit.student_group_sync.on_student_update",
 			"target_zenit.qarzdorlik.engine.on_student_change",
+			# Ism (pasport bo'yicha) tahrirlansa — Fees/Qarz Ishi/Tolov Rejasi/
+			# Dars Natijasi/… dagi nusxalar zanjir bo'ylab yangilanadi
+			"target_zenit.ism_sync.student_on_update",
 		],
 	},
 	# To'lov tushishi bilan qarzdorlik qayta hisoblanadi — ota-ona to'lagan
@@ -199,7 +210,22 @@ doc_events = {
 	"Employee": {
 		# Ish haqi kategoriyasi (tabel) bo'sh bo'lsa — lavozimdan avtomat to'ldiriladi
 		"validate": "target_zenit.target_zenit.api.oylik_tabel.set_ish_haqi_kategoriya",
-		"on_update": "target_zenit.target_zenit.api.oylik_tabel.employee_oylik_ssa",
+		"on_update": [
+			"target_zenit.target_zenit.api.oylik_tabel.employee_oylik_ssa",
+			# employee_name tahrirlansa — Instructor, Tabel *, Attendance,
+			# Salary Slip, Kassa.party_name … zanjir bo'ylab yangilanadi
+			"target_zenit.ism_sync.employee_on_update",
+		],
+	},
+	# Instructor nomi (yoki uning Employee'si) o'zgarsa — Jadval Yozuvi,
+	# Course Schedule, Dars Bajarilishi dagi oqituvchi_nomi nusxalari
+	"Instructor": {
+		"on_update": "target_zenit.ism_sync.instructor_on_update",
+	},
+	# Custom Field / Property Setter o'zgarsa — ism nusxalari grafigi qayta yig'ilsin
+	"Custom Field": {
+		"on_update": "target_zenit.ism_sync.graf_cache_tozalash",
+		"on_trash": "target_zenit.ism_sync.graf_cache_tozalash",
 	},
 	# Nachisleniya yozilganda — o'sha xodim/oy bo'yicha avval to'langan
 	# avanslar avtomatik bog'lanadi (oylik avval to'lanib, nachisleniya keyin
@@ -242,6 +268,9 @@ has_permission = {
 
 after_migrate = [
 	"target_zenit.telefoniya.setup.after_migrate",
+	# Student/Employee ismi o'zgarganda muzlab qolgan nusxalarni moslash
+	# (hooklar o'rnatilmagan vaqtda qilingan tahrirlar uchun — self-healing)
+	"target_zenit.ism_sync.after_migrate",
 	"target_zenit.setup.kassa_party_types.after_migrate",
 	# Sotuv menejer workspace'iga qarzdorlik yorliqlari (idempotent)
 	"target_zenit.qarzdorlik.setup_workspace.after_migrate",
