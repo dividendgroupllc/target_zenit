@@ -56,6 +56,7 @@ NAME_SOURCES = {
 	"Customer": "customer_name",
 	"Supplier": "supplier_name",
 	"Instructor": "instructor_name",
+	"Shareholder": "title",
 }
 
 # fetch_from'siz, qo'lda yuritiladigan nusxalar:
@@ -64,12 +65,37 @@ NAME_SOURCES = {
 # PARTY_NAME_FIELDS bilan bir xil ro'yxat).
 # Terminal Checkin.person_name — turniket qurilmasi yuborgan ism; xom ko'rinishi
 # `raw_data` maydonida saqlanib qoladi, shuning uchun ustiga yozish xavfsiz.
+# Ism bo'lmasa ham o'zgarib turadigan, nusxalanadigan maydonlar — xuddi shu
+# muammo: o'quvchining sinfi yoki to'lovchi (ota-ona) ismi tahrirlanganda
+# Qarz Ishi / Tolov Rejasi dagi nusxa eskicha qolib ketadi.
+QOSHIMCHA_MANBALAR = {
+	"Student": ("custom_sinf_guruh", "custom_payer_name", "custom_payer_phone",
+	            "student_mobile_number"),
+}
+
+# `party` + `party_type` (Dynamic Link) ko'rinishidagi hujjatlar: party_name
+# fetch_from bilan emas, kodda to'ldiriladi — shuning uchun qo'lda sanaladi.
+PARTY_DOCTYPES = ("Kassa", "Payment Entry", "Payment Request")
+PARTY_TYPES = ("Customer", "Supplier", "Employee", "Student", "Shareholder")
+
+# (doctype, link maydoni, nusxa maydoni, manba doctype, manba maydoni, SQL shart)
 QOLDA_NUSXALAR = [
-	("Kassa", "party", "party_name", "Customer", "t.party_type = 'Customer'"),
-	("Kassa", "party", "party_name", "Supplier", "t.party_type = 'Supplier'"),
-	("Kassa", "party", "party_name", "Employee", "t.party_type = 'Employee'"),
-	("Terminal Checkin", "student", "person_name", "Student", None),
-	("Terminal Checkin", "employee", "person_name", "Employee", None),
+	# turniket yozuvi: qurilma yuborgan ism; xom ko'rinishi `raw_data` da qoladi
+	("Terminal Checkin", "student", "person_name", "Student", "student_name", None),
+	("Terminal Checkin", "employee", "person_name", "Employee", "employee_name", None),
+	# ota-ona kartochkasidagi farzandlar jadvali
+	("Guardian Student", "student", "student_name", "Student", "student_name", None),
+	# To'lovchi (ota-ona) ismi/telefoni — Qarz Ishi'da nusxa sifatida yuriladi.
+	# Student'da bo'sh bo'lsa tegilmaydi: engine u holda Guardian'dan oladi,
+	# uni bo'sh qiymat bilan o'chirib yuborish kerak emas.
+	("Qarz Ishi", "student", "payer_name", "Student", "custom_payer_name",
+	 "IFNULL(s.custom_payer_name, '') != ''"),
+	("Qarz Ishi", "student", "payer_phone", "Student", "custom_payer_phone",
+	 "IFNULL(s.custom_payer_phone, '') != ''"),
+] + [
+	(dt, "party", "party_name", pt, NAME_SOURCES[pt], f"t.party_type = '{pt}'")
+	for dt in PARTY_DOCTYPES
+	for pt in PARTY_TYPES
 ]
 
 
@@ -125,6 +151,8 @@ def _graph():
 		olingan = set()
 		# navbat: (manba doctype, manba maydoni, daraja, manbadagi odam linki)
 		navbat = [(root_dt, root_field, 0, None)]
+		for qf in QOSHIMCHA_MANBALAR.get(root_dt, ()):
+			navbat.append((root_dt, qf, 0, None))
 		while navbat:
 			src_dt, src_field, daraja, _ = navbat.pop(0)
 			keyingi = []
@@ -150,12 +178,12 @@ def _graph():
 			navbat.extend(keyingi)
 
 		# qo'lda yuritiladigan nusxalar — shu rootga tegishlilari
-		for dt, link, snap, qsrc, shart in QOLDA_NUSXALAR:
+		for dt, link, snap, qsrc, qfield, shart in QOLDA_NUSXALAR:
 			if qsrc != root_dt or (dt, link, snap) in olingan:
 				continue
 			natija.append({
 				"dt": dt, "link": link, "snap": snap,
-				"src_dt": root_dt, "src_field": root_field,
+				"src_dt": root_dt, "src_field": qfield,
 				"shart": shart, "daraja": 0, "src_person_field": None,
 			})
 			olingan.add((dt, link, snap))
@@ -244,13 +272,17 @@ def tarqat(root_dt, docname=None, quruq=False):
 
 
 # -------------------------------------------------------------------- hooklar
-def _ozgardimi(doc, maydon):
+def _ozgardimi(doc, root_dt):
+	"""Ism (yoki kuzatiladigan qo'shimcha maydon) o'zgardimi."""
 	eski = doc.get_doc_before_save()
-	return True if eski is None else (eski.get(maydon) or "") != (doc.get(maydon) or "")
+	if eski is None:
+		return True
+	maydonlar = (NAME_SOURCES[root_dt], *QOSHIMCHA_MANBALAR.get(root_dt, ()))
+	return any((eski.get(m) or "") != (doc.get(m) or "") for m in maydonlar)
 
 
 def _on_update(doc, root_dt):
-	if not _ozgardimi(doc, NAME_SOURCES[root_dt]):
+	if not _ozgardimi(doc, root_dt):
 		return
 	try:
 		tarqat(root_dt, doc.name)

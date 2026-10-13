@@ -31,7 +31,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Terminal ID",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "person_name",
@@ -74,7 +75,8 @@
    "fieldtype": "Link",
    "in_standard_filter": 1,
    "label": "O'quvchi",
-   "options": "Student"
+   "options": "Student",
+   "search_index": 1
   },
   {
    "depends_on": "eval:['O\\'qituvchi','Xodim'].includes(doc.person_type)",
@@ -82,7 +84,8 @@
    "fieldtype": "Link",
    "in_standard_filter": 1,
    "label": "Xodim",
-   "options": "Employee"
+   "options": "Employee",
+   "search_index": 1
   },
   {
    "fieldname": "terminal",
