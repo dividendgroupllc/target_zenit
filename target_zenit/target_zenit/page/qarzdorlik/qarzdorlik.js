@@ -18,7 +18,8 @@ class TZQarzPanel {
 		this.fManager = "";     // keyin load()da: o'zi menejer bo'lsa — o'zi
 		this.fBucket = "";
 		this.fStatus = "";
-		this.fSinf = "";        // sinf (guruh) filtri
+		this.fSinflar = new Set();  // sinf filtri — bir vaqtda bir nechta sinf
+		this.fKetgan = 0;       // 0 = faol o'quvchilar, 1 = ketganlar ro'yxati
 		this.fQueue = "all";    // all | today | overdue
 		this.make_skeleton();
 		this.load(true);
@@ -71,6 +72,7 @@ class TZQarzPanel {
 	load(first) {
 		frappe.call({
 			method: `${QARZ_M}.get_data`,
+			args: { ketganlar: this.fKetgan },
 			callback: (r) => {
 				this.data = r.message || { cases: [], stats: {}, managers: [] };
 				if (first && !this.data.rahbar) this.fManager = this.data.me;
@@ -94,8 +96,33 @@ class TZQarzPanel {
 	// ================= filter =================
 	// Ochiq ishlardagi sinflar ro'yxati (tabiiy tartib: 1 A, 2 A, ... 10 A, 11 B)
 	sinflar() {
-		const set = new Set((this.data.cases || []).map((c) => c.sinf).filter(Boolean));
-		return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+		const m = new Map();
+		for (const c of this.data.cases || []) {
+			const k = c.sinf || "__none";
+			m.set(k, (m.get(k) || 0) + 1);
+		}
+		return [...m.entries()]
+			.map(([sinf, soni]) => ({ sinf, soni, paralel: (String(sinf).match(/^\s*(\d+)/) || [])[1] || "" }))
+			.sort((a, b) => String(a.sinf).localeCompare(String(b.sinf), undefined, { numeric: true }));
+	}
+
+	// Sinflarni paralel (1..11) bo'yicha guruhlash — "9 va 10-sinflar"ni
+	// bitta bosishda tanlash uchun
+	paralellar() {
+		const g = new Map();
+		for (const x of this.sinflar()) {
+			const k = x.paralel || "—";
+			if (!g.has(k)) g.set(k, []);
+			g.get(k).push(x);
+		}
+		return [...g.entries()].sort((a, b) => Number(a[0]) - Number(b[0]) || String(a[0]).localeCompare(b[0]));
+	}
+
+	sinfLabel() {
+		const n = this.fSinflar.size;
+		if (!n) return "barchasi";
+		if (n <= 2) return [...this.fSinflar].map((x) => (x === "__none" ? "sinfsiz" : x)).join(", ");
+		return `${n} ta tanlandi`;
 	}
 
 	filtered() {
@@ -105,8 +132,7 @@ class TZQarzPanel {
 			if (this.fManager && c.masul !== this.fManager) return false;
 			if (this.fBucket && c.aging_bucket !== this.fBucket) return false;
 			if (this.fStatus && c.ishlov_status !== this.fStatus) return false;
-			if (this.fSinf === "__none" && c.sinf) return false;
-			if (this.fSinf && this.fSinf !== "__none" && c.sinf !== this.fSinf) return false;
+			if (this.fSinflar.size && !this.fSinflar.has(c.sinf || "__none")) return false;
 			if (this.fQueue === "today" && !(c.keyingi_aloqa && c.keyingi_aloqa <= today)) return false;
 			if (this.fQueue === "overdue" && !(c.keyingi_aloqa && c.keyingi_aloqa < today)) return false;
 			if (this.fQueue === "gaplashilgan" && !(c.aloqa_soni > 0)) return false;
@@ -130,7 +156,9 @@ class TZQarzPanel {
 				<div>
 					<h1>Qarzdorlik paneli</h1>
 					<div class="sub">
-						<span class="badge-qarz">Qarzdorlar: <b>${this.fmt(st.ochiq)}</b> ta · jami <b>${this.fmt(st.jami_qarz)}</b> so'm</span>
+						<span class="badge-qarz">${this.fKetgan ? "Ketganlar" : "Qarzdorlar"}: <b>${this.fmt(st.ochiq)}</b> ta · jami <b>${this.fmt(st.jami_qarz)}</b> so'm</span>
+						${this.fKetgan ? `<span class="badge-ketgan">Maktabdan ketgan o'quvchilar ro'yxati</span>`
+							: `<span class="mini">faqat faol o'quvchilar</span>`}
 					</div>
 				</div>
 				<div class="spacer"></div>
@@ -163,19 +191,32 @@ class TZQarzPanel {
 					${(this.data.managers || []).map((m) =>
 						`<option value="${this.esc(m.name)}" ${this.fManager === m.name ? "selected" : ""}>${this.esc(m.full_name)}</option>`).join("")}
 				</select>
-				<select class="fsinf">
-					<option value="">Barcha sinflar</option>
-					<option value="__none" ${this.fSinf === "__none" ? "selected" : ""}>Sinfsiz</option>
-					${this.sinflar().map((s) =>
-						`<option value="${this.esc(s)}" ${this.fSinf === s ? "selected" : ""}>${this.esc(s)}</option>`).join("")}
-				</select>
+				<div class="dd sinf-dd">
+					<button class="dd-btn" type="button">Sinflar: <b>${this.esc(this.sinfLabel())}</b> ▾</button>
+					<div class="dd-menu" hidden>
+						${this.paralellar().map(([p, lst]) => `
+							<div class="dd-grp">
+								<label class="dd-g"><input type="checkbox" data-paralel="${this.esc(p)}"
+									${lst.every((x) => this.fSinflar.has(x.sinf)) ? "checked" : ""}>
+									<b>${p === "—" ? "Sinfsiz" : p + "-sinf"}</b>
+									<span class="n">${lst.reduce((a, x) => a + x.soni, 0)}</span></label>
+								${lst.map((x) => `<label class="dd-i"><input type="checkbox" data-sinf="${this.esc(x.sinf)}"
+									${this.fSinflar.has(x.sinf) ? "checked" : ""}>
+									${this.esc(x.sinf === "__none" ? "Sinfsiz" : x.sinf)}
+									<span class="n">${x.soni}</span></label>`).join("")}
+							</div>`).join("")}
+						<button class="dd-clear" type="button">Tozalash</button>
+					</div>
+				</div>
 				<select class="fstatus">
 					<option value="">Barcha statuslar</option>
 					${["Yangi", "Urinilmoqda", "Gaplashildi - Va'da", "Gaplashildi - Nizo", "Bo'lib to'lash",
 						"Va'da buzildi", "Aloqa yo'q", "To'lov tekshirilmoqda", "Eskalatsiya"].map((s) =>
 						`<option ${this.fStatus === s ? "selected" : ""}>${s}</option>`).join("")}
 				</select>
-				<div class="chips">${["1-30", "31-60", "61-90", "90+"].map(bchip).join("")}</div>
+				<div class="chips">${["1-30", "31-60", "61-90", "90+"].map(bchip).join("")}
+					<button class="chip ${this.fKetgan ? "on" : ""}" data-act="ketgan"
+						title="Maktabdan ketgan (nofaol) o'quvchilarning qarzi">Ketganlar <span class="n">${this.fmt(st.ketgan_soni)}</span></button></div>
 			</div>
 
 			<div class="split">
@@ -236,14 +277,81 @@ class TZQarzPanel {
 				${d.siblings.map((s) => `<div class="sib">${this.esc(s.student_name)} — <b>${this.fmt(s.qarz_summa)}</b> so'm
 					${this.statusPill(s.ishlov_status)} <span class="mini">mas'ul: ${this.esc(s.masul)}</span></div>`).join("")}</div>` : "";
 
-		const months = `<div class="box"><div class="box-t">To'lov jadvali</div>
-			<table class="tbl mini-tbl"><thead><tr><th>Oy</th><th>Muddat</th><th class="r">Summa</th><th class="r">To'langan</th><th class="r">Qaytim</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
-			<tbody>${(d.months || []).map((m) => `
-				<tr class="mh-${this.esc(m.holat)}"><td>${this.esc(m.oy_label)}</td><td>${this.dmy(m.due_date)}</td>
-				<td class="r">${this.fmt(m.amount)}</td><td class="r">${this.fmt(m.paid_amount)}</td>
-				<td class="r ${m.qaytim ? "neg" : ""}">${m.qaytim ? "−" + this.fmt(m.qaytim) : "—"}</td>
-				<td class="r money">${this.fmt(m.outstanding)}</td><td>${this.esc(m.holat)}</td></tr>`).join("")}
-			</tbody></table></div>`;
+		// Oy qatorining odam tilidagi izohi — menejer telefonda aytadigan gap
+		const oyIzoh = (m) => {
+			const kech = m.kechikish ? ` <b class="neg">${m.kechikish} kun kechikdi</b>` : "";
+			if (m.holat === "Rejada")
+				return `<span class="mini">Nachisleniya hali qilinmagan (reja: ${this.fmt(m.reja)})</span>`;
+			if (m.holat === "Nachisleniya yo'q")
+				return `<span class="mini warn-t">Oy o'tdi, nachisleniya yozilmagan (reja: ${this.fmt(m.reja)})</span>`;
+			if (m.holat === "To'landi")
+				return `<span class="ok-t">${this.fmt(m.nachislangan)} nachislangan — to'liq to'langan</span>`;
+			if (m.holat === "Qisman")
+				return `${this.fmt(m.nachislangan)} nachislangan, ${this.fmt(m.tolangan)} to'langan, <b class="neg">${this.fmt(m.qoldiq)} qoldi</b>${kech}`;
+			if (m.holat === "Muddati keldi")
+				return `<b class="neg">${this.dmy(m.due_date)} da to'lanishi kerak edi — to'lanmadi (${this.fmt(m.qoldiq)})</b>${kech}`;
+			return `<span class="mini">${this.dmy(m.due_date)} gacha to'lash kerak (${this.fmt(m.nachislangan)})</span>`;
+		};
+
+		const x = d.xulosa;
+		const satr = (nom, v, cls) => `<tr class="${cls || ""}">
+			<td>${nom}</td>
+			<td class="r">${this.fmt(v.nachislangan)}</td>
+			<td class="r">${this.fmt(v.tolangan)}</td>
+			<td class="r money ${v.qoldiq > 1 ? "neg" : ""}">${this.fmt(v.qoldiq)}</td>
+			<td class="r ${v.qarz > 1 ? "neg" : ""}">${this.fmt(v.qarz)}</td></tr>`;
+
+		const xulosa = x ? `<div class="box xul">
+			<div class="box-t">Umumiy ma'lumot — haqiqiy nachisleniya bo'yicha</div>
+			<table class="tbl mini-tbl xul-tbl">
+				<thead><tr><th>Nima uchun</th><th class="r">Nachislangan</th><th class="r">To'langan</th>
+					<th class="r">To'lanmagan</th><th class="r">Shundan muddati kelgan</th></tr></thead>
+				<tbody>
+					${satr(`O'quv to'lovi <span class="mini">(${x.oquv.nachislangan_oy} oy nachislangan)</span>`, x.oquv)}
+					${(x.qoshimcha || []).map((q) => satr(`${this.esc(q.nom)} <span class="mini">(${q.soni} ta hujjat)</span>`, q)).join("")}
+					${satr("<b>JAMI</b>", x.jami, "xul-jami")}
+				</tbody>
+			</table>
+			<div class="xul-shart">
+				<div><span>Shartnoma summasi (o'quv)</span><b>${this.fmt(x.oquv.shartnoma)}</b></div>
+				<div><span>Shundan nachislangan</span><b>${this.fmt(x.oquv.nachislangan)}</b></div>
+				<div><span>Hali nachislanmagan (kelgusi oylar)</span><b>${this.fmt(x.oquv.nachislanmagan)}</b></div>
+				<div><span>O'quv to'lovidan to'langan</span><b>${this.fmt(x.oquv.tolangan)}</b></div>
+				<div><span>Muddati kelgan qarz</span><b class="${x.jami.qarz > 1 ? "neg" : ""}">${this.fmt(x.jami.qarz)}</b></div>
+				<div><span>Avans (kelgusi oylarga)</span><b>${this.fmt(x.jami.avans)}</b></div>
+			</div>
+			${x.oquv.nachisleniyasiz_oy
+				? `<div class="ogoh">⚠ ${x.oquv.nachisleniyasiz_oy} oy o'tgan, lekin nachisleniya yozilmagan
+					(shartnoma bo'yicha ${this.fmt(x.oquv.nachisleniyasiz_summa)}). Bu summa qarz sifatida
+					hisoblanmayapti — buxgalteriya nachisleniya yozishi kerak.</div>` : ""}
+		</div>` : "";
+
+		const months = `<div class="box"><div class="box-t">To'lov jadvali — oyma-oy nachisleniya</div>
+			<table class="tbl mini-tbl"><thead><tr><th>Oy</th><th>Muddat</th><th class="r">Nachislangan</th>
+				<th class="r">To'langan</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
+			<tbody>${(x ? x.oylar : []).map((m) => `
+				<tr class="mh-${this.esc(m.holat)}">
+					<td>${this.esc(m.oy_label)}${m.nachisleniya
+						? ` <a class="mini" href="/app/sales-invoice/${encodeURIComponent(m.nachisleniya.split(",")[0].trim())}" target="_blank" title="${this.esc(m.nachisleniya)}">↗</a>` : ""}</td>
+					<td class="${m.kechikish ? "red" : ""}">${this.dmy(m.due_date)}</td>
+					<td class="r">${m.nachislangan ? this.fmt(m.nachislangan) : `<span class="mini">— (reja ${this.fmt(m.reja)})</span>`}</td>
+					<td class="r">${this.fmt(m.tolangan)}${m.qaytim ? ` <span class="neg mini">−${this.fmt(m.qaytim)}</span>` : ""}</td>
+					<td class="r money ${m.qoldiq > 1 ? "neg" : ""}">${this.fmt(m.qoldiq)}</td>
+					<td>${oyIzoh(m)}</td></tr>`).join("")}
+			</tbody></table>
+			${(x && x.qoshimcha || []).length ? `<div class="box-t" style="margin-top:10px">Qo'shimcha nachisleniyalar (kitob, forma, yotoqxona)</div>
+			<table class="tbl mini-tbl"><thead><tr><th>Nachisleniya</th><th>Sana</th><th class="r">Summa</th>
+				<th class="r">To'langan</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
+			<tbody>${(d.months || []).filter((m) => m.manba_hujjat).map((m) => `
+				<tr class="mh-${this.esc(m.holat)}"><td>${this.esc(m.oy_label)}
+						<a class="mini" href="/app/sales-invoice/${encodeURIComponent(m.manba_hujjat)}" target="_blank">↗</a></td>
+					<td>${this.dmy(m.due_date)}</td><td class="r">${this.fmt(m.amount)}</td>
+					<td class="r">${this.fmt(m.paid_amount)}</td>
+					<td class="r money ${m.outstanding > 1 ? "neg" : ""}">${this.fmt(m.outstanding)}</td>
+					<td>${m.holat === "To'landi" ? `<span class="ok-t">to'langan</span>`
+						: `<b class="neg">to'lanmagan</b>`}</td></tr>`).join("")}
+			</tbody></table>` : ""}
+		</div>`;
 
 		const pays = `<div class="box"><div class="box-t">To'lovlar (${(d.payments || []).length})${(d.payments || []).some((p) => p.qaytim)
 				? ` · sof: ${this.fmt((d.payments || []).reduce((a, p) => a + p.amount_uzs, 0))}` : ""}</div>
@@ -290,14 +398,16 @@ class TZQarzPanel {
 					<span>To'lov (kirim)</span><b>${this.fmt(d.hisob.jami_tolov)}</b>
 					<span>Qaytim (chiqim)</span><b class="${d.hisob.jami_qaytim ? "neg" : ""}">${d.hisob.jami_qaytim ? "−" + this.fmt(d.hisob.jami_qaytim) : "0"}</b>
 					<span>Sof to'lov</span><b>${this.fmt(d.hisob.sof)}</b>
-					<span>Jadvalga tushgan to'lov</span><b>${this.fmt(d.hisob.jadvalga_tushgan)}</b>
-					<span>Taqsimlanmagan (avans)</span><b>${this.fmt(d.hisob.taqsimlanmagan)}</b>
+					<span>Jadvalga (nachisleniyalarga) tushgan</span><b>${this.fmt(d.hisob.jadvalga_tushgan)}</b>
+					<span>Avans — nachislanmagan oylarga</span><b>${this.fmt(d.hisob.taqsimlanmagan)}</b>
 					<span>Jadvalga yozilgan qaytim</span><b class="${Math.abs(d.hisob.jadvalda_qaytim - d.hisob.jami_qaytim) > 1 ? "neg" : ""}">${this.fmt(d.hisob.jadvalda_qaytim)}</b>
 				</div>
 				${d.hisob.taqsimlanmagan > 1
-					? `<div class="ogoh">ℹ Taqsimlanmagan pul bor. Kitob/forma/yotoqxona to'lovi
-						faqat kassada «Nachisleniya» tanlangan bo'lsa o'sha qatorga tushadi —
-						tanlanmagan bo'lsa pul avans bo'lib qoladi va o'quv to'loviga ketadi.</div>` : ""}
+					? `<div class="ogoh">ℹ Avansda ${this.fmt(d.hisob.taqsimlanmagan)} so'm turibdi.
+						Kassada «Nachisleniya» tanlanmagan pul o'quv to'loviga FIFO (eski oydan boshlab)
+						yoziladi; nachislangan oylar to'lanib bo'lgach ortgan summa kelgusi oylarga
+						avans bo'lib qoladi va yangi nachisleniya yozilganda avtomatik o'sha oyga tushadi.
+						Kitob/forma/yotoqxona esa faqat kassada o'sha nachisleniya tanlangan bo'lsa yopiladi.</div>` : ""}
 				${Math.abs(d.hisob.jadvalda_qaytim - d.hisob.jami_qaytim) > 1
 					? `<div class="ogoh">⚠ Jadvaldagi qaytim kassadagidan farq qilyapti — reja eski hisobda qolgan.
 						«Qayta hisoblash» tugmasini bosing.</div>` : ""}
@@ -309,8 +419,12 @@ class TZQarzPanel {
 				<button class="btn-recalc">↻ Qayta hisoblash</button>
 				<a class="btn-doc" href="/app/qarz-ishi/${encodeURIComponent(c.name)}">Ishni ochish ↗</a>
 				${this.data.rahbar ? `<button class="btn-reassign">Mas'ulni almashtirish</button>` : ""}
+				${this.data.ketgan_huquqi
+					? (c.ketgan || this.fKetgan
+						? `<button class="btn-ketgan back">↩ Ketgan belgisini olish</button>`
+						: `<button class="btn-ketgan">🚪 O'quvchi ketdi</button>`) : ""}
 			</div>
-			${sibs}${months}${pays}${tl}
+			${sibs}${xulosa}${months}${pays}${tl}
 		`);
 
 		this.body.find(".btn-call").on("click", () => this.call_dialog());
@@ -328,6 +442,24 @@ class TZQarzPanel {
 			});
 		});
 		this.body.find(".btn-reassign").on("click", () => this.reassign_dialog());
+		this.body.find(".btn-ketgan").on("click", (e) =>
+			$(e.currentTarget).hasClass("back") ? this.ketgan_qaytar() : this.ketgan_dialog());
+	}
+
+	// Menyu ochiq holda ro'yxat va tugma yorlig'ini yangilash
+	sinf_sync(refreshBoxes) {
+		const dd = this.body.find(".sinf-dd");
+		dd.find(".dd-btn b").text(this.sinfLabel());
+		if (refreshBoxes) {
+			dd.find("input[data-sinf]").each((i, el) =>
+				(el.checked = this.fSinflar.has(String($(el).data("sinf")))));
+		}
+		dd.find("input[data-paralel]").each((i, el) => {
+			const p = String($(el).data("paralel"));
+			const lst = this.sinflar().filter((x) => (x.paralel || "—") === p);
+			el.checked = lst.length > 0 && lst.every((x) => this.fSinflar.has(x.sinf));
+		});
+		this.render_list();
 	}
 
 	// ================= actions =================
@@ -336,7 +468,31 @@ class TZQarzPanel {
 		this.body.find(".q").on("input", frappe.utils.debounce((e) => { this.q = e.target.value; this.render_list(); }, 250));
 		this.body.find(".fmanager").on("change", (e) => { this.fManager = e.target.value; this.render_list(); });
 		this.body.find(".fstatus").on("change", (e) => { this.fStatus = e.target.value; this.render_list(); });
-		this.body.find(".fsinf").on("change", (e) => { this.fSinf = e.target.value; this.render_list(); });
+		// Sinf tanlash dropdowni (bir vaqtda bir nechta sinf)
+		const dd = this.body.find(".sinf-dd");
+		dd.find(".dd-btn").on("click", (e) => { e.stopPropagation(); dd.find(".dd-menu").prop("hidden", (i, v) => !v); });
+		dd.find(".dd-menu").on("click", (e) => e.stopPropagation());
+		$(document).off("click.tzsinf").on("click.tzsinf", () => this.body.find(".dd-menu").prop("hidden", true));
+		dd.find("input[data-sinf]").on("change", (e) => {
+			const v = $(e.currentTarget).data("sinf");
+			e.currentTarget.checked ? this.fSinflar.add(v) : this.fSinflar.delete(v);
+			this.sinf_sync();
+		});
+		dd.find("input[data-paralel]").on("change", (e) => {
+			const p = String($(e.currentTarget).data("paralel"));
+			const on = e.currentTarget.checked;
+			for (const x of this.sinflar()) {
+				if ((x.paralel || "—") !== p) continue;
+				on ? this.fSinflar.add(x.sinf) : this.fSinflar.delete(x.sinf);
+			}
+			this.sinf_sync(true);
+		});
+		dd.find(".dd-clear").on("click", () => { this.fSinflar.clear(); this.sinf_sync(true); });
+		this.body.find(`[data-act="ketgan"]`).on("click", () => {
+			this.fKetgan = this.fKetgan ? 0 : 1;
+			this.selected = null; this.detail = null;
+			this.load();
+		});
 		this.body.find(".chips .chip").on("click", (e) => {
 			const b = $(e.currentTarget).data("b");
 			this.fBucket = this.fBucket === b ? "" : b;
@@ -393,6 +549,55 @@ class TZQarzPanel {
 			},
 		});
 		dlg.show();
+	}
+
+	// O'quvchi maktabni tashladi — belgi Student hujjatiga yoziladi
+	ketgan_dialog() {
+		const c = this.detail.case;
+		const dlg = new frappe.ui.Dialog({
+			title: `O'quvchi ketdi — ${c.student_name}`,
+			fields: [
+				{ fieldtype: "HTML", options: `<div class="text-muted" style="font-size:12px;margin-bottom:6px">
+					Student hujjatida <b>ketish sanasi</b> qo'yiladi va o'quvchi nofaol (enabled=0) bo'ladi.
+					Ketish sanasidan keyingi oylar jadvaldan chiqadi, qolgan qarz esa
+					«Ketganlar» ro'yxatida saqlanadi.</div>` },
+				{ fieldname: "sana", fieldtype: "Date", label: "Ketgan sanasi", reqd: 1, default: this.today() },
+				{ fieldname: "sabab", fieldtype: "Small Text", label: "Sabab (izoh)" },
+			],
+			primary_action_label: "Belgilash",
+			primary_action: (v) => {
+				frappe.confirm(`${c.student_name} — ketgan deb belgilansinmi?`, () => {
+					frappe.call({
+						method: `${QARZ_M}.ketgan_belgilash`,
+						args: { case: c.name, sana: v.sana, sabab: v.sabab },
+						freeze: true, freeze_message: "Belgilanmoqda…",
+						callback: () => {
+							dlg.hide();
+							frappe.show_alert({ message: "Ketgan deb belgilandi", indicator: "orange" });
+							this.selected = null; this.detail = null;
+							this.load();
+						},
+					});
+				});
+			},
+		});
+		dlg.show();
+	}
+
+	ketgan_qaytar() {
+		const c = this.detail.case;
+		frappe.confirm(`${c.student_name} — «ketgan» belgisi olib tashlansinmi?`, () => {
+			frappe.call({
+				method: `${QARZ_M}.qaytardi`,
+				args: { case: c.name },
+				freeze: true,
+				callback: () => {
+					frappe.show_alert({ message: "Belgisi olindi", indicator: "green" });
+					this.selected = null; this.detail = null;
+					this.load();
+				},
+			});
+		});
 	}
 
 	reassign_dialog() {

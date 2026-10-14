@@ -32,16 +32,18 @@ class TolovRejasi(Document):
 			)
 
 	def _check_sums(self):
-		"""Yakuniy summa bilan O'QISH PULI oylari yig'indisi mos kelmasa — ogohlantirish
-		(bloklamaydi). Nachisleniya qatorlari (manba_hujjat bor) shartnomaga kirmaydi."""
-		total = sum(
-			r.amount or 0 for r in self.oylar if r.holat != "Bekor" and not r.manba_hujjat
-		)
+		"""Yakuniy summa bilan shartnoma rejasi mos kelmasa — ogohlantirish
+		(bloklamaydi). Taqqoslash `reja_amount` (shartnomadagi taxminiy oylik)
+		bo'yicha: `amount` endi HAQIQIY nachisleniya, u oy kelmaguncha 0 bo'ladi,
+		shuning uchun u bilan taqqoslash har safar yolg'on ogohlantirish berardi.
+		`jami_hisoblangan` — haqiqatda nachislangan summa (o'quv + kitob/forma)."""
+		oy_rows = [r for r in self.oylar if r.holat != "Bekor" and not r.manba_hujjat]
+		reja = sum((r.reja_amount or r.amount or 0) for r in oy_rows)
 		self.jami_hisoblangan = sum(r.amount or 0 for r in self.oylar if r.holat != "Bekor")
-		if self.yakuniy_summa and abs(total - self.yakuniy_summa) > 1:
+		if self.yakuniy_summa and abs(reja - self.yakuniy_summa) > 1:
 			frappe.msgprint(
-				_("Diqqat: oylar yig'indisi ({0}) shartnoma yakuniy summasiga ({1}) teng emas.").format(
-					frappe.format_value(total, {"fieldtype": "Currency"}),
+				_("Diqqat: oylar rejasi ({0}) shartnoma yakuniy summasiga ({1}) teng emas.").format(
+					frappe.format_value(reja, {"fieldtype": "Currency"}),
 					frappe.format_value(self.yakuniy_summa, {"fieldtype": "Currency"}),
 				),
 				indicator="orange",

@@ -14,9 +14,15 @@ from frappe.tests.utils import FrappeTestCase
 from target_zenit.qarzdorlik.engine import _taqsimla
 
 
-def oy(nomi, sana, summa):
-	"""Oylik o'quv to'lovi qatori (manba_hujjat yo'q)."""
-	return frappe._dict(name=nomi, due_date=sana, amount=summa, manba_hujjat=None)
+def oy(nomi, sana, summa, nachisleniya=None):
+	"""Oylik o'quv to'lovi qatori (manba_hujjat yo'q).
+
+	`nachisleniya` — shu oyning o'quv to'lovi Sales Invoice'i (summa manbai).
+	Qator FIFO polidan chiqmaydi, lekin nachisleniya buxgalteriyada yopilgan
+	bo'lsa qator to'langan hisoblanadi."""
+	return frappe._dict(
+		name=nomi, due_date=sana, amount=summa, manba_hujjat=None, nachisleniya=nachisleniya
+	)
 
 
 def si(nomi, sana, summa, hujjat):
@@ -205,3 +211,56 @@ class TestTaqsimot(FrappeTestCase):
 		self.assertEqual(alloc, {})
 		self.assertEqual(qaytim, {})
 		self.assertEqual(avans, 1_000_000)
+
+	# ------------------------------------- nachisleniya asosidagi oylik qatorlar
+
+	def test_nachisleniyasiz_oy_pul_yutmaydi(self):
+		"""Nachisleniya qilinmagan oy summasi 0 bo'ladi — FIFO unga pul yozmaydi,
+		pul keyingi nachislangan oyga yoki avansga ketadi."""
+		rows = [
+			oy("r_sent", "2026-09-05", 0),                 # nachisleniya yo'q
+			oy("r_okt", "2026-10-05", 5_000_000, "SI-OKT"),
+		]
+		alloc, _q, avans = taqsim(rows, tolov=6_000_000)
+
+		self.assertEqual(alloc["r_sent"], 0)
+		self.assertEqual(alloc["r_okt"], 5_000_000)
+		self.assertEqual(avans, 1_000_000)                 # kelgusi oylarga avans
+
+	def test_buxgalteriyada_yopilgan_oquv_nachisleniyasi(self):
+		"""Grant/investor farzandi: o'quv nachisleniyasi Journal Entry bilan
+		yopilgan — qator to'langan bo'ladi, lekin boshqa pul polidan hech narsa
+		ayirilmaydi."""
+		rows = [
+			oy("r_sent", "2026-09-05", 5_000_000, "SI-SENT"),
+			oy("r_okt", "2026-10-05", 5_000_000, "SI-OKT"),
+		]
+		alloc, _q, avans = taqsim(
+			rows,
+			tolov=5_000_000,
+			qoldiq={"SI-SENT": (5_000_000, 0.0)},          # JE bilan yopilgan
+		)
+
+		self.assertEqual(alloc["r_sent"], 5_000_000)
+		self.assertEqual(alloc["r_okt"], 5_000_000)        # haqiqiy pul shu oyga
+		self.assertEqual(avans, 0)
+
+	def test_qisman_yopilgan_oquv_nachisleniyasi(self):
+		"""Nachisleniyaning bir qismi buxgalteriyada yopilgan, qolgani FIFO
+		puli bilan — ikkisi birga qatorni yopadi, ortig'i yozilmaydi."""
+		rows = [oy("r_sent", "2026-09-05", 5_000_000, "SI-SENT")]
+		alloc, _q, avans = taqsim(
+			rows, tolov=1_000_000, qoldiq={"SI-SENT": (5_000_000, 3_000_000)}
+		)
+
+		# 2M buxgalteriyada yopilgan + 1M haqiqiy pul = 3M to'langan, 2M qoldi
+		self.assertEqual(alloc["r_sent"], 3_000_000)
+		self.assertEqual(avans, 0)
+
+	def test_bir_necha_nachisleniya_bitta_oyda(self):
+		"""Oyda ikki SI bo'lsa (tuzatish) ikkisi ham hisobga olinadi."""
+		rows = [oy("r_sent", "2026-09-05", 6_000_000, "SI-A, SI-B")]
+		alloc, _q, _a = taqsim(
+			rows, qoldiq={"SI-A": (5_000_000, 0.0), "SI-B": (1_000_000, 0.0)}
+		)
+		self.assertEqual(alloc["r_sent"], 6_000_000)

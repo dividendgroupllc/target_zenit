@@ -1,10 +1,14 @@
 # Copyright (c) 2026, Target Zenit
 # Qarzdorlik engine — qarz hisoblash va ish (case) boshqaruvi.
 #
-# Qarz manbai — Tolov Rejasi (jadval), GL EMAS: bazada accrual hujjatlari yo'q,
-# GL'dagi Receivable faqat avanslarni ko'rsatadi. To'lovlar (Payment Entry, Receive)
-# rejaning oylariga FIFO taqsimlanadi; taqsimot alohida saqlanmaydi — har safar
-# deterministik qayta hisoblanadi.
+# Qarz manbai — Tolov Rejasi (jadval), lekin jadvaldagi SUMMALAR buxgalteriyadan
+# keladi: har oy o'quv to'lovi uchun "O'qitish xizmati" Sales Invoice yoziladi
+# (nachisleniya), kitob/forma/yotoqxona uchun esa alohida SI. Reja qatori shu
+# nachisleniyaning oynasi: `amount` = nachislangan summa, `reja_amount` =
+# shartnomadagi taxminiy oylik. Nachisleniya qilinmagan oy QARZ EMAS (amount=0,
+# holat "Rejada" / "Nachisleniya yo'q") — shartnoma qoldig'i alohida ko'rsatiladi.
+# To'lovlar (Payment Entry, Journal Entry) oylarga FIFO/bog'lanish bo'yicha
+# taqsimlanadi; taqsimot alohida saqlanmaydi — har safar deterministik hisoblanadi.
 #
 # Kirish nuqtalari:
 #   nightly()      — scheduler (daily)
@@ -21,12 +25,20 @@ from target_zenit.qarzdorlik.setup import OY_NOMI
 
 YOPIQ_STATUSLAR = ("Yopildi - To'landi", "Yopildi - Boshqa")
 
+# Nachisleniya boshlanishidan OLDINGI oylar belgisi: o'quvchi o'quv yili
+# o'rtasida qo'shilgan bo'lsa, reja qatorlari sentabrdan turadi, nachisleniya
+# esa masalan oktabrdan boshlanadi. Bunday oy "nachisleniya yozilmagan" degan
+# ogohlantirishga tushmasligi kerak — u shunchaki o'quvchiga tegishli emas.
+IZOH_BOSHLANMAGAN = "Nachisleniya boshlanmagan"
+
 
 def _settings():
 	s = frappe.get_cached_doc("Qarzdorlik Sozlamalari")
 	istisno = s.istisno_itemlar if s.istisno_itemlar is not None else "O'qitish xizmati"
+	kuni = int(s.tolov_kuni or 0) or 5
 	return frappe._dict(
 		grace_days=s.grace_days if s.grace_days is not None else 3,
+		tolov_kuni=min(max(kuni, 1), 28),
 		tolerance=flt(s.tolerance) or 1000,
 		min_threshold=flt(s.min_threshold) or 10000,
 		buzilgan_vada_limit=s.buzilgan_vada_limit or 2,
@@ -317,10 +329,157 @@ def _plan_payment_window(tr) -> str:
 	return f"{start_year}-07-01"
 
 
+# ------------------------------------------------- o'quv nachisleniyasi
+def _tuition_accruals(customer: str, from_date, cfg) -> dict:
+	"""O'quv to'lovi nachisleniyalari OY bo'yicha: "YYYY-MM" -> {amount, sis, sana}.
+
+	Bitta oyda bir nechta Sales Invoice bo'lishi mumkin (qo'shimcha hisoblash,
+	tuzatish, o'rtada kelgan o'quvchi) — ular QO'SHILADI: oyning nachisleniyasi
+	shu hujjatlar yig'indisi. Oy `custom_payment_month` ("За какой месяц")
+	bo'yicha, u bo'sh bo'lsa hujjat sanasi bo'yicha aniqlanadi.
+	"""
+	if not customer or not cfg.istisno_itemlar:
+		return {}
+	rows = frappe.db.sql(
+		"""SELECT si.name, si.posting_date, si.custom_payment_month oy,
+		          SUM(sii.net_amount) amount
+		   FROM `tabSales Invoice` si
+		   JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+		   WHERE si.docstatus=1 AND si.customer=%s AND si.posting_date >= %s
+		     AND si.currency='UZS' AND sii.item_code IN %s
+		   GROUP BY si.name HAVING amount > 0""",
+		(customer, from_date, tuple(cfg.istisno_itemlar)),
+		as_dict=True,
+	)
+	out = {}
+	for r in rows:
+		oy = (r.oy or "").strip()[:7]
+		if len(oy) != 7:
+			oy = getdate(r.posting_date).strftime("%Y-%m")
+		d = out.setdefault(oy, {"amount": 0.0, "sis": [], "sana": getdate(r.posting_date)})
+		d["amount"] += flt(r.amount)
+		d["sis"].append(r.name)
+		d["sana"] = min(d["sana"], getdate(r.posting_date))
+	return out
+
+
+def _oy_muddati(oy: str, cfg):
+	"""Oyning to'lov muddati: shartnoma bo'yicha oyning birinchi besh kunligi,
+	ya'ni `tolov_kuni` (sozlamada, default 5)."""
+	yil, oy_raqam = oy.split("-")
+	return getdate(f"{yil}-{oy_raqam}-{cfg.tolov_kuni:02d}")
+
+
+def _oy_label(oy: str) -> str:
+	yil, oy_raqam = oy.split("-")
+	return f"{OY_NOMI.get(int(oy_raqam), oy_raqam)} {yil}"
+
+
+def sync_tuition(tr, cfg) -> bool:
+	"""Oylik qatorlarni HAQIQIY nachisleniya bilan moslashtiradi.
+
+	Har oylik qator uchun:
+	  * nachisleniya bor  -> `amount` = nachislangan summa, `nachisleniya` =
+	    hujjat raqam(lar)i, `due_date` = oyning to'lov kuni (5-kun);
+	  * nachisleniya yo'q -> `amount` = 0 (qarz emas!), shartnomadagi taxminiy
+	    summa `reja_amount`da saqlanadi va panelda "Reja" sifatida ko'rinadi.
+
+	Nachisleniyasi bor, lekin rejada qatori yo'q oy (grant/investor farzandlari,
+	o'quv yili o'rtasida kelganlar) uchun yangi qator ochiladi.
+
+	Qator FIFO polidan chiqarilmaydi: o'quv to'lovi ko'pincha nachisleniyaga
+	bog'lanmagan holda tushadi, shuning uchun oylik qatorlar (manba_hujjat YO'Q)
+	avvalgidek FIFO bilan yopiladi — `nachisleniya` faqat summa manbai.
+	"""
+	acc = _tuition_accruals(tr.customer, _plan_payment_window(tr), cfg)
+	changed = False
+
+	# Eski kod o'quv nachisleniyasini `manba_hujjat` bilan qator qilgan edi —
+	# uni oylik qatorga aylantiramiz (aks holda u SI qatori sifatida faqat
+	# bog'langan to'lov bilan yopilardi va FIFO'dan chetda qolardi).
+	for r in tr.oylar:
+		if r.manba_hujjat and r.manba_hujjat in {si for a in acc.values() for si in a["sis"]}:
+			frappe.db.set_value(
+				"Tolov Rejasi Oyi",
+				r.name,
+				{"manba_hujjat": "", "nachisleniya": r.manba_hujjat, "izoh": "O'quv to'lovi"},
+				update_modified=False,
+			)
+			r.manba_hujjat = ""
+			r.nachisleniya = r.nachisleniya or ""
+			changed = True
+
+	oylar = {}
+	for r in tr.oylar:
+		if r.manba_hujjat or r.holat == "Bekor" or not r.due_date:
+			continue
+		oylar.setdefault(getdate(r.due_date).strftime("%Y-%m"), []).append(r)
+
+	birinchi_oy = min(acc) if acc else None
+	for oy, qatorlar in sorted(oylar.items()):
+		a = acc.pop(oy, None)
+		for i, r in enumerate(qatorlar):
+			vals = {}
+			# Muddat hamma oyda bir xil qoidada — shartnomadagi to'lov kuni
+			# (kelgusi oylarda ham ko'rinib tursin).
+			muddat = _oy_muddati(oy, cfg)
+			if getdate(r.due_date) != muddat:
+				vals["due_date"] = muddat
+			# Shartnomadagi taxminiy summa bir marta saqlanadi (keyin o'zgarmaydi)
+			if not flt(r.reja_amount) and flt(r.amount):
+				vals["reja_amount"] = flt(r.amount)
+			if a and i == 0:
+				nach = ", ".join(sorted(a["sis"]))
+				if abs(flt(r.amount) - flt(a["amount"])) > 0.005:
+					vals["amount"] = flt(a["amount"])
+				if (r.nachisleniya or "") != nach:
+					vals["nachisleniya"] = nach
+				if r.izoh == IZOH_BOSHLANMAGAN:
+					vals["izoh"] = "O'quv to'lovi"
+			else:
+				# nachisleniya yo'q (yoki takroriy qator) -> summa 0, qarz emas
+				if flt(r.amount):
+					vals["amount"] = 0
+				if r.nachisleniya:
+					vals["nachisleniya"] = ""
+				# Nachisleniya boshlanishidan oldingi oy — ogohlantirish emas
+				boshlanmagan = bool(birinchi_oy) and oy < birinchi_oy
+				izoh = IZOH_BOSHLANMAGAN if boshlanmagan else ""
+				if boshlanmagan and r.izoh != IZOH_BOSHLANMAGAN:
+					vals["izoh"] = izoh
+				elif not boshlanmagan and r.izoh == IZOH_BOSHLANMAGAN:
+					vals["izoh"] = ""
+			if vals:
+				frappe.db.set_value("Tolov Rejasi Oyi", r.name, vals, update_modified=False)
+				for k, v in vals.items():
+					r.set(k, v)
+				changed = True
+
+	# Rejada qatori yo'q nachisleniyalar -> yangi oylik qator
+	for oy, a in sorted(acc.items()):
+		tr.append(
+			"oylar",
+			{
+				"oy_label": _oy_label(oy),
+				"due_date": _oy_muddati(oy, cfg),
+				"amount": flt(a["amount"]),
+				"holat": "Kutilmoqda",
+				"nachisleniya": ", ".join(sorted(a["sis"])),
+				"izoh": "O'quv to'lovi (rejada yo'q oy)",
+			},
+		)
+		changed = True
+
+	return changed
+
+
 # ------------------------------------------------- SI nachisleniya sinxroni
 def sync_charges(tr) -> bool:
 	"""O'qish pulidan BOSHQA nachisleniyalarni (Kitob, Forma, Yotoqxona...)
 	Sales Invoice'lardan reja qatorlariga sinxronlaydi.
+
+	O'quv to'lovi nachisleniyasi bu yerda EMAS — u oylik qatorlarga
+	`sync_tuition()` orqali tushadi (oyiga bitta qator, FIFO bilan yopiladi).
 
 	- O'qish puli ('istisno itemlar') olinmaydi — u oylik qatorlarda allaqachon bor.
 	- Har SI -> bitta qator (itemlar nomi bilan), due_date = SI sanasi,
@@ -368,50 +527,6 @@ def sync_charges(tr) -> bool:
 			},
 		)
 		changed = True
-
-	# O'quv to'lovi nachisleniyasi bor, LEKIN rejada o'sha oyning qatori yo'q.
-	# Bu investor farzandlari / grantchilarda uchraydi: ularning Student'dagi
-	# tarifi 0 bo'lgani uchun oylik qatorlar yaratilmaydi, ammo buxgalteriya
-	# har oy "O'qitish xizmati" nachisleniyasini yozadi va uni Journal Entry
-	# bilan yopadi. Qator bo'lmasa bu pul "avans"da qolib, oyma-oy ko'rinmasdi —
-	# shuning uchun nachisleniyaning O'ZI qator bo'ladi.
-	oquv_si = _tuition_si_months(tr.customer, _plan_payment_window(tr), cfg)
-	if oquv_si:
-		bor_oylar = {
-			getdate(r.due_date).strftime("%Y-%m")
-			for r in tr.oylar
-			if not r.manba_hujjat and r.holat != "Bekor"
-		}
-		kerak = [si for si, oy in oquv_si.items() if oy not in bor_oylar and si not in mavjud]
-		# `mavjud` dan allaqachon qator bo'lganlarini olib tashlaymiz (idempotent)
-		for si in list(oquv_si):
-			mavjud.pop(si, None)
-		if kerak:
-			for si in frappe.db.sql(
-				"""SELECT si.name, si.posting_date, si.custom_payment_month oy,
-				          GROUP_CONCAT(DISTINCT sii.item_code SEPARATOR ' + ') itemlar,
-				          SUM(sii.net_amount) amount
-				   FROM `tabSales Invoice` si
-				   JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
-				   WHERE si.name IN %s GROUP BY si.name HAVING amount > 0""",
-				(tuple(kerak),),
-				as_dict=True,
-			):
-				oy = oquv_si.get(si.name) or getdate(si.posting_date).strftime("%Y-%m")
-				yil, oy_raqam = oy.split("-")
-				label = f"{OY_NOMI.get(int(oy_raqam), oy_raqam)} {yil}"
-				tr.append(
-					"oylar",
-					{
-						"oy_label": label,
-						"due_date": si.posting_date,
-						"amount": flt(si.amount),
-						"holat": "Kutilmoqda",
-						"manba_hujjat": si.name,
-						"izoh": "O'quv to'lovi nachisleniyasi (SI)",
-					},
-				)
-				changed = True
 
 	# SI bekor bo'lgan/o'chirilgan qatorlar
 	for r in mavjud.values():
@@ -538,6 +653,28 @@ def _taqsimla(
 		if si not in ishlangan:
 			q_pool += qq
 
+	# 3b) Buxgalteriyada yopilgan o'quv nachisleniyasi (Journal Entry, kredit-nota —
+	#     masalan grant/investor farzandlari). SI qatorlaridagi himoya to'rining
+	#     o'quv to'lovi uchun aynasi. FIFO'dan OLDIN qo'yiladi: yopilgan oy
+	#     band hisoblanadi, shuning uchun haqiqiy pul keyingi ochiq oyga tushadi.
+	#     Bu summa POLDAN AYIRILMAYDI — u mijoz to'lovi emas.
+	for r in oy_rows:
+		nach = [x.strip() for x in str(r.get("nachisleniya") or "").split(",") if x.strip()]
+		jami = qold = 0.0
+		topildi = False
+		for si in nach:
+			t = si_qoldiq.get(si)
+			if t:
+				topildi = True
+				jami += t[0]
+				qold += t[1]
+		if not topildi:
+			continue
+		yopilgan = min(max(jami - qold, 0.0), flt(r.amount))
+		bor = bogli_oy.get(r.name, 0.0)
+		if yopilgan > bor:
+			bogli_oy[r.name] = yopilgan
+
 	# 4) Bog'lanmagan pul — oylik qatorlarga FIFO
 	for r in oy_rows:
 		bor = bogli_oy.get(r.name, 0.0)
@@ -571,7 +708,13 @@ def recompute_plan(tr_name: str, sync_case: bool = True):
 
 	frappe.flags.qarz_engine = True
 	try:
-		if sync_charges(tr):
+		cfg = _settings()
+		# Tartib muhim: avval o'quv nachisleniyasi (eski `manba_hujjat` qatorlarini
+		# oylik qatorga aylantiradi), keyin kitob/forma sinxroni — aks holda
+		# sync_charges o'sha qatorlarni "SI yo'q" deb Bekor qilib qo'yardi.
+		changed = sync_tuition(tr, cfg)
+		changed = sync_charges(tr) or changed
+		if changed:
 			tr = frappe.get_doc("Tolov Rejasi", tr_name)  # yangi qatorlar bilan qayta o'qish
 		jami_tolov, jami_qaytim = _payments_split(tr.customer, _plan_payment_window(tr))
 		today = getdate(nowdate())
@@ -588,20 +731,30 @@ def recompute_plan(tr_name: str, sync_case: bool = True):
 			alloc = alloc_map.get(r.name, 0.0)
 			qayt = qaytim_map.get(r.name, 0.0)
 			outstanding = amount - alloc + qayt
+			muddat = getdate(r.due_date)
 
-			if outstanding <= 0.005:
+			if amount <= 0.005:
+				# Nachisleniya qilinmagan oy — QARZ EMAS. Kelgusi oy "Rejada",
+				# o'tgan oy esa "Nachisleniya yo'q" (buxgalter ko'rib tuzatishi uchun).
+				# O'quvchi qo'shilishidan oldingi oylar ham oddiy "Rejada".
+				holat = (
+					"Rejada"
+					if (muddat > today or r.izoh == IZOH_BOSHLANMAGAN)
+					else "Nachisleniya yo'q"
+				)
+			elif outstanding <= 0.005:
 				holat = "To'landi"
 			elif alloc - qayt > 0:
 				holat = "Qisman"
-			elif getdate(r.due_date) <= today:
+			elif muddat <= today:
 				holat = "Muddati keldi"
 			else:
 				holat = "Kutilmoqda"
 
-			if getdate(r.due_date) <= today and outstanding > 0.005:
+			if amount > 0.005 and muddat <= today and outstanding > 0.005:
 				qarz += outstanding
 				if eng_eski is None:
-					eng_eski = getdate(r.due_date)
+					eng_eski = muddat
 
 			if (
 				flt(r.paid_amount) != alloc
@@ -641,6 +794,135 @@ def recompute_plan(tr_name: str, sync_case: bool = True):
 		return qarz
 	finally:
 		frappe.flags.qarz_engine = False
+
+
+# ---------------------------------------------------------------- xulosa
+def _charge_breakdown(rows) -> list[dict]:
+	"""Qo'shimcha nachisleniyalar (Kitob, Forma, Yotoqxona...) item bo'yicha.
+
+	Bitta Sales Invoice'da bir nechta item bo'lishi mumkin (Kitob + Forma), reja
+	qatori esa bitta — shuning uchun to'langan/qoldiq item ulushiga proportsional
+	taqsimlanadi. Panelda "Kitob uchun buncha nachislangan, buncha to'langan"
+	deb ko'rsatish uchun kerak.
+	"""
+	si_rows = [r for r in rows if r.manba_hujjat]
+	if not si_rows:
+		return []
+	items = {}
+	for d in frappe.db.sql(
+		"""SELECT parent, item_code, SUM(net_amount) amount
+		   FROM `tabSales Invoice Item` WHERE parent IN %s
+		   GROUP BY parent, item_code""",
+		(tuple({r.manba_hujjat for r in si_rows}),),
+		as_dict=True,
+	):
+		items.setdefault(d.parent, []).append((d.item_code, flt(d.amount)))
+
+	out = {}
+	for r in si_rows:
+		lst = items.get(r.manba_hujjat) or [(r.oy_label, flt(r.amount))]
+		jami = sum(a for _, a in lst) or 1.0
+		for nom, a in lst:
+			ulush = a / jami
+			d = out.setdefault(
+				nom,
+				{"nom": nom, "nachislangan": 0.0, "tolangan": 0.0,
+				 "qaytim": 0.0, "qoldiq": 0.0, "qarz": 0.0, "soni": 0},
+			)
+			d["nachislangan"] += a
+			d["tolangan"] += flt(r.paid_amount) * ulush
+			d["qaytim"] += flt(r.qaytim) * ulush
+			d["qoldiq"] += flt(r.outstanding) * ulush
+			if getdate(r.due_date) <= getdate(nowdate()):
+				d["qarz"] += flt(r.outstanding) * ulush
+			d["soni"] += 1
+	return sorted(out.values(), key=lambda x: -x["nachislangan"])
+
+
+def plan_xulosa(tr) -> dict:
+	"""Panel uchun batafsil xulosa — hammasi HAQIQIY nachisleniya asosida:
+
+	  * `oquv` — o'quv to'lovi: shartnoma summasi, shundan nachislangani,
+	    to'langani, muddati kelgan qarz, hali nachislanmagan qoldiq;
+	  * `qoshimcha` — kitob/forma/yotoqxona: item bo'yicha nachislangan/to'langan;
+	  * `oylar` — oyma-oy kesim (nachislangan, to'langan, qoldiq, muddat, holat);
+	  * `jami` — ikkisining yig'indisi + avans.
+	"""
+	today = getdate(nowdate())
+	rows = [r for r in tr.oylar if r.holat != "Bekor"]
+	oy_rows = sorted(
+		[r for r in rows if not r.manba_hujjat], key=lambda r: getdate(r.due_date)
+	)
+
+	oquv = {
+		"shartnoma": flt(tr.yakuniy_summa) or sum(flt(r.reja_amount) for r in oy_rows),
+		"nachislangan": 0.0, "tolangan": 0.0, "qaytim": 0.0, "qoldiq": 0.0,
+		"qarz": 0.0, "muddati_kelmagan": 0.0, "nachislangan_oy": 0,
+		"nachisleniyasiz_oy": 0, "nachisleniyasiz_summa": 0.0, "kelgusi_oy": 0,
+		"kelgusi_summa": 0.0,
+	}
+	oylar = []
+	for r in oy_rows:
+		amount = flt(r.amount)
+		qold = flt(r.outstanding)
+		muddat = getdate(r.due_date)
+		kechikish = date_diff(today, muddat) if (amount > 0.005 and qold > 0.005 and muddat <= today) else 0
+		oylar.append(
+			{
+				"oy_label": r.oy_label,
+				"due_date": r.due_date,
+				"nachislangan": amount,
+				"reja": flt(r.reja_amount),
+				"tolangan": flt(r.paid_amount),
+				"qaytim": flt(r.qaytim),
+				"qoldiq": qold,
+				"holat": r.holat,
+				"nachisleniya": r.nachisleniya or "",
+				"kechikish": kechikish,
+			}
+		)
+		if amount > 0.005:
+			oquv["nachislangan"] += amount
+			oquv["tolangan"] += flt(r.paid_amount)
+			oquv["qaytim"] += flt(r.qaytim)
+			oquv["qoldiq"] += qold
+			oquv["nachislangan_oy"] += 1
+			if muddat <= today:
+				oquv["qarz"] += qold
+			else:
+				oquv["muddati_kelmagan"] += qold
+		elif muddat <= today:
+			oquv["nachisleniyasiz_oy"] += 1
+			oquv["nachisleniyasiz_summa"] += flt(r.reja_amount)
+		else:
+			oquv["kelgusi_oy"] += 1
+			oquv["kelgusi_summa"] += flt(r.reja_amount)
+
+	# Shartnomadan hali nachislanmagan qism (kelgusi oylar + yozilmagan oylar)
+	oquv["nachislanmagan"] = max(oquv["shartnoma"] - oquv["nachislangan"], 0.0)
+
+	qoshimcha = _charge_breakdown(rows)
+	q_jami = {
+		k: sum(x[k] for x in qoshimcha)
+		for k in ("nachislangan", "tolangan", "qaytim", "qoldiq", "qarz")
+	} if qoshimcha else dict.fromkeys(
+		("nachislangan", "tolangan", "qaytim", "qoldiq", "qarz"), 0.0
+	)
+
+	return {
+		"oquv": oquv,
+		"oylar": oylar,
+		"qoshimcha": qoshimcha,
+		"qoshimcha_jami": q_jami,
+		"jami": {
+			"nachislangan": oquv["nachislangan"] + q_jami["nachislangan"],
+			"tolangan": oquv["tolangan"] + q_jami["tolangan"],
+			"qaytim": oquv["qaytim"] + q_jami["qaytim"],
+			"qoldiq": oquv["qoldiq"] + q_jami["qoldiq"],
+			"qarz": oquv["qarz"] + q_jami["qarz"],
+			"avans": flt(tr.avans_summa),
+		},
+	}
 
 
 # ---------------------------------------------------------------- case sync
@@ -903,9 +1185,10 @@ def ensure_tuition_plans():
 
 
 def ensure_charge_plans():
-	"""Faol rejasi YO'Q, lekin nachisleniyasi (Kitob/Forma...) bor o'quvchilarga —
-	masalan grant/investor farzandlari — faqat-nachisleniya reja ochadi.
-	Ular o'qish puli to'lamaydi, lekin kitob-forma qarzini so'rash kerak."""
+	"""Faol rejasi YO'Q, lekin nachisleniyasi bor o'quvchilarga — masalan
+	grant/investor farzandlari — faqat-nachisleniya reja ochadi. Shartnoma
+	summasi bo'lmasa ham nachisleniya haqiqiy majburiyat: kitob-forma yoki
+	hatto o'quv to'lovi nachislangan bo'lsa, u ko'rinishi va so'ralishi kerak."""
 	cfg = _settings()
 	rows = frappe.db.sql(
 		"""SELECT si.customer, s.name student
@@ -913,12 +1196,12 @@ def ensure_charge_plans():
 		   JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
 		   JOIN `tabStudent` s ON s.customer = si.customer AND s.enabled = 1
 		   WHERE si.docstatus=1 AND si.currency='UZS'
-		     AND sii.item_code NOT IN %s AND si.posting_date >= %s
+		     AND sii.item_code IS NOT NULL AND si.posting_date >= %s
 		     AND NOT EXISTS (
 		        SELECT 1 FROM `tabTolov Rejasi` tr
 		        WHERE tr.student = s.name AND tr.holat != 'Bekor')
 		   GROUP BY s.name""",
-		(tuple(cfg.istisno_itemlar) or ("",), f"{_joriy_oquv_yili().split('-')[0]}-07-01"),
+		(f"{_joriy_oquv_yili().split('-')[0]}-07-01",),
 		as_dict=True,
 	)
 	for r in rows:
@@ -961,7 +1244,7 @@ def _charge_rows_for(customer: str, cfg) -> list[dict]:
 		(customer, tuple(cfg.istisno_itemlar) or ("",), f"{_joriy_oquv_yili().split('-')[0]}-07-01"),
 		as_dict=True,
 	)
-	return [
+	out = [
 		{
 			"oy_label": f"{r.itemlar} ({getdate(r.posting_date).strftime('%d.%m.%Y')})",
 			"due_date": r.posting_date,
@@ -971,6 +1254,20 @@ def _charge_rows_for(customer: str, cfg) -> list[dict]:
 		}
 		for r in rows
 	]
+	# O'quv to'lovi nachisleniyasi — oylik qator (keyin sync_tuition yuritadi)
+	for oy, a in sorted(
+		_tuition_accruals(customer, f"{_joriy_oquv_yili().split('-')[0]}-07-01", cfg).items()
+	):
+		out.append(
+			{
+				"oy_label": _oy_label(oy),
+				"due_date": _oy_muddati(oy, cfg),
+				"amount": flt(a["amount"]),
+				"nachisleniya": ", ".join(sorted(a["sis"])),
+				"izoh": "O'quv to'lovi",
+			}
+		)
+	return out
 
 
 # ---------------------------------------------------------------- jobs/hooks

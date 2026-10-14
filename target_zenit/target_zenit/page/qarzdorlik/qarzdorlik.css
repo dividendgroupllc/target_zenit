@@ -170,3 +170,40 @@
 	background: var(--bg-blue, #e7f0fd); color: var(--text-on-blue, #1a5bb8);
 	font-size: 10px; font-weight: 600;
 }
+
+/* Umumiy xulosa bloki — nachisleniya / to'langan / to'lanmagan kesimi */
+.tz-qarz .box.xul { background:var(--card); }
+.tz-qarz .xul-tbl tbody tr.xul-jami td { border-top:2px solid var(--line-strong); font-weight:700; }
+.tz-qarz .xul-tbl td, .tz-qarz .xul-tbl th { font-variant-numeric:tabular-nums; }
+.tz-qarz .xul-shart { margin-top:8px; display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:4px 16px; font-size:12.5px; }
+.tz-qarz .xul-shart div { display:flex; justify-content:space-between; gap:8px;
+  border-bottom:1px dashed var(--line); padding:2px 0; }
+.tz-qarz .xul-shart span { color:var(--ink-2); }
+.tz-qarz .xul-shart b { font-variant-numeric:tabular-nums; }
+.tz-qarz .xul-shart b.neg, .tz-qarz b.neg, .tz-qarz .neg { color:var(--bad-ink); }
+.tz-qarz .ok-t { color:var(--good-ink); }
+.tz-qarz .warn-t { color:var(--warn-ink); }
+/* Nachislanmagan oylar — prognoz, jim ko'rinadi */
+.tz-qarz tr.mh-Rejada td, .tz-qarz tr[class*="Nachisleniya"] td { color:var(--muted); background:var(--card-2); }
+
+/* Sinf tanlash dropdowni — bir vaqtda bir nechta sinf (9 va 10-sinf birga) */
+.tz-qarz .dd { position:relative; }
+.tz-qarz .dd-btn { background:var(--card); border:1px solid var(--line-strong); border-radius:8px;
+  padding:7px 10px; font-size:13px; cursor:pointer; color:var(--ink); }
+.tz-qarz .dd-menu { position:absolute; z-index:30; top:calc(100% + 4px); left:0; min-width:230px;
+  max-height:340px; overflow:auto; background:var(--card); border:1px solid var(--line-strong);
+  border-radius:10px; padding:6px; box-shadow:0 10px 24px rgba(0,0,0,.14); }
+.tz-qarz .dd-grp { padding:2px 0; border-bottom:1px solid var(--line); }
+.tz-qarz .dd-g, .tz-qarz .dd-i { display:flex; align-items:center; gap:6px; font-size:12.5px;
+  padding:3px 4px; cursor:pointer; margin:0; border-radius:6px; }
+.tz-qarz .dd-i { padding-left:18px; color:var(--ink-2); }
+.tz-qarz .dd-g:hover, .tz-qarz .dd-i:hover { background:var(--card-2); }
+.tz-qarz .dd-g .n, .tz-qarz .dd-i .n { margin-left:auto; color:var(--muted); font-size:11px; }
+.tz-qarz .dd-clear { width:100%; margin-top:6px; background:var(--card-2); border:1px solid var(--line);
+  border-radius:8px; padding:5px; font-size:12px; cursor:pointer; color:var(--ink-2); }
+.tz-qarz .badge-ketgan { margin-left:8px; font-size:11.5px; padding:2px 8px; border-radius:20px;
+  background:var(--warn-wash); color:var(--warn-ink); border:1px solid var(--warn); }
+.tz-qarz .btn-ketgan { background:var(--card); border:1px solid var(--warn); color:var(--warn-ink);
+  border-radius:10px; padding:9px 14px; font-size:13px; cursor:pointer; }
+.tz-qarz .btn-ketgan.back { border-color:var(--line-strong); color:var(--ink-2); }

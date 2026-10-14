@@ -4,6 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "tolov_kuni",
   "grace_days",
   "tolerance",
   "min_threshold",
@@ -16,6 +17,13 @@
   "biriktirish"
  ],
  "fields": [
+  {
+   "default": "5",
+   "description": "O'quv to'lovi muddati — nachisleniya oyining shu kuni (shartnoma: oyning birinchi besh kunligi)",
+   "fieldname": "tolov_kuni",
+   "fieldtype": "Int",
+   "label": "To'lov kuni (oyning)"
+  },
   {
    "default": "3",
    "description": "Muddat o'tgach necha kun kutib ish ochiladi",
@@ -83,7 +91,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-14 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Qarzdorlik Sozlamalari",

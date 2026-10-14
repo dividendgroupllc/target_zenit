@@ -806,3 +806,141 @@ def test_je_tolov(student="EDU-STU-2026-00247"):
 	engine.recompute_plan(tr_name, sync_case=True)
 	frappe.db.commit()
 	hol("4) hammasi bekor qilingandan keyin")
+
+
+def test_nachisleniya_jadval(student=None):
+	"""Jadval haqiqiy nachisleniya bilan ishlayaptimi — bitta o'quvchida tekshirish.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_nachisleniya_jadval
+	"""
+	import json
+
+	from target_zenit.qarzdorlik import engine
+
+	if not student:
+		student = frappe.db.sql(
+			"""SELECT tr.student FROM `tabTolov Rejasi` tr
+			   WHERE tr.holat='Faol' AND EXISTS (
+			     SELECT 1 FROM `tabPayment Entry` pe WHERE pe.docstatus=1
+			       AND pe.party=tr.customer AND pe.payment_type='Receive')
+			   LIMIT 1"""
+		)[0][0]
+	tr_name = frappe.db.get_value("Tolov Rejasi", {"student": student, "holat": "Faol"})
+	engine.recompute_plan(tr_name, sync_case=True)
+	frappe.db.commit()
+	tr = frappe.get_doc("Tolov Rejasi", tr_name)
+	x = engine.plan_xulosa(tr)
+	print(f"\n=== {tr.student_name} ({student}) — {tr_name} ===")
+	print(f"shartnoma {tr.yakuniy_summa:,.0f} | nachislangan {x['oquv']['nachislangan']:,.0f} "
+	      f"| to'langan {x['oquv']['tolangan']:,.0f} | qarz {x['jami']['qarz']:,.0f} "
+	      f"| avans {x['jami']['avans']:,.0f}")
+	for m in x["oylar"]:
+		print(f"  {m['oy_label']:<16} {str(m['due_date'])} nachis={m['nachislangan']:>12,.0f} "
+		      f"reja={m['reja']:>12,.0f} tol={m['tolangan']:>12,.0f} qold={m['qoldiq']:>12,.0f} {m['holat']}")
+	for q in x["qoshimcha"]:
+		print(f"  [{q['nom']}] nachis={q['nachislangan']:,.0f} tol={q['tolangan']:,.0f} qold={q['qoldiq']:,.0f}")
+	print(json.dumps(x["jami"], indent=1, default=str))
+
+
+def nachisleniya_tasir():
+	"""Butun bazada o'lchash: nachisleniyaga o'tish qarzga qanday ta'sir qildi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.nachisleniya_tasir
+	"""
+	from target_zenit.qarzdorlik import engine
+
+	oldin = frappe.db.sql(
+		"""SELECT COALESCE(SUM(qarz_bugun),0), COALESCE(SUM(jami_hisoblangan),0),
+		          COALESCE(SUM(jami_tolangan),0), COALESCE(SUM(avans_summa),0)
+		   FROM `tabTolov Rejasi` WHERE holat='Faol'"""
+	)[0]
+	rejalar = frappe.get_all("Tolov Rejasi", filters={"holat": "Faol"}, pluck="name")
+	xato = 0
+	for n in rejalar:
+		try:
+			engine.recompute_plan(n, sync_case=False)
+		except Exception:
+			xato += 1
+			frappe.log_error(frappe.get_traceback(), f"nachisleniya_tasir: {n}")
+	frappe.db.commit()
+	keyin = frappe.db.sql(
+		"""SELECT COALESCE(SUM(qarz_bugun),0), COALESCE(SUM(jami_hisoblangan),0),
+		          COALESCE(SUM(jami_tolangan),0), COALESCE(SUM(avans_summa),0)
+		   FROM `tabTolov Rejasi` WHERE holat='Faol'"""
+	)[0]
+	nomlar = ("qarz_bugun", "nachislangan", "tolangan", "avans")
+	print(f"\nrejalar: {len(rejalar)}, xato: {xato}")
+	for i, nom in enumerate(nomlar):
+		print(f"  {nom:<14} {oldin[i]:>18,.0f} -> {keyin[i]:>18,.0f}  ({keyin[i]-oldin[i]:+,.0f})")
+	for h, n, sm in frappe.db.sql(
+		"""SELECT o.holat, COUNT(*), COALESCE(SUM(o.amount),0) FROM `tabTolov Rejasi Oyi` o
+		   JOIN `tabTolov Rejasi` tr ON tr.name=o.parent WHERE tr.holat='Faol'
+		   GROUP BY o.holat ORDER BY 2 DESC"""
+	):
+		print(f"  qator {h:<18} {n:>5} ta  {sm:>18,.0f}")
+
+
+def test_panel_api(user="Administrator"):
+	"""Panel endpointlari: get_data (faol/ketgan) + get_case (xulosa bilan).
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_panel_api
+	"""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user(user)
+	faol = panel.get_data()
+	ketgan = panel.get_data(ketganlar=1)
+	print(f"faol ishlar: {len(faol['cases'])}, ketganlar: {len(ketgan['cases'])}, "
+	      f"stats.ketgan_soni={faol['stats']['ketgan_soni']}, "
+	      f"ketgan_huquqi={faol['ketgan_huquqi']}")
+	assert all(not c["ketgan"] for c in faol["cases"]), "faol ro'yxatda ketgan bor!"
+	assert all(c["ketgan"] for c in ketgan["cases"]), "ketganlar ro'yxatida faol bor!"
+
+	c = max(faol["cases"], key=lambda x: x["qarz_summa"])
+	d = panel.get_case(c["name"])
+	x = d["xulosa"]
+	print(f"\nkarta: {c['student_name']} — qarz {c['qarz_summa']:,.0f}")
+	print(f"  oylar: {len(x['oylar'])}, qoshimcha: {[q['nom'] for q in x['qoshimcha']]}")
+	print(f"  oquv: {x['oquv']}")
+	print(f"  jami: {x['jami']}")
+	# Jami tekshiruvi: o'quv + qo'shimcha = jami
+	assert abs(x["jami"]["nachislangan"] - x["oquv"]["nachislangan"]
+	           - x["qoshimcha_jami"]["nachislangan"]) < 1, "jami nachisleniya mos kelmadi"
+	assert abs(x["jami"]["qarz"] - c["qarz_summa"]) < 1, (
+		f"xulosa qarzi ({x['jami']['qarz']:,.0f}) Qarz Ishi summasiga "
+		f"({c['qarz_summa']:,.0f}) teng emas")
+	print("\nOK — xulosa va qarz summasi mos")
+
+
+def test_ketgan_oqim():
+	"""«O'quvchi ketdi» oqimi: belgilash -> ro'yxatdan chiqishi -> qaytarish.
+	Oxirida hamma o'zgarish qaytariladi (test ma'lumot qoldirmaydi).
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_ketgan_oqim
+	"""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	case = panel.get_data()["cases"][0]
+	print(f"sinov: {case['student_name']} ({case['student']}) — ish {case['name']}")
+
+	panel.ketgan_belgilash(case["name"], sabab="Sinov (avtomatik qaytariladi)")
+	st = frappe.db.get_value("Student", case["student"], ["enabled", "date_of_leaving"], as_dict=True)
+	faol = {c["name"] for c in panel.get_data()["cases"]}
+	ketgan = {c["name"] for c in panel.get_data(ketganlar=1)["cases"]}
+	print(f"  belgilangandan keyin: enabled={st.enabled}, ketish={st.date_of_leaving}, "
+	      f"faol ro'yxatda={case['name'] in faol}, ketganlar ro'yxatida={case['name'] in ketgan}")
+	assert st.enabled == 0 and st.date_of_leaving, "Student hujjatiga yozilmadi"
+	assert case["name"] not in faol, "ketgan o'quvchi faol ro'yxatda qoldi"
+	assert case["name"] in ketgan, "ketganlar ro'yxatida ko'rinmadi"
+
+	reja = frappe.db.get_value("Qarz Ishi", case["name"], "tolov_rejasi")
+	bekor = frappe.db.count("Tolov Rejasi Oyi", {"parent": reja, "holat": "Bekor"})
+	panel.qaytardi(case["name"])
+	st = frappe.db.get_value("Student", case["student"], ["enabled", "date_of_leaving"], as_dict=True)
+	faol = {c["name"] for c in panel.get_data()["cases"]}
+	print(f"  qaytarilgandan keyin: enabled={st.enabled}, ketish={st.date_of_leaving}, "
+	      f"faol ro'yxatda={case['name'] in faol}")
+	assert st.enabled == 1 and not st.date_of_leaving, "qaytarish ishlamadi"
+	assert case["name"] in faol, "qaytarilgandan keyin ro'yxatga qaytmadi"
+	tr = frappe.db.get_value("Qarz Ishi", case["name"], "tolov_rejasi")
+	qoldi = frappe.db.count("Tolov Rejasi Oyi", {"parent": tr, "holat": "Bekor"})
+	print(f"  bekor qilingan oylar: qaytarishdan oldin {bekor} -> hozir {qoldi}")
+	assert qoldi == 0, f"ketish paytida bekor bo'lgan {qoldi} oy tiklanmadi"
+	print("OK — ketgan/qaytarish oqimi ishlaydi, ma'lumot tiklandi")
