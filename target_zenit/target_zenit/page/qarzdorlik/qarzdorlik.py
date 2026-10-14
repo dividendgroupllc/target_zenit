@@ -22,6 +22,220 @@ def _guard():
 		frappe.throw("Ruxsat yo'q. Qarzdorlik paneli uchun sotuv roli kerak.", frappe.PermissionError)
 
 
+# ------------------------------------------------------------ telefoniya
+# Qo'ng'iroqlar qarzdorlik kartasiga RAQAM bo'yicha bog'lanadi: `Telefon
+# Qongirogi.normal_telefon` ("998XXXXXXXXX") bilan o'quvchining to'lovchi /
+# ota-ona / o'quvchi raqamlari solishtiriladi. Student'dagi `normal_telefon`
+# maydoni bazada to'ldirilmagan, shuning uchun matcher'ning avtomatik
+# bog'lanishiga tayanib bo'lmaydi.
+TEL_DT = "Telefon Qongirogi"
+
+
+def _normal(raw):
+	from target_zenit.telefoniya.utils import normalize_phone
+
+	return normalize_phone(raw)
+
+
+def _tel_hammasini_koradi() -> bool:
+	"""Rahbar (va Telefoniya Agent) hamma qo'ng'iroqni eshitadi, menejer —
+	faqat o'zinikini. Doctype'ning o'z qoidasi bilan bir xil bo'lishi uchun
+	shu yerda ham o'sha funksiya ishlatiladi."""
+	from target_zenit.target_zenit.doctype.telefon_qongirogi.telefon_qongirogi import (
+		_hammasini_korishi_mumkin,
+	)
+
+	return _hammasini_korishi_mumkin(frappe.session.user)
+
+
+def _case_raqamlar(student: str, payer_phone=None, payer_name=None) -> dict:
+	"""Shu o'quvchiga tegishli normal raqamlar: {raqam: kimning raqami}.
+
+	To'lovchi, ota-onalar (Guardian) va o'quvchining o'z raqami. Bitta raqam
+	aka-ukalarda umumiy bo'lishi mumkin — qo'ng'iroq ikkisining kartasida ham
+	ko'rinadi, bu to'g'ri: qo'ng'iroq to'lovchi bilan bo'lgan."""
+	out = {}
+
+	def qosh(raw, kim):
+		n = _normal(raw)
+		if n and n not in out:
+			out[n] = kim
+
+	qosh(payer_phone, payer_name or "To'lovchi")
+	st = frappe.db.get_value(
+		"Student",
+		student,
+		["student_name", "student_mobile_number", "custom_payer_phone", "custom_payer_name"],
+		as_dict=True,
+	) or frappe._dict()
+	qosh(st.custom_payer_phone, st.custom_payer_name or "To'lovchi")
+	for g in frappe.db.sql(
+		"""SELECT COALESCE(g.guardian_name, sg.guardian_name) nm, sg.relation, g.mobile_number tel
+		   FROM `tabStudent Guardian` sg
+		   LEFT JOIN `tabGuardian` g ON g.name = sg.guardian
+		   WHERE sg.parent = %s AND sg.parenttype = 'Student'
+		   ORDER BY sg.idx""",
+		(student,),
+		as_dict=True,
+	):
+		qosh(g.tel, f"{g.nm or 'Ota-ona'}{f' ({g.relation})' if g.relation else ''}")
+	qosh(st.student_mobile_number, (st.student_name or "O'quvchi") + " (o'quvchi)")
+	return out
+
+
+def _qongiroqlar(student: str, payer_phone=None, payer_name=None, limit: int = 60) -> list[dict]:
+	"""O'quvchi/to'lovchi bilan bo'lgan qo'ng'iroqlar — yangisi tepada.
+
+	Ruxsat: rahbar hammasini, menejer faqat o'zi qilgan qo'ng'iroqlarni ko'radi
+	(`Telefon Qongirogi` doctype qoidasi bilan bir xil)."""
+	raqamlar = _case_raqamlar(student, payer_phone, payer_name)
+	if not raqamlar and not student:
+		return []
+
+	filters = {} if _tel_hammasini_koradi() else {"foydalanuvchi": frappe.session.user}
+	or_filters = [["normal_telefon", "in", list(raqamlar)]] if raqamlar else []
+	or_filters.append(["student", "=", student])
+	rows = frappe.get_all(
+		TEL_DT,
+		filters=filters,
+		or_filters=or_filters,
+		fields=[
+			"name", "boshlandi", "yonalish", "tugash_sababi", "kim_tugatdi",
+			"suhbat_vaqti", "kutish_vaqti", "yozuv_bor", "yozuv_ochirildi",
+			"izoh", "kontakt_ism", "aloqador_ism", "maqsad", "manba",
+			"xodim", "foydalanuvchi", "normal_telefon", "tashqi_raqam",
+		],
+		order_by="boshlandi desc",
+		limit_page_length=limit,
+	)
+
+	# Menejer ismi: User.full_name, bo'lmasa Employee nomi
+	userlar = {u for r in rows if (u := r.foydalanuvchi)}
+	xodimlar = {x for r in rows if (x := r.xodim)}
+	u_map = {
+		u.name: u.full_name or u.name
+		for u in (
+			frappe.get_all("User", filters={"name": ["in", list(userlar)]},
+			               fields=["name", "full_name"]) if userlar else []
+		)
+	}
+	x_map = {
+		e.name: e.employee_name
+		for e in (
+			frappe.get_all("Employee", filters={"name": ["in", list(xodimlar)]},
+			               fields=["name", "employee_name"]) if xodimlar else []
+		)
+	}
+	for r in rows:
+		r["menejer"] = u_map.get(r.foydalanuvchi) or x_map.get(r.xodim) or "—"
+		r["kim"] = raqamlar.get(r.normal_telefon) or r.kontakt_ism or r.aloqador_ism or ""
+		r["audio"] = 1 if (r.yozuv_bor and not r.yozuv_ochirildi) else 0
+	return rows
+
+
+def _qongiroq_statistikasi(cases) -> None:
+	"""Navbat ro'yxatiga qo'ng'iroq soni va oxirgi suhbat vaqtini qo'shadi.
+
+	Hamma ish uchun bitta so'rovda: avval barcha tegishli raqamlar yig'iladi
+	(to'lovchi + ota-onalar + o'quvchi), keyin qo'ng'iroqlar raqam bo'yicha
+	guruhlanadi. Har ish uchun alohida so'rov yuborilsa panel 276 marta
+	bazaga borardi."""
+	for c in cases:
+		c["qongiroq_soni"] = 0
+		c["oxirgi_qongiroq"] = None
+		c["yozuv_soni"] = 0
+	if not cases:
+		return
+
+	studentlar = [c.student for c in cases if c.student]
+	# O'quvchi -> uning raqamlari (normal ko'rinishda)
+	st_raqam = {}
+
+	def qosh(student, raw):
+		n = _normal(raw)
+		if n:
+			st_raqam.setdefault(student, set()).add(n)
+
+	for c in cases:
+		qosh(c.student, c.payer_phone)
+	for st in frappe.get_all(
+		"Student",
+		filters={"name": ["in", studentlar]},
+		fields=["name", "student_mobile_number", "custom_payer_phone"],
+	):
+		qosh(st.name, st.custom_payer_phone)
+		qosh(st.name, st.student_mobile_number)
+	if studentlar:
+		for g in frappe.db.sql(
+			"""SELECT sg.parent student, g.mobile_number tel
+			   FROM `tabStudent Guardian` sg
+			   JOIN `tabGuardian` g ON g.name = sg.guardian
+			   WHERE sg.parenttype = 'Student' AND sg.parent IN %s
+			     AND g.mobile_number IS NOT NULL AND g.mobile_number != ''""",
+			(tuple(studentlar),),
+			as_dict=True,
+		):
+			qosh(g.student, g.tel)
+
+	hamma_raqam = {n for s in st_raqam.values() for n in s}
+	if not hamma_raqam:
+		return
+
+	shart = "" if _tel_hammasini_koradi() else " AND foydalanuvchi = %(user)s"
+	stat = {
+		r.normal_telefon: r
+		for r in frappe.db.sql(
+			f"""SELECT normal_telefon, COUNT(*) soni, MAX(boshlandi) oxirgi,
+			           SUM(CASE WHEN yozuv_bor=1 AND IFNULL(yozuv_ochirildi,0)=0
+			                    THEN 1 ELSE 0 END) yozuvli
+			    FROM `tabTelefon Qongirogi`
+			    WHERE normal_telefon IN %(raqamlar)s{shart}
+			    GROUP BY normal_telefon""",
+			{"raqamlar": tuple(hamma_raqam), "user": frappe.session.user},
+			as_dict=True,
+		)
+	}
+	if not stat:
+		return
+	for c in cases:
+		for n in st_raqam.get(c.student, ()):  # aka-ukada raqam umumiy bo'lishi mumkin
+			r = stat.get(n)
+			if not r:
+				continue
+			c["qongiroq_soni"] += int(r.soni or 0)
+			c["yozuv_soni"] += int(r.yozuvli or 0)
+			if not c["oxirgi_qongiroq"] or str(r.oxirgi) > str(c["oxirgi_qongiroq"]):
+				c["oxirgi_qongiroq"] = r.oxirgi
+
+
+def _komment_biriktir(qongiroqlar, ays, soat: int = 4) -> None:
+	"""Qo'ng'iroqqa menejerning qisqa tafsilotini biriktiradi.
+
+	Menejer suhbat natijasini `Telefon Qongirogi.izoh` ga emas, panelning
+	«Qo'ng'iroq natijasi» modaliga yozadi (Aloqa Yozuvi). Shuning uchun
+	qo'ng'iroqdan keyin `soat` ichida yozilgan eng YAQIN aloqa yozuvi shu
+	suhbatning tafsiloti deb olinadi — panelda audio yonida ko'rinadi."""
+	if not qongiroqlar or not ays:
+		return
+	from frappe.utils import get_datetime, time_diff_in_seconds
+
+	oyna = soat * 3600
+	for q in qongiroqlar:
+		if q.get("izoh") or not q.get("boshlandi"):
+			continue
+		eng_yaqin, eng_farq = None, None
+		for a in ays:
+			if not a.get("vaqt") or not (a.get("komment") or a.get("hisob_natijasi")):
+				continue
+			farq = time_diff_in_seconds(get_datetime(a.vaqt), get_datetime(q["boshlandi"]))
+			if 0 <= farq <= oyna and (eng_farq is None or farq < eng_farq):
+				eng_yaqin, eng_farq = a, farq
+		if eng_yaqin:
+			q["ay_komment"] = eng_yaqin.get("komment")
+			q["ay_natija"] = eng_yaqin.get("hisob_natijasi")
+			q["ay_name"] = eng_yaqin.get("name")
+
+
 def _is_rahbar() -> bool:
 	roles = {r.lower() for r in frappe.get_roles()}
 	return bool({"system manager", "sales manager"} & roles)
@@ -100,6 +314,8 @@ def get_data(ketganlar: int = 0):
 		c["aloqa_soni"] = int(m.soni) if m else 0
 		c["gaplashildi_soni"] = int(m.gaplashildi or 0) if m else 0
 
+	_qongiroq_statistikasi(cases)
+
 	today = getdate(nowdate())
 	stats = {
 		"ochiq": len(cases),
@@ -107,6 +323,9 @@ def get_data(ketganlar: int = 0):
 		"bugun": 0,
 		"otgan": 0,
 		"gaplashilgan": sum(1 for c in cases if c["aloqa_soni"] > 0),
+		# Ovoz yozuvi bor suhbat o'tkazilgan o'quvchilar (KPI + filtr uchun)
+		"yozuvli": sum(1 for c in cases if c.get("yozuv_soni")),
+		"yozuv_jami": sum(int(c.get("yozuv_soni") or 0) for c in cases),
 		"vada_buzilgan": sum(1 for c in cases if c.ishlov_status == "Va'da buzildi"),
 		"eskalatsiya": sum(1 for c in cases if c.ishlov_status == "Eskalatsiya"),
 		"ketgan_soni": ketgan_soni,
@@ -231,6 +450,10 @@ def get_case(name: str):
 
 	student_phone = frappe.db.get_value("Student", qi.student, "student_mobile_number")
 
+	# Telefon suhbatlari (ovoz yozuvi bilan) — raqam bo'yicha bog'lanadi
+	qongiroqlar = _qongiroqlar(qi.student, qi.payer_phone, qi.payer_name)
+	_komment_biriktir(qongiroqlar, ays)
+
 	return {
 		"case": qi.as_dict(no_nulls=False),
 		"months": months,
@@ -242,6 +465,8 @@ def get_case(name: str):
 		"guardians": guardians,
 		"siblings": siblings,
 		"student_phone": student_phone,
+		"qongiroqlar": qongiroqlar,
+		"tel_hammasi": 1 if _tel_hammasini_koradi() else 0,
 	}
 
 

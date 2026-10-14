@@ -39,6 +39,17 @@ class TZQarzPanel {
 		return `<a class="tel" href="tel:${this.esc(p.replace(/[^+\d]/g, ""))}" onclick="event.stopPropagation()">${this.esc(p)}</a>`;
 	}
 	today() { return frappe.datetime.get_today(); }
+	// Sekundni 3:07 ko'rinishiga keltirish
+	dur(sec) {
+		sec = Math.round(Number(sec) || 0);
+		if (!sec) return "0:00";
+		const m = Math.floor(sec / 60), s2 = sec % 60;
+		return `${m}:${String(s2).padStart(2, "0")}`;
+	}
+	dtm(s) {
+		const v = String(s || "");
+		return v ? `${this.dmy(v)} ${v.slice(11, 16)}` : "—";
+	}
 
 	statusPill(st) {
 		const cls = {
@@ -136,6 +147,7 @@ class TZQarzPanel {
 			if (this.fQueue === "today" && !(c.keyingi_aloqa && c.keyingi_aloqa <= today)) return false;
 			if (this.fQueue === "overdue" && !(c.keyingi_aloqa && c.keyingi_aloqa < today)) return false;
 			if (this.fQueue === "gaplashilgan" && !(c.aloqa_soni > 0)) return false;
+			if (this.fQueue === "yozuvli" && !(c.yozuv_soni > 0)) return false;
 			if (q) {
 				const hay = [c.student_name, c.sinf, c.payer_name, c.payer_phone].join(" ").toLowerCase();
 				if (!hay.includes(q)) return false;
@@ -165,7 +177,7 @@ class TZQarzPanel {
 				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
 			</div>
 
-			<div class="grid cols-6 mb kpis">
+			<div class="grid cols-7 mb kpis">
 				<div class="card kpi click ${this.fQueue === "today" ? "sel" : ""}" data-queue="today">
 					<div class="lab"><span class="pin b"></span>Bugun aloqa</div>
 					<div class="val">${this.fmt(st.bugun)}</div><div class="sub">keyingi aloqa = bugun</div></div>
@@ -175,6 +187,11 @@ class TZQarzPanel {
 				<div class="card kpi click ${this.fQueue === "gaplashilgan" ? "sel" : ""}" data-queue="gaplashilgan">
 					<div class="lab"><span class="pin g"></span>Gaplashilgan</div>
 					<div class="val">${this.fmt(st.gaplashilgan)}</div><div class="sub">kamida bir marta aloqa qilingan</div></div>
+				<div class="card kpi click ${this.fQueue === "yozuvli" ? "sel" : ""}" data-queue="yozuvli"
+					title="Ovoz yozuvi bor suhbat o'tkazilgan o'quvchilar — bosib ro'yxatini ko'rish">
+					<div class="lab"><span class="pin b"></span>🎧 Qo'ng'iroq yozib olindi</div>
+					<div class="val">${this.fmt(st.yozuvli)}</div>
+					<div class="sub">${this.fmt(st.yozuv_jami)} ta yozuv · odam bilan gaplashilgan</div></div>
 				<div class="card kpi"><div class="lab"><span class="pin y"></span>Va'da buzilgan</div>
 					<div class="val">${this.fmt(st.vada_buzilgan)}</div><div class="sub">birinchi navbatda</div></div>
 				<div class="card kpi"><div class="lab"><span class="pin r"></span>Eskalatsiya</div>
@@ -239,7 +256,8 @@ class TZQarzPanel {
 				<tbody>
 				${rows.map((c) => `
 					<tr data-case="${this.esc(c.name)}" class="${this.selected === c.name ? "sel" : ""} ${c.keyingi_aloqa && c.keyingi_aloqa < today ? "late" : ""}">
-						<td><div class="nm">${this.esc(c.student_name)}${c.aloqa_soni > 0 ? ` <span class="pill st-ok" title="${c.aloqa_soni} ta aloqa yozuvi${c.gaplashildi_soni > 0 ? `, ${c.gaplashildi_soni} marta gaplashildi` : ""}">✓ ${c.aloqa_soni} aloqa</span>` : ""}</div>
+						<td><div class="nm">${this.esc(c.student_name)}${c.qongiroq_soni > 0
+							? ` <span class="pill st-blue" title="${c.qongiroq_soni} ta qo'ng'iroq${c.yozuv_soni ? `, ${c.yozuv_soni} ta ovoz yozuvi` : ""}${c.oxirgi_qongiroq ? `, oxirgisi ${this.dtm(c.oxirgi_qongiroq)}` : ""}">🎧 ${c.qongiroq_soni}</span>` : ""}${c.aloqa_soni > 0 ? ` <span class="pill st-ok" title="${c.aloqa_soni} ta aloqa yozuvi${c.gaplashildi_soni > 0 ? `, ${c.gaplashildi_soni} marta gaplashildi` : ""}">✓ ${c.aloqa_soni} aloqa</span>` : ""}</div>
 							<div class="mini">${this.esc(c.payer_name || "")} ${this.tel(c.payer_phone)}</div></td>
 						<td>${this.esc(c.sinf || "—")}</td>
 						<td class="r money">${this.fmt(c.qarz_summa)}</td>
@@ -365,6 +383,35 @@ class TZQarzPanel {
 					<td class="mini">${p.doctype === "Journal Entry" ? `<span class="tag-je">provodka</span> ` : ""}${this.esc(p.mode_of_payment || "")} ${p.currency !== "UZS" ? "(" + this.esc(p.currency) + ")" : ""}</td></tr>`).join("")}
 			</tbody></table>` : `<div class="mini">To'lov yo'q</div>`}</div>`;
 
+		const qlar = d.qongiroqlar || [];
+		const calls = `<div class="box"><div class="box-t">Telefon suhbatlari (${qlar.length})${
+				qlar.filter((q) => q.audio).length ? ` · ${qlar.filter((q) => q.audio).length} ta ovoz yozuvi` : ""}</div>
+			${d.tel_hammasi ? "" : `<div class="mini" style="margin-bottom:6px">Faqat o'zingiz qilgan qo'ng'iroqlar ko'rsatilyapti.</div>`}
+			${qlar.length ? qlar.map((q) => {
+				const url = `/api/method/target_zenit.telefoniya.api.stream_recording?qongiroq=${encodeURIComponent(q.name)}`;
+				const natija = q.tugash_sababi || "";
+				const pill = natija === "Javob berildi" ? "st-ok" : natija ? "st-mut" : "st-mut";
+				const izoh = q.izoh || q.ay_komment || "";
+				return `<div class="call">
+					<div class="call-head">
+						<b>${this.dtm(q.boshlandi)}</b>
+						<span class="call-dir ${q.yonalish === "Kiruvchi" ? "in" : "out"}">${q.yonalish === "Kiruvchi" ? "📥 kiruvchi" : "📤 chiquvchi"}</span>
+						${q.suhbat_vaqti ? `<span class="mini">suhbat ${this.dur(q.suhbat_vaqti)}</span>` : ""}
+						${natija ? `<span class="pill ${pill}">${this.esc(natija)}</span>` : ""}
+						<span class="spacer"></span>
+						<span class="mini">menejer: <b>${this.esc(q.menejer)}</b></span>
+						<a class="mini" href="/app/telefon-qongirogi/${encodeURIComponent(q.name)}" target="_blank">↗</a>
+					</div>
+					<div class="mini">Kim bilan: ${this.esc(q.kim || "noma'lum")} · ${this.tel(q.tashqi_raqam) || ""}</div>
+					${q.audio
+						? `<audio class="call-audio" controls preload="none" src="${url}"></audio>`
+						: `<div class="mini">${q.yozuv_ochirildi ? "Ovoz yozuvi saqlash muddati tugab o'chirilgan" : "Ovoz yozuvi yo'q"}</div>`}
+					${izoh ? `<div class="call-note">${this.esc(izoh)}${
+						q.ay_natija ? ` <span class="pill st-blue">${this.esc(q.ay_natija)}</span>` : ""}</div>` : ""}
+				</div>`;
+			}).join("") : `<div class="mini">Bu to'lovchi raqamlari bo'yicha qo'ng'iroq topilmadi</div>`}
+		</div>`;
+
 		const tl = `<div class="box"><div class="box-t">Timeline</div>
 			${(d.ays || []).length ? d.ays.map((a) => `
 				<div class="tl-item">
@@ -424,7 +471,7 @@ class TZQarzPanel {
 						? `<button class="btn-ketgan back">↩ Ketgan belgisini olish</button>`
 						: `<button class="btn-ketgan">🚪 O'quvchi ketdi</button>`) : ""}
 			</div>
-			${sibs}${xulosa}${months}${pays}${tl}
+			${sibs}${xulosa}${months}${pays}${calls}${tl}
 		`);
 
 		this.body.find(".btn-call").on("click", () => this.call_dialog());

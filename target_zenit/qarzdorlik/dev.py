@@ -944,3 +944,85 @@ def test_ketgan_oqim():
 	print(f"  bekor qilingan oylar: qaytarishdan oldin {bekor} -> hozir {qoldi}")
 	assert qoldi == 0, f"ketish paytida bekor bo'lgan {qoldi} oy tiklanmadi"
 	print("OK — ketgan/qaytarish oqimi ishlaydi, ma'lumot tiklandi")
+
+
+def test_qongiroq_boglanish(case="QI-2026-145130"):
+	"""Qo'ng'iroq -> qarzdorlik kartasi bog'lanishi (raqam bo'yicha).
+
+	Serverdagi haqiqiy ma'lumot namunasi bo'yicha sinov qo'ng'iroqlari yaratiladi
+	(Android manbasi, turli raqam formatlari), panel kartasida ko'rinishi
+	tekshiriladi va oxirida HAMMASI o'chiriladi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_qongiroq_boglanish
+	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	qi = frappe.db.get_value(
+		"Qarz Ishi", case, ["student", "student_name", "payer_phone"], as_dict=True
+	)
+	print(f"ish: {case} — {qi.student_name}, to'lovchi {qi.payer_phone}")
+	raqamlar = panel._case_raqamlar(qi.student, qi.payer_phone)
+	print(f"kartaning raqamlari: {raqamlar}")
+	assert raqamlar, "o'quvchida raqam topilmadi"
+
+	# Serverda uchragan formatlar: "+998...", "998...", "9 xonali", bo'sh raqam
+	xom = qi.payer_phone.replace("+998", "")          # 999386709 (9 xonali)
+	namunalar = [
+		(qi.payer_phone, 95, 1, "Ota-ona to'lashga va'da berdi"),
+		(xom, 32, 1, None),
+		("+998" + xom, 0, 0, None),
+		(None, 52, 1, None),                          # raqamsiz — bog'lanmasligi kerak
+	]
+	yaratilgan = []
+	try:
+		for i, (raqam, suhbat, yozuv, izoh) in enumerate(namunalar):
+			d = frappe.get_doc(
+				{
+					"doctype": "Telefon Qongirogi",
+					"asterisk_uniqueid": f"dev-sinov-{i}-{frappe.generate_hash(length=6)}",
+					"yonalish": "Chiquvchi" if i % 2 == 0 else "Kiruvchi",
+					"holat": "Yozuv bor" if yozuv else "Yangi",
+					"manba": "Android",
+					"boshlandi": add_to_date(now_datetime(), hours=-i - 1),
+					"tugash_sababi": "Javob berildi" if suhbat else "Javob yo'q",
+					"tashqi_raqam": raqam,
+					"suhbat_vaqti": suhbat,
+					"yozuv_bor": yozuv,
+					"izoh": izoh,
+				}
+			).insert(ignore_permissions=True)
+			yaratilgan.append(d.name)
+			print(f"  {d.name}: tashqi={raqam} -> normal={d.normal_telefon}")
+		frappe.db.commit()
+
+		d = panel.get_case(case)
+		qlar = d["qongiroqlar"]
+		print(f"\nkartada {len(qlar)} qo'ng'iroq (jami {len(yaratilgan)} yaratildi, 1 tasi raqamsiz):")
+		for q in qlar:
+			print(f"  {q['boshlandi']} {q['yonalish']:<9} {q['menejer']:<14} "
+			      f"suhbat={q['suhbat_vaqti']}s audio={q['audio']} kim={q['kim']} izoh={q['izoh']}")
+		assert len(qlar) == 3, f"3 ta bog'langan qo'ng'iroq kutilgan edi, {len(qlar)} chiqdi"
+		assert all(q["kim"] for q in qlar), "raqam egasi aniqlanmadi"
+		assert sum(q["audio"] for q in qlar) == 2, "audio belgisi noto'g'ri"
+
+		data = panel.get_data()
+		ro = [c for c in data["cases"] if c["name"] == case]
+		if ro:
+			print(f"navbatda: qongiroq_soni={ro[0]['qongiroq_soni']} "
+			      f"yozuv_soni={ro[0]['yozuv_soni']} oxirgi={ro[0]['oxirgi_qongiroq']}")
+			assert ro[0]["qongiroq_soni"] == 3, "ro'yxatdagi hisob mos kelmadi"
+		# «Qo'ng'iroq yozib olindi» KPI va filtri
+		st = data["stats"]
+		yozuvlilar = [c["student_name"] for c in data["cases"] if c["yozuv_soni"]]
+		print(f"KPI: yozuvli odam={st['yozuvli']}, jami yozuv={st['yozuv_jami']}, "
+		      f"ro'yxat={yozuvlilar}")
+		assert st["yozuvli"] == len(yozuvlilar) >= 1, "KPI hisobi mos kelmadi"
+		assert st["yozuv_jami"] >= 2, "yozuvlar soni kam chiqdi"
+		print("\nOK — qo'ng'iroqlar raqam bo'yicha kartaga bog'landi")
+	finally:
+		for n in yaratilgan:
+			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print(f"({len(yaratilgan)} sinov qo'ng'irog'i o'chirildi)")
