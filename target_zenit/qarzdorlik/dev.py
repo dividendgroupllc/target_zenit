@@ -834,7 +834,7 @@ def test_nachisleniya_jadval(student=None):
 	      f"| to'langan {x['oquv']['tolangan']:,.0f} | qarz {x['jami']['qarz']:,.0f} "
 	      f"| avans {x['jami']['avans']:,.0f}")
 	for m in x["oylar"]:
-		print(f"  {m['oy_label']:<16} {str(m['due_date'])} nachis={m['nachislangan']:>12,.0f} "
+		print(f"  {m['oy_label']:<16} {m['due_date']!s} nachis={m['nachislangan']:>12,.0f} "
 		      f"reja={m['reja']:>12,.0f} tol={m['tolangan']:>12,.0f} qold={m['qoldiq']:>12,.0f} {m['holat']}")
 	for q in x["qoshimcha"]:
 		print(f"  [{q['nom']}] nachis={q['nachislangan']:,.0f} tol={q['tolangan']:,.0f} qold={q['qoldiq']:,.0f}")
