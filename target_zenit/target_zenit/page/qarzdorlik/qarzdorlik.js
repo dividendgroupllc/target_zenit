@@ -649,9 +649,19 @@ class TZQarzPanel {
 
 	reassign_dialog() {
 		const c = this.detail.case;
+		// Mas'ul faqat SOTUV MENEJERI bo'la oladi — ro'yxat backenddan
+		// (faol "Sotuv meneger" rolli foydalanuvchilar) keladi
+		const sotuvchilar = (this.data && this.data.sotuv_menejerlar) || [];
+		if (!sotuvchilar.length) {
+			frappe.msgprint("Faol «Sotuv meneger» rolli foydalanuvchi topilmadi — avval rol biriktiring.");
+			return;
+		}
 		const dlg = new frappe.ui.Dialog({
 			title: "Mas'ulni almashtirish",
-			fields: [{ fieldname: "masul", fieldtype: "Link", options: "User", label: "Yangi mas'ul", reqd: 1 }],
+			fields: [{
+				fieldname: "masul", fieldtype: "Select", label: "Yangi mas'ul (sotuv menejeri)", reqd: 1,
+				options: sotuvchilar.map((m) => ({ value: m.name, label: `${m.full_name} (${m.name})` })),
+			}],
 			primary_action_label: "Saqlash",
 			primary_action: (v) => {
 				frappe.call({

@@ -950,19 +950,31 @@ def set_jami(xodim, yil, oy, summa):
 
 # ---------------------------------------------------------------- avto-nachisleniya
 
-# Ish haqi kategoriyalari (buxgalter registri atamalari) va ularning xarajat
-# hisobi: "Admin oylik" -> admin hisobi, qolgan uchtasi -> sebestoimost hisobi.
-ISH_HAQI_KATEGORIYALARI = ("Admin oylik", "O'qituvchi", "Xodimlar", "Oshxona")
-KATEGORIYA_HISOB_TURI = {"Admin oylik": "admin", "O'qituvchi": "sebest",
-                         "Xodimlar": "sebest", "Oshxona": "sebest"}
+# Ish haqi kategoriyalari — xodimlar ro'yxati (Excel registri) varaqlari
+# bilan bir xil 6 ta. Xarajat hisobi mapping'i: O'QITUVCHI va TUTOR oyligi
+# sebestoimost hisobiga (P&L TANNARXI — Себестоимость), qolgan 4 kategoriya
+# "Ish haqi — admin xodimlar" (operatsion xarajat) hisobiga tushadi.
+ISH_HAQI_KATEGORIYALARI = ("Admin oylik", "O'qituvchi", "Tutor", "Oshxona",
+                           "Texnik xodimlar", "Qorovullash xizmati")
+KATEGORIYA_HISOB_TURI = {
+    "Admin oylik": "admin",
+    "O'qituvchi": "sebest",
+    "Tutor": "sebest",
+    "Oshxona": "admin",
+    "Texnik xodimlar": "admin",
+    "Qorovullash xizmati": "admin",
+    # eski qiymat (ma'lumot hali yangilanmagan bo'lsa) — avvalgidek sebest
+    "Xodimlar": "sebest",
+}
 
 # Lavozimdan kategoriya taxmini (Employee.custom_ish_haqi_kategoriya bo'sh
-# bo'lsa) — buxgalter registridagi amaldagi taqsimotdan olingan qoidalar.
-# Bir xil lavozim har xil kategoriyada bo'lishi mumkin (masalan "Bosh oshpaz
-# yordamchisi") — bunday istisnolar Employee'dagi maydonda aniq belgilanadi.
-XODIMLAR_KALITLARI = ("tutor", "tyutor", "tozalik", "komendant",
-                      "supuruvchi", "farrosh",
-                      "academic director", "exam director")
+# bo'lsa). Istisnolar Employee'dagi maydonda aniq belgilanadi.
+TUTOR_KALITLARI = ("tutor", "tyutor")
+TEXNIK_KALITLARI = ("tozalik", "komendant", "supuruvchi", "farrosh",
+                    "bog'bon", "bogbon", "bog`bon", "tarmoq",
+                    "santexnik", "elektrik")
+QOROVUL_KALITLARI = ("qo'riqchi", "qoriqchi", "qo`riqchi", "qo’riqchi",
+                     "qorovul", "soqchi")
 OQITUVCHI_KALITLARI = ("teacher", "techer", "o'qituvchi", "oqituvchi", "o‘qituvchi",
                        "o’qituvchi", "assistant", "assistent", "pre school",
                        "preschool", "primary", "mental", "mathematic",
@@ -981,13 +993,21 @@ OQITUVCHI_KALITLARI = ("teacher", "techer", "o'qituvchi", "oqituvchi", "o‘qitu
 def _ish_haqi_kategoriya(tanlov, lavozim, tolov_turi=None):
     """Xodimning ish haqi kategoriyasi: avval Employee'dagi aniq tanlov,
     bo'sh bo'lsa lavozim va to'lov turidan taxmin."""
-    if (tanlov or "").strip() in ISH_HAQI_KATEGORIYALARI:
-        return (tanlov or "").strip()
+    t = (tanlov or "").strip()
+    if t in ISH_HAQI_KATEGORIYALARI:
+        return t
+    if t == "Xodimlar":
+        # eski kategoriya: lavozimdan yangi 6 talikka ajratamiz
+        t = ""
     l = (lavozim or "").lower()
     if "oshpaz" in l or "oshxona" in l or "salat" in l:
         return "Oshxona"
-    if any(k in l for k in XODIMLAR_KALITLARI):
-        return "Xodimlar"
+    if any(k in l for k in TUTOR_KALITLARI):
+        return "Tutor"
+    if any(k in l for k in QOROVUL_KALITLARI):
+        return "Qorovullash xizmati"
+    if any(k in l for k in TEXNIK_KALITLARI):
+        return "Texnik xodimlar"
     if (tolov_turi or "").strip() == "Soatbay" or any(k in l for k in OQITUVCHI_KALITLARI):
         return "O'qituvchi"
     return "Admin oylik"

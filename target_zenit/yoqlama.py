@@ -82,7 +82,8 @@ def get_data(yil=None, oy=None, kategoriya=None):
 	xodimlar = saralangan
 	# Filtr ro'yxati uchun — kategoriyalar filtrdan OLDIN yig'iladi,
 	# aks holda bittasini tanlagach qolganlari ro'yxatdan yo'qolardi
-	kanon = ["Admin oylik", "O'qituvchi", "Xodimlar", "Oshxona"]
+	kanon = ["Admin oylik", "O'qituvchi", "Tutor", "Oshxona",
+			 "Texnik xodimlar", "Qorovullash xizmati", "Xodimlar"]
 	bor_kat = {(x.custom_ish_haqi_kategoriya or "").strip() for x in xodimlar}
 	kategoriyalar = [k for k in kanon if k in bor_kat] or kanon
 

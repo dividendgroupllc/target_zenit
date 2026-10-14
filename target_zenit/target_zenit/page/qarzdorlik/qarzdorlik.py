@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 
 import frappe
-from frappe.utils import flt, getdate, nowdate
+from frappe.utils import cint, flt, getdate, nowdate
 
 ALLOWED_ROLES = [
 	"System Manager", "Sales Manager", "Sales User", "Sotuv meneger",
@@ -20,6 +20,32 @@ def _guard():
 	allowed = {r.lower() for r in ALLOWED_ROLES}
 	if not (allowed & {r.lower() for r in frappe.get_roles()}):
 		frappe.throw("Ruxsat yo'q. Qarzdorlik paneli uchun sotuv roli kerak.", frappe.PermissionError)
+
+
+# Mas'ul bo'la oladigan YAGONA rol — sotuv menejeri. Qarz ishi faqat shu
+# roldagi foydalanuvchilarga biriktiriladi.
+SOTUV_ROL = "Sotuv meneger"
+
+
+def sotuv_menejerlar() -> list[dict]:
+	"""Faol (enabled) "Sotuv meneger" rolli foydalanuvchilar."""
+	nomlar = frappe.get_all(
+		"Has Role", filters={"role": SOTUV_ROL, "parenttype": "User"}, pluck="parent"
+	)
+	if not nomlar:
+		return []
+	return frappe.get_all(
+		"User",
+		filters={"name": ["in", nomlar], "enabled": 1},
+		fields=["name", "full_name"],
+		order_by="full_name",
+	)
+
+
+def _sotuv_menejermi(user: str) -> bool:
+	return bool(user) and frappe.db.exists(
+		"Has Role", {"role": SOTUV_ROL, "parenttype": "User", "parent": user}
+	) and cint(frappe.db.get_value("User", user, "enabled"))
 
 
 # ------------------------------------------------------------ telefoniya
@@ -343,18 +369,27 @@ def get_data(ketganlar: int = 0):
 		stats["buckets"][b]["soni"] += 1
 		stats["buckets"][b]["summa"] += flt(c.qarz_summa)
 
-	managers = sorted({c.masul for c in cases if c.masul})
+	# Mas'ul bo'la oladiganlar — FAQAT sotuv menejerlari; filtr menyusiga
+	# ishlardagi eski (legacy) mas'ullar ham qo'shiladi, toki ular bo'yicha
+	# ham filtrlash mumkin bo'lsin
+	sotuvchilar = sotuv_menejerlar()
+	bor = {m["name"] for m in sotuvchilar}
+	legacy = sorted({c.masul for c in cases if c.masul and c.masul not in bor})
 	user_map = {}
-	if managers:
+	if legacy:
 		for u in frappe.get_all(
-			"User", filters={"name": ["in", managers]}, fields=["name", "full_name"]
+			"User", filters={"name": ["in", legacy]}, fields=["name", "full_name"]
 		):
 			user_map[u.name] = u.full_name or u.name
+	managers = ([{"name": m["name"], "full_name": m["full_name"] or m["name"]} for m in sotuvchilar]
+				+ [{"name": m, "full_name": (user_map.get(m, m) or m) + " (sotuv emas)"} for m in legacy])
 
 	return {
 		"cases": cases,
 		"stats": stats,
-		"managers": [{"name": m, "full_name": user_map.get(m, m)} for m in managers],
+		"managers": managers,
+		"sotuv_menejerlar": [{"name": m["name"], "full_name": m["full_name"] or m["name"]}
+							 for m in sotuvchilar],
 		"me": frappe.session.user,
 		"rahbar": _is_rahbar(),
 		"ketgan_huquqi": _ketgan_huquqi(),
@@ -497,10 +532,15 @@ def save_call(payload):
 
 @frappe.whitelist()
 def reassign(case: str, masul: str):
-	"""Mas'ulni almashtirish — faqat rahbar."""
+	"""Mas'ulni almashtirish — faqat rahbar, faqat SOTUV MENEJERIGA."""
 	_guard()
 	if not _is_rahbar():
 		frappe.throw("Mas'ulni faqat rahbar (Sales Manager) almashtira oladi.")
+	if not _sotuv_menejermi(masul):
+		frappe.throw(
+			f"Mas'ul faqat «{SOTUV_ROL}» roli biriktirilgan faol foydalanuvchi bo'la oladi. "
+			f"«{masul}» bu rolga ega emas."
+		)
 	frappe.db.set_value("Qarz Ishi", case, "masul", masul)
 	return {"ok": 1}
 

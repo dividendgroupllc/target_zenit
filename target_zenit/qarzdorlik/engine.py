@@ -941,15 +941,45 @@ def _bucket(eng_eski, left_school: bool) -> str:
 	return "90+"
 
 
+SOTUV_ROL = "Sotuv meneger"
+
+
+def sotuv_menejermi(user: str) -> bool:
+	"""Mas'ul bo'la oladimi: faol + "Sotuv meneger" roli bor."""
+	return bool(user) and bool(frappe.db.get_value("User", user, "enabled")) and bool(
+		frappe.db.exists("Has Role", {"role": SOTUV_ROL, "parenttype": "User", "parent": user})
+	)
+
+
+def sotuv_menejerlar() -> list[str]:
+	"""Faol sotuv menejerlari — barqaror (nom) tartibda."""
+	nomlar = frappe.get_all(
+		"Has Role", filters={"role": SOTUV_ROL, "parenttype": "User"}, pluck="parent"
+	)
+	if not nomlar:
+		return []
+	return frappe.get_all(
+		"User", filters={"name": ["in", nomlar], "enabled": 1},
+		order_by="name", pluck="name",
+	)
+
+
 def _pick_masul(sinf: str, cfg) -> str:
+	"""Qarz ishiga mas'ul tanlash — FAQAT sotuv menejerlari orasidan:
+	(1) sozlamalardagi sinf-pattern biriktirishi (mas'uli sotuv menejeri
+	bo'lsa), (2) default_masul (sotuv menejeri bo'lsa), (3) sinf bo'yicha
+	BARQAROR taqsimot — barcha faol sotuv menejerlari orasida (bitta sinf
+	doim bitta menejerga tushadi)."""
 	for pattern, user in cfg.biriktirish:
 		for p in str(pattern).split(","):
-			if p.strip() and fnmatch(sinf or "", p.strip()):
-				if frappe.db.get_value("User", user, "enabled"):
-					return user
-	if cfg.default_masul and frappe.db.get_value("User", cfg.default_masul, "enabled"):
+			if p.strip() and fnmatch(sinf or "", p.strip()) and sotuv_menejermi(user):
+				return user
+	if sotuv_menejermi(cfg.default_masul):
 		return cfg.default_masul
-	return "Administrator"
+	sotuv = sotuv_menejerlar()
+	if sotuv:
+		return sotuv[sum(ord(ch) for ch in (sinf or "")) % len(sotuv)]
+	return "Administrator"      # sotuv menejeri umuman yo'q — oxirgi chora
 
 
 def _payer_info(student_id: str, student=None):
