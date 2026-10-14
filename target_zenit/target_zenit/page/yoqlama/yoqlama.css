@@ -125,3 +125,17 @@
   box-shadow:inset 0 -2px 0 var(--brand); }
 .tz-yoqlama button.yc.bugun:not(:disabled) { box-shadow:0 0 0 2px var(--brand); }
 .tz-yoqlama button.yc:disabled { cursor:not-allowed; opacity:.4; }
+
+/* Yo'qlama tanlov popover (keldi/kelmadi) */
+.yq-pop { position:absolute; z-index:1060; background:var(--card, #fff); border:1px solid var(--line-strong, #d7dce5);
+	border-radius:10px; box-shadow:0 10px 26px rgba(0,0,0,.20); padding:7px 8px; display:flex; gap:6px; align-items:center; }
+.yq-pop .t { font-size:11px; color:var(--muted, #64748b); max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.yq-pop button { border:1px solid var(--line-strong, #d7dce5); border-radius:8px; padding:6px 13px; cursor:pointer;
+	font-size:13px; font-weight:700; background:var(--card, #fff); color:var(--ink, #111); }
+.yq-pop .p-keldi { color:#12a150; }
+.yq-pop .p-keldi:hover { background:rgba(18,161,80,.12); border-color:#12a150; }
+.yq-pop .p-yoq { color:#d8443c; }
+.yq-pop .p-yoq:hover { background:rgba(216,68,60,.10); border-color:#d8443c; }
+.yq-pop .p-toza { color:var(--muted, #64748b); padding:6px 9px; }
+.yq-pop .p-toza:hover { border-color:var(--muted, #64748b); }
+.tz-yoqlama .kchips { max-width:52vw; }

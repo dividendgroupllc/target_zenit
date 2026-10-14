@@ -15,6 +15,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		oy: null,
 		data: null,
 		qidiruv: "",
+		tanlangan: [],      // xodimlar ko'p-tanlov filtri (bo'sh = hammasi)
 	};
 
 	// ---------------------------------------------------------------- CSS
@@ -33,6 +34,23 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		.ot-info { font-size:12px; color:var(--text-muted); }
 		.ot-qidiruv { margin-left:auto; }
 		.ot-qidiruv input { border:1px solid var(--border-color); border-radius:6px; padding:5px 10px; background:var(--card-bg); color:var(--text-color); width:220px; }
+		/* yo'qlama popover: keldi/kelmadi tanlovi */
+		.ot-pop { position:absolute; z-index:1060; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.18); padding:7px 8px; display:flex; gap:6px; align-items:center; }
+		.ot-pop-t { font-size:11px; color:var(--text-muted); margin-right:2px; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+		.ot-pop button { border:1px solid var(--border-color); border-radius:8px; padding:6px 14px; cursor:pointer; font-size:13px; font-weight:600; background:var(--card-bg); color:var(--text-color); }
+		.ot-pop .ot-pop-keldi { color:#1a7f4e; } .ot-pop .ot-pop-keldi:hover { background:rgba(26,127,78,.12); border-color:#1a7f4e; }
+		.ot-pop .ot-pop-kelmadi { color:#c0392b; } .ot-pop .ot-pop-kelmadi:hover { background:rgba(192,57,43,.10); border-color:#c0392b; }
+		/* xodimlar ko'p-tanlov filtri */
+		.ot-xf { position:relative; }
+		.ot-xf-btn { border:1px solid var(--border-color); background:var(--card-bg); border-radius:6px; padding:5px 12px; cursor:pointer; color:var(--text-color); font-size:13px; }
+		.ot-xf-btn.faol { border-color:var(--primary); color:var(--primary); font-weight:600; }
+		.ot-xf-menu { position:absolute; top:110%; left:0; z-index:1055; width:270px; max-height:330px; overflow:auto; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.18); padding:8px; }
+		.ot-xf-menu input.ot-xf-qidir { width:100%; margin-bottom:6px; border:1px solid var(--border-color); border-radius:6px; padding:4px 8px; background:var(--card-bg); color:var(--text-color); }
+		.ot-xf-menu label { display:flex; gap:8px; align-items:center; padding:3px 5px; border-radius:6px; cursor:pointer; font-size:12.5px; margin:0; color:var(--text-color); }
+		.ot-xf-menu label:hover { background:rgba(128,128,128,.08); }
+		.ot-xf-menu label small { color:var(--text-muted); margin-left:auto; }
+		.ot-xf-foot { display:flex; justify-content:flex-end; margin-top:6px; border-top:1px solid var(--border-color); padding-top:6px; }
+		.ot-xf-foot button { border:0; background:transparent; color:var(--primary); cursor:pointer; font-size:12px; font-weight:600; }
 		.ot-jadval-orab { overflow-x:auto; border:1px solid var(--border-color); border-radius:8px; background:var(--card-bg); }
 		table.ot-jadval { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; font-size:12.5px; }
 		.ot-jadval th, .ot-jadval td { border-bottom:1px solid var(--border-color); border-right:1px solid var(--border-color); padding:4px 6px; text-align:center; white-space:nowrap; background:var(--card-bg); }
@@ -127,9 +145,23 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		return yil < bugun.getFullYear() || (yil === bugun.getFullYear() && oy <= bugun.getMonth() + 1);
 	}
 
+	// Qatorlarni qidiruv + tanlangan xodimlar bo'yicha ko'rsatish/yashirish
+	function filtrla() {
+		const q = holat.qidiruv || "", sel = holat.tanlangan;
+		$joy.find("tbody tr").each(function () {
+			const ism = String($(this).data("ism") || "");
+			const xid = String($(this).data("xodim") || "");
+			$(this).toggle(ism.includes(q) && (!sel.length || sel.indexOf(xid) !== -1));
+		});
+	}
+
 	// ---------------------------------------------------------------- chizish
 	function chiz() {
 		const d = holat.data;
+		// qayta chizishda qidiruv fokusi/kursori saqlansin
+		const $eskiInp = $joy.find(".ot-qidiruv input");
+		const fokusEdi = $eskiInp.length && $eskiInp.is(":focus");
+		$(".ot-pop").remove();
 		$joy.empty();
 
 		let badge =
@@ -137,6 +169,12 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			d.holat === "Yopilmoqda" ? '<span class="ot-badge yopilmoqda">⏳ Yopilmoqda...</span>' :
 			'<span class="ot-badge yopiq">🔒 Yopiq</span>';
 		if (d.faqat_oqish) badge += ' <span class="ot-badge yopiq" title="Sizning rolingiz tabelni faqat ko\'rishga ruxsat beradi">👁 Faqat o\'qish</span>';
+
+		// Xodimlar ko'p-tanlov filtri menyusi (checkbox ro'yxat + ichki qidiruv)
+		const xfOptlar = d.qatorlar.map((q) => `<label>
+			<input type="checkbox" value="${frappe.utils.escape_html(q.xodim)}" ${holat.tanlangan.indexOf(q.xodim) !== -1 ? "checked" : ""}>
+			<span>${frappe.utils.escape_html(q.ismi || q.xodim)}</span>
+			<small>${frappe.utils.escape_html((q.lavozim || "").slice(0, 18))}</small></label>`).join("");
 
 		const $bosh = $(`
 			<div class="ot-bosh">
@@ -147,17 +185,50 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				</div>
 				${badge}
 				<span class="ot-info">${d.kun_soni} kun; norma ish kuni: o'qituvchi <b>21</b>, boshqalar <b>26</b> ("Ish kuni" ustunida o'zgartiriladi)</span>
+				<div class="ot-xf">
+					<button class="ot-xf-btn ${holat.tanlangan.length ? "faol" : ""}">👥 Xodimlar${holat.tanlangan.length ? ` · ${holat.tanlangan.length}` : ""} ▾</button>
+					<div class="ot-xf-menu" style="display:none">
+						<input class="ot-xf-qidir" type="text" placeholder="Ro'yxatdan qidirish...">
+						<div class="ot-xf-list">${xfOptlar}</div>
+						<div class="ot-xf-foot"><button class="ot-xf-toza">✕ Tozalash (hammasi)</button></div>
+					</div>
+				</div>
 				<div class="ot-qidiruv"><input type="text" placeholder="🔍 Xodim / lavozim qidirish..." value="${frappe.utils.escape_html(holat.qidiruv)}"></div>
 			</div>`);
 		$bosh.find(".ot-orqa").on("click", oldingiOy);
 		$bosh.find(".ot-olga").prop("disabled", !keyingiMumkin()).on("click", keyingiOy);
-		$bosh.find("input").on("input", function () {
+		$bosh.find(".ot-qidiruv input").on("input", function () {
 			holat.qidiruv = $(this).val().toLowerCase();
-			$joy.find("tbody tr").each(function () {
-				const ism = $(this).data("ism") || "";
-				$(this).toggle(ism.includes(holat.qidiruv));
+			filtrla();
+		});
+
+		// Xodimlar filtri hodisalari
+		const $xfBtn = $bosh.find(".ot-xf-btn"), $xfMenu = $bosh.find(".ot-xf-menu");
+		const xfYangila = () => {
+			$xfBtn.toggleClass("faol", !!holat.tanlangan.length)
+				.html(`👥 Xodimlar${holat.tanlangan.length ? ` · ${holat.tanlangan.length}` : ""} ▾`);
+			filtrla();
+		};
+		$xfBtn.on("click", (e) => { e.stopPropagation(); $xfMenu.toggle(); });
+		$xfMenu.on("click", (e) => e.stopPropagation());
+		$xfMenu.find(".ot-xf-qidir").on("input", function () {
+			const s = $(this).val().toLowerCase();
+			$xfMenu.find("label").each(function () {
+				$(this).toggle($(this).text().toLowerCase().includes(s));
 			});
 		});
+		$xfMenu.on("change", "input[type=checkbox]", function () {
+			const v = $(this).val(), i = holat.tanlangan.indexOf(v);
+			if (this.checked && i === -1) holat.tanlangan.push(v);
+			if (!this.checked && i !== -1) holat.tanlangan.splice(i, 1);
+			xfYangila();
+		});
+		$xfMenu.find(".ot-xf-toza").on("click", () => {
+			holat.tanlangan = [];
+			$xfMenu.find("input[type=checkbox]").prop("checked", false);
+			xfYangila();
+		});
+		$(document).off("click.otxf").on("click.otxf", () => $xfMenu.hide());
 		$joy.append($bosh);
 
 		// plitkalar
@@ -199,7 +270,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 					if (kd.yakshanba) cls.push("yak");
 					if (kq.holat === "saqlangan") cls.push("saqlangan");
 					else cls.push("default");
-					tr += `<td class="${cls.join(" ")}" data-i="${i}" data-j="${j}" title="${kd.sana} — ${q.tolov_turi === "soat" ? "bosib ishlagan soatini kiriting" : "bosilsa keldi (1) / kelmadi (0) almashadi"}">${koefFmt(kq.koef)}</td>`;
+					tr += `<td class="${cls.join(" ")}" data-i="${i}" data-j="${j}" title="${kd.sana} — ${q.tolov_turi === "soat" ? "bosib ishlagan soatini kiriting" : "bosing — keldi / kelmadi tanlovi ochiladi"}">${koefFmt(kq.koef)}</td>`;
 				}
 			});
 			tr += `<td class="ot-c-bonus" data-i="${i}" title="Bosib o'zgartiring: musbat — bonus, manfiy — jarima"${q.bonus < 0 ? ' style="color:var(--red-600,#c0392b);font-weight:600"' : ""}>${q.bonus ? fmt(q.bonus) : "+"}</td>`;
@@ -222,11 +293,16 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		const $orab = $(`<div class="ot-jadval-orab"><table class="ot-jadval">
 			<thead>${th}</thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>`);
 		$joy.append($orab);
+		filtrla();
+		if (fokusEdi) {
+			const inp = $joy.find(".ot-qidiruv input")[0];
+			if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+		}
 
 		if (d.oylik_izoh_kerak !== false) {
 			$joy.append(`<div class="ot-info" style="margin-top:8px">
 				* "Kassa taklifi" — oylik hali kiritilmagan, Kassa'dagi oxirgi oy to'lovlaridan avtomatik taxmin. Oylikni tabelda katakni bosib yoki Employee hujjatidagi "Oylik ish haqi (shartnoma)" (Overview) maydonidan kiritish mumkin — ikkalasi sinxron.<br>
-				Katak ranglari: <span style="color:#c0392b">qizil — yakshanba</span>, <span style="color:#1a56b0">ko'k — yo'qlamada belgilangan</span>, kulrang "0" — hali belgilanmagan (kelmagan hisoblanadi). Kunbay xodimda katak bosilsa keldi (1) / kelmadi (0) almashadi; <b>soatbay</b> xodimda esa katak bosilganda o'sha kuni ishlagan SOATI kiritiladi (jami = soat narxi × soatlar).
+				Katak ranglari: <span style="color:#c0392b">qizil — yakshanba</span>, <span style="color:#1a56b0">ko'k — yo'qlamada belgilangan</span>, kulrang "0" — hali belgilanmagan (kelmagan hisoblanadi). Kunbay xodimda katak bosilsa KELDI/KELMADI tanlovi ochiladi; <b>soatbay</b> xodimda esa katak bosilganda o'sha kuni ishlagan SOATI kiritiladi (jami = soat narxi × soatlar).
 			</div>`);
 		}
 
@@ -244,8 +320,8 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 
 		// hodisalar
 		if (d.tahrir_mumkin) {
-			// Yo'qlama: kunbay — bir bosishda keldi (1) / kelmadi (0);
-			// soatbay — necha soat ishlaganini kiritish oynasi ochiladi
+			// Yo'qlama: kunbay — katak bosilganda KELDI/KELMADI tanlovi ochiladi
+			// (bitta bosish bilan istalgan holat); soatbay — soat kiritish oynasi
 			$orab.on("click", "td.ot-kun:not(.kirmagan)", function () {
 				const i = $(this).data("i"), j = $(this).data("j");
 				const q = d.qatorlar[i];
@@ -253,8 +329,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 					soatDialog(q, d.kunlar[j], q.kunlar[j]);
 					return;
 				}
-				const yangi = q.kunlar[j].koef ? 0 : 1;
-				saqlaKoef(q.xodim, d.kunlar[j].sana, yangi);
+				koefPop($(this), q, j);
 			});
 			$orab.on("click", "td.ot-c-oylik-t", function () {
 				oylikDialog(d.qatorlar[$(this).data("i")]);
@@ -302,13 +377,61 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		dlg.show();
 	}
 
+	// Kunbay yo'qlama tanlovi — katak yonida kichik popover (keldi/kelmadi)
+	function koefPop($td, q, j) {
+		$(".ot-pop").remove();
+		const d = holat.data, kun = d.kunlar[j];
+		const $p = $(`<div class="ot-pop">
+			<span class="ot-pop-t">${frappe.utils.escape_html(q.ismi || "")} · ${kun.sana.slice(8)}-kun</span>
+			<button class="ot-pop-keldi">✅ Keldi</button>
+			<button class="ot-pop-kelmadi">✖ Kelmadi</button></div>`);
+		$("body").append($p);
+		const off = $td.offset(), w = $p.outerWidth();
+		let left = off.left + $td.outerWidth() / 2 - w / 2;
+		left = Math.max(8, Math.min(left, $(window).width() - w - 8));
+		$p.css({ top: off.top + $td.outerHeight() + 4, left: left });
+		$p.find(".ot-pop-keldi").on("click", () => { $p.remove(); saqlaKoef(q.xodim, kun.sana, 1); });
+		$p.find(".ot-pop-kelmadi").on("click", () => { $p.remove(); saqlaKoef(q.xodim, kun.sana, 0); });
+		setTimeout(() => $(document).off("click.otpop").on("click.otpop", (e) => {
+			if (!$(e.target).closest(".ot-pop").length) { $p.remove(); $(document).off("click.otpop"); }
+		}), 0);
+	}
+
 	function saqlaKoef(xodim, sana, koef) {
 		frappe.call({
 			method: "target_zenit.target_zenit.api.oylik_tabel.set_koef",
 			args: { xodim, sana, koef },
-			freeze: true,
-			callback: () => yukla(),
+			callback: () => lokalKoef(xodim, sana, koef),
+			error: () => yukla(),
 		});
+	}
+
+	// Saqlangan katakni JOYIDA yangilash — butun jadval qayta chizilmaydi,
+	// shuning uchun qidiruv fokusi, filtrlar va skroll o'z joyida qoladi
+	function lokalKoef(xodim, sana, koef) {
+		const d = holat.data;
+		const i = d.qatorlar.findIndex((x) => x.xodim === xodim);
+		const j = d.kunlar.findIndex((k) => k.sana === sana);
+		if (i === -1 || j === -1) return yukla();
+		const q = d.qatorlar[i];
+		const eski = q.kunlar[j].koef || 0;
+		q.kunlar[j].koef = koef;
+		q.kunlar[j].holat = "saqlangan";
+		q.koef_yigindi = (q.koef_yigindi || 0) - eski + koef;
+		// jami — backend (_jami_yaxlitla) bilan bir xil: ming so'mga pastga
+		const eskiJami = q.jami;
+		q.jami_avto = Math.floor((q.kunlik_narx * q.koef_yigindi + (q.bonus || 0)) / 1000) * 1000;
+		if (q.jami_manba !== "qolda") q.jami = q.jami_avto;
+		d.jami_oylik += q.jami - eskiJami;
+
+		const $tr = $joy.find(`tbody tr[data-xodim="${xodim}"]`);
+		$tr.find(`td.ot-kun[data-j="${j}"]`).removeClass("default").addClass("saqlangan").text(koefFmt(koef));
+		$tr.find("td.ot-c-kelgan").html(q.tolov_turi === "soat"
+			? `${koefFmt(q.koef_yigindi)} <small>soat</small>` : koefFmt(q.koef_yigindi));
+		if (q.jami_manba !== "qolda") $tr.find("td.ot-c-jami-t").text(fmt(q.jami));
+		$joy.find("tfoot td.ot-c-kelgan").text(koefFmt(d.qatorlar.reduce((s, x) => s + (x.koef_yigindi || 0), 0)));
+		$joy.find("tfoot td.ot-c-jami").text(fmt(d.jami_oylik));
+		$joy.find(".ot-plitka .son").eq(1).text(fmt(d.jami_oylik));
 	}
 
 	function oylikDialog(q) {

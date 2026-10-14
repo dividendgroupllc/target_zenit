@@ -40,7 +40,10 @@ def _oy_ochiqmi(yil, oy) -> bool:
 
 @frappe.whitelist()
 def get_data(yil=None, oy=None, kategoriya=None):
-	"""Oylik yo'qlama to'ri: xodimlar x kunlar. Pul maydonlari qaytarilmaydi."""
+	"""Oylik yo'qlama to'ri: xodimlar x kunlar. Pul maydonlari qaytarilmaydi.
+
+	kategoriya — bitta qiymat YOKI JSON ro'yxat (ko'p tanlov): masalan
+	'["O\\'qituvchi","Oshxona"]'. "__none" — kategoriyasi belgilanmaganlar."""
 	_guard()
 	bugun = getdate(nowdate())
 	yil, oy = cint(yil) or bugun.year, cint(oy) or bugun.month
@@ -83,11 +86,23 @@ def get_data(yil=None, oy=None, kategoriya=None):
 	bor_kat = {(x.custom_ish_haqi_kategoriya or "").strip() for x in xodimlar}
 	kategoriyalar = [k for k in kanon if k in bor_kat] or kanon
 
-	# Ish haqi kategoriyasi (tabel) bo'yicha filtr
-	if kategoriya == "__none":
-		xodimlar = [x for x in xodimlar if not (x.custom_ish_haqi_kategoriya or "").strip()]
-	elif kategoriya:
-		xodimlar = [x for x in xodimlar if (x.custom_ish_haqi_kategoriya or "") == kategoriya]
+	# Ish haqi kategoriyasi (tabel) bo'yicha filtr — KO'P TANLOV:
+	# ro'yxatdagi istalgan kategoriyaga mos xodimlar ko'rsatiladi
+	tanlov = kategoriya
+	if isinstance(tanlov, str) and tanlov.strip().startswith("["):
+		import json
+		try:
+			tanlov = json.loads(tanlov)
+		except Exception:
+			tanlov = [kategoriya]
+	if isinstance(tanlov, str):
+		tanlov = [tanlov] if tanlov else []
+	tanlov = [str(t) for t in (tanlov or []) if t]
+	if tanlov:
+		def _kat_mos(x):
+			kat = (x.custom_ish_haqi_kategoriya or "").strip()
+			return (kat in tanlov) or ("__none" in tanlov and not kat)
+		xodimlar = [x for x in xodimlar if _kat_mos(x)]
 
 	nomlar = [x.name for x in xodimlar]
 	belgilar = {}
