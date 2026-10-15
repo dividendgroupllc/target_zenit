@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_days, getdate, nowdate
+from frappe.utils import add_days, cint, getdate, nowdate
 
 from target_zenit import oquv_reja as oreja
 from target_zenit.dars_jadvali import baholash as bah
@@ -37,8 +37,12 @@ def _mening_instructorim():
 
 
 @frappe.whitelist()
-def get_data(oqituvchi: str | None = None, versiya: str | None = None):
-	"""Tanlangan (yoki o'zining) o'qituvchi jadvali."""
+def get_data(oqituvchi: str | None = None, versiya: str | None = None, hafta: int = 0):
+	"""Tanlangan (yoki o'zining) o'qituvchi jadvali.
+
+	`hafta` — joriy haftadan siljish (0 = shu hafta, -1 = o'tgan, +1 = keyingi).
+	Haftalik jadval biz o'zgartirmagunimizcha amal qiladi, shuning uchun istalgan
+	haftaga o'tish mumkin — sanalar shunchaki shu hafta dushanbasidan hisoblanadi."""
 	menejer = bool(
 		{"system manager", "zavuch", "academics user", "education manager"}
 		& {r.lower() for r in frappe.get_roles()}
@@ -77,9 +81,11 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None):
 		order_by="kun_raqami asc, dars_raqami asc",
 		limit_page_length=0,
 	)
-	# Joriy haftaning dushanbasi (sanalarni darsга biriktirish uchun)
+	# Ko'rilayotgan haftaning dushanbasi (sanalarni darsga biriktirish uchun).
+	# `hafta` siljishi: 0 = shu hafta, -1 = o'tgan hafta, +1 = keyingi hafta…
 	bugun = getdate(nowdate())
-	hafta_boshi = add_days(bugun, -bugun.weekday())
+	siljish = cint(hafta)
+	hafta_boshi = add_days(add_days(bugun, -bugun.weekday()), siljish * 7)
 	hafta_oxiri = add_days(hafta_boshi, 4)
 
 	# Shu haftadagi jadval o'zgarishlari (o'rinbosarlik/bekor) — bir marta
@@ -132,6 +138,10 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None):
 			d["oquv_reja"] = None
 	natija["haftalik_soat"] = len(natija["darslar"])
 	natija["bugun_sana"] = str(bugun)
+	natija["hafta"] = siljish
+	natija["hafta_boshi"] = str(hafta_boshi)
+	natija["hafta_oxiri"] = str(hafta_oxiri)
+	natija["shu_hafta"] = siljish == 0
 	return natija
 
 

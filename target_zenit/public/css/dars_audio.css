@@ -1,0 +1,31 @@
+/* Dars audiosini yozib olish vidjeti (public/js/dars_audio.js).
+   `app_include_css` orqali keladi — «dars-sessiya» va «mening-jadvalim» ikkisida ishlatiladi.
+   Sinflar `tza-` prefiksli, shuning uchun sahifaga bog'lanmagan (unscoped). */
+.tza { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tza-btn { background: #d8443c; color: #fff; border: none; border-radius: 8px; padding: 7px 13px;
+	font-size: 12.5px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; line-height: 1.3; }
+.tza-btn:hover { filter: brightness(.93); color: #fff; text-decoration: none; }
+.tza-btn.ghost { background: transparent; color: var(--text-color); border: 1px solid var(--border-color); }
+.tza-btn.stop { background: #1a7f37; }
+.tza-live { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums;
+	font-weight: 700; font-size: 13px; color: #d8443c; }
+.tza-live .tza-dot { width: 9px; height: 9px; border-radius: 50%; background: #d8443c; animation: tza-pulse 1.2s infinite; }
+@keyframes tza-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.tza-mini { font-size: 11px; color: var(--text-muted); }
+.tza-ok { font-size: 11.5px; color: #1a7f37; font-weight: 600; }
+.tza-warn { font-size: 11.5px; color: #b45309; font-weight: 600; }
+.tza-err { font-size: 11px; color: #d8443c; font-weight: 600; }
+.tza-sel { border: 1px solid var(--border-color); border-radius: 8px; padding: 5px 8px; font-size: 12.5px;
+	background: var(--card-bg, #fff); color: inherit; max-width: 280px; }
+
+/* «Dars sessiyasi» — o'ng tarafdagi «shu kun mavzusi» kartasi ichida, mavzu yonida */
+.tz-ds .km-audio { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); }
+.tz-ds .km-audio-t { display: block; font-size: 10.5px; text-transform: uppercase;
+	letter-spacing: .3px; color: var(--text-muted); margin-bottom: 5px; }
+.tz-ds .ds-audio .tza-btn { padding: 8px 14px; font-size: 13px; }
+.tz-ds .ds-audio .tza { gap: 7px; }
+
+/* Saqlangan yozuv — sahifada turadigan pleyer */
+.tza-saqlangan { display: flex; flex-direction: column; gap: 6px; }
+.tza-player { width: 100%; max-width: 420px; height: 34px; display: block; }
+.tza-saqlangan .tza-ok { display: block; }

@@ -321,3 +321,8 @@
 	padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .tz-mening .kunlik-cta .kc-go:hover { filter: brightness(.93); }
+
+/* Hafta navigatsiyasi (‹ 12–16 okt ›) — jadval doimiy amal qiladi, istalgan haftaga o'tiladi */
+.tz-mening .hafta-nav { display: inline-flex; align-items: center; gap: 4px; }
+.tz-mening .hafta-nav .refresh { padding: 6px 9px; }
+.tz-mening .hafta-nav .h-lbl { min-width: 118px; font-variant-numeric: tabular-nums; }

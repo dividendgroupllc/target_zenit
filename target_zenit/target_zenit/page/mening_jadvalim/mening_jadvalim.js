@@ -1,5 +1,6 @@
 // Copyright (c) 2026, Target Zenit — "Mening jadvalim" (o'qituvchi)
-// Bugungi darslar (davomat olish tugmasi bilan) + haftalik jadval.
+// Bugungi darslar (davomat olish tugmasi bilan) + haftalik jadval + hafta navigatsiyasi.
+// Dars audiosi bu sahifada EMAS — «dars sessiyasi» kokpitidagi mavzu kartasida.
 frappe.pages["mening-jadvalim"].on_page_load = function (wrapper) {
 	new TZMeningJadvalim(wrapper);
 };
@@ -11,6 +12,7 @@ class TZMeningJadvalim {
 		this.wrapper = $(wrapper);
 		this.page = frappe.ui.make_app_page({ parent: wrapper, title: __("Mening jadvalim"), single_column: true });
 		this.oqituvchi = null;
+		this.hafta = 0;          // 0 = shu hafta, -1 = o'tgan, +1 = keyingi
 		this.make_skeleton();
 		this.load();
 	}
@@ -24,6 +26,15 @@ class TZMeningJadvalim {
 		if (o.tur === "O'rinbosar") return `<div class="ozg cover">🔄 O'rinbosar: <b>${this.esc(o.yangi_oqituvchi_nomi || "")}</b> (siz bu darsга kirmaysiz)</div>`;
 		return "";
 	}
+	// Hafta yorlig'i: «12–16 okt» (shu hafta bo'lsa — «Shu hafta»)
+	haftaLabel(d) {
+		const oy = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"];
+		const b = String(d.hafta_boshi || "").split("-"), o = String(d.hafta_oxiri || "").split("-");
+		if (b.length !== 3) return "Hafta";
+		const diapazon = `${+b[2]}–${+o[2]} ${oy[+b[1] - 1] || ""}`;
+		return d.shu_hafta ? `Shu hafta · ${diapazon}` : diapazon;
+	}
+
 	rang(fan) { let h = 0; for (const ch of String(fan || "")) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; }
 
 	make_skeleton() {
@@ -37,7 +48,7 @@ class TZMeningJadvalim {
 	load() {
 		frappe.call({
 			method: `${MJ_M}.get_data`,
-			args: { oqituvchi: this.oqituvchi },
+			args: { oqituvchi: this.oqituvchi, hafta: this.hafta },
 			callback: (r) => { this.data = r.message || {}; this.render(); this.loadPanel(); },
 			error: () => this.body.html(`<div class="loading">Xatolik.</div>`),
 		});
@@ -90,6 +101,11 @@ class TZMeningJadvalim {
 					${(d.oqituvchilar || []).map((o) => `<option value="${this.esc(o.name)}" ${o.name === d.oqituvchi ? "selected" : ""}>${this.esc(o.instructor_name)}</option>`).join("")}
 				</select>` : ""}
 				<button class="refresh" data-act="mavzu" title="Butun chorak mavzularini bir martada biriktirish">📘 Mavzular</button>
+				<span class="hafta-nav">
+					<button class="refresh" data-act="h-prev" title="o'tgan hafta">‹</button>
+					<button class="refresh h-lbl" data-act="h-bugun" title="shu haftaga qaytish">${this.haftaLabel(d)}</button>
+					<button class="refresh" data-act="h-next" title="keyingi hafta">›</button>
+				</span>
 				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
 			</div>
 
@@ -114,7 +130,7 @@ class TZMeningJadvalim {
 			<div class="hafta">
 				${kunlar.map((k) => {
 					const list = (d.darslar || []).filter((x) => x.kun === k);
-					return `<div class="card kun-card ${k === d.bugun_kuni ? "bugun-card" : ""}">
+					return `<div class="card kun-card ${(k === d.bugun_kuni && d.shu_hafta) ? "bugun-card" : ""}">
 						<div class="box-t">${k} <span class="mini">${list.length} dars</span></div>
 						${list.map((x) => `<div class="w-row clickable ${x.ozgarish ? (x.ozgarish.tur === "Bekor" ? "w-bekor" : "w-cover") : ""}" data-jy="${this.esc(x.name)}" data-sana="${this.esc(x.sana)}" style="--h:${this.rang(x.fan)}" ${x.ozgarish ? `title="${x.ozgarish.tur === "Bekor" ? "Bekor qilindi" : "O'rinbosar: " + this.esc(x.ozgarish.yangi_oqituvchi_nomi || "")}"` : ""}>
 							<span class="no">${x.dars_raqami}</span>
@@ -130,6 +146,9 @@ class TZMeningJadvalim {
 
 		if (this.panel) this.renderPanel();
 		this.body.find(`[data-act="reload"]`).on("click", () => this.load());
+		this.body.find(`[data-act="h-prev"]`).on("click", () => { this.hafta -= 1; this.load(); });
+		this.body.find(`[data-act="h-next"]`).on("click", () => { this.hafta += 1; this.load(); });
+		this.body.find(`[data-act="h-bugun"]`).on("click", () => { if (this.hafta) { this.hafta = 0; this.load(); } });
 		this.body.find(`[data-act="kunlik"]`).on("click", () => frappe.set_route("kunlik-jadval"));
 		this.body.find(`[data-act="mavzu"]`).on("click", () => {
 			if (!window.tz_mavzu_dialog) { frappe.show_alert({ message: "Sahifani yangilang (Ctrl+Shift+R)", indicator: "orange" }); return; }

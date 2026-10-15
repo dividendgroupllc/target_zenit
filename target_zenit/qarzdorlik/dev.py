@@ -1026,3 +1026,64 @@ def test_qongiroq_boglanish(case="QI-2026-145130"):
 			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
 		frappe.db.commit()
 		print(f"({len(yaratilgan)} sinov qo'ng'irog'i o'chirildi)")
+
+
+def test_ism_jonli(case="QI-2026-142230"):
+	"""Panel ismni Student'dan JONLI o'qiyaptimi (nusxadan emas).
+
+	O'quvchining ismi vaqtincha o'zgartiriladi (faqat Student jadvalida, nusxalar
+	ataylab eskicha qoldiriladi), panel ro'yxati va kartasi yangi ismni
+	ko'rsatishi tekshiriladi, keyin hammasi tiklanadi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_ism_jonli
+	"""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	student = frappe.db.get_value("Qarz Ishi", case, "student")
+	eski = frappe.db.get_value("Student", student, "student_name")
+	eski_nusxa = frappe.db.get_value("Qarz Ishi", case, "student_name")
+	eski_sinf = frappe.db.get_value("Student", student, "custom_sinf_guruh")
+	yangi = eski.strip() + " (TUZATILDI)"
+	print(f"{student}: '{eski}' -> '{yangi}' (Qarz Ishi nusxasi: '{eski_nusxa}')")
+	try:
+		# Faqat Student o'zgaradi — nusxalar (Qarz Ishi) ataylab tegilmaydi
+		frappe.db.set_value("Student", student, "student_name", yangi, update_modified=False)
+		frappe.db.set_value("Student", student, "custom_sinf_guruh", "99 Z(sinov)", update_modified=False)
+		frappe.db.commit()
+		nusxa = frappe.db.get_value("Qarz Ishi", case, "student_name")
+		assert nusxa == eski_nusxa, "nusxa o'zgarib ketdi — sinov sharti buzildi"
+
+		ro = [c for c in panel.get_data()["cases"] if c["name"] == case]
+		assert ro, "ish ro'yxatda topilmadi"
+		d = panel.get_case(case)
+		print(f"  ro'yxat: '{ro[0]['student_name']}' / sinf '{ro[0]['sinf']}'")
+		print(f"  karta:   '{d['case']['student_name']}' / sinf '{d['case']['sinf']}'")
+		assert ro[0]["student_name"] == yangi, "ro'yxat eski ismni ko'rsatdi"
+		assert d["case"]["student_name"] == yangi, "karta eski ismni ko'rsatdi"
+		assert ro[0]["sinf"] == "99 Z(sinov)" == d["case"]["sinf"], "sinf jonli olinmadi"
+		assert ro[0]["student_name"] == d["case"]["student_name"], "ro'yxat va karta har xil!"
+
+		# To'lovchi bo'limi ham jonli bo'lishi kerak
+		eski_tolovchi = frappe.db.get_value("Student", student, "custom_payer_name")
+		frappe.db.set_value(
+			"Student", student, "custom_payer_name", "Sinov To'lovchi", update_modified=False
+		)
+		frappe.db.commit()
+		try:
+			ro2 = next(c for c in panel.get_data()["cases"] if c["name"] == case)
+			d2 = panel.get_case(case)
+			print(f"  to'lovchi: ro'yxat '{ro2['payer_name']}' / karta '{d2['case']['payer_name']}'")
+			assert ro2["payer_name"] == d2["case"]["payer_name"] == "Sinov To'lovchi", (
+				"to'lovchi ismi jonli olinmadi"
+			)
+		finally:
+			frappe.db.set_value(
+				"Student", student, "custom_payer_name", eski_tolovchi, update_modified=False
+			)
+			frappe.db.commit()
+		print("OK — ism, sinf va to'lovchi Student'dan jonli olinyapti; ro'yxat = karta")
+	finally:
+		frappe.db.set_value("Student", student, "student_name", eski, update_modified=False)
+		frappe.db.set_value("Student", student, "custom_sinf_guruh", eski_sinf, update_modified=False)
+		frappe.db.commit()
+		print("(ism va sinf tiklandi)")

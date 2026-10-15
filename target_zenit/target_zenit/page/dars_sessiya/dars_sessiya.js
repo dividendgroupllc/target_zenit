@@ -2,7 +2,8 @@
 // Bitta ekranda dars uchun kerak bo'lgan HAMMA narsa:
 //   CHAP  = o'quvchilar (rasm + chorak ballari + trend + rang) va tez baho/davomat keypad
 //   O'NG  = oldingi dars (mavzu/kim yo'q edi) + o'quv reja mavzular + uy vazifa (va tekshirish)
-//   TEPA  = ‹ oldingi dars / keyingi dars › navigatsiya, guruh almashtirgich, dars taymeri
+//   TEPA  = ‹ oldingi dars / keyingi dars › navigatsiya, guruh almashtirgich, dars taymeri,
+//   O'NG ichida: ⏺ dars audiosini yozib olish — «shu kun mavzusi» kartasida (dars_audio.js)
 // Klaviatura: ↑↓ o'quvchi · raqam = baho · K kechikdi · H yo'q · S kasal · Q qatnashmadi · Esc
 // Kirish: frappe.set_route("dars-sessiya", jadval_yozuvi, sana)
 frappe.pages["dars-sessiya"].on_page_load = function (wrapper) {
@@ -136,6 +137,23 @@ class TZDarsSessiya {
 		this.renderReja();
 		this.renderUV();
 		this.startTimer();
+	}
+
+	// Dars audiosi vidjeti (public/js/dars_audio.js — app_include_js orqali keladi).
+	// Obyekt bir marta yaratiladi: DOM qayta qurilsa ham yozuv uzilmaydi.
+	mountAudio() {
+		if (!window.TZDarsAudio) return;
+		if (!this.audio) {
+			this.audio = new TZDarsAudio({
+				box: () => this.body.find(".ds-audio"),
+				dars: () => {
+					const x = (this.d && this.d.dars) || null;
+					return x && x.jadval_yozuvi ? x : null;
+				},
+				refresh: () => this.load(),
+			});
+		}
+		this.audio.mount();
 	}
 
 	// Dars taymeri — «tugashiga N daq» (faqat bugungi dars uchun)
@@ -344,7 +362,13 @@ class TZDarsSessiya {
 		const i = Number($cell.data("i"));
 		const ci = Number($cell.data("c"));
 		if (this.cols[ci] && !this.cols[ci].tahrir) {
-			frappe.show_alert({ message: `${this.dmy(this.cols[ci].sana)} — tuzatish muddati o'tgan`, indicator: "orange" });
+			const c = this.cols[ci];
+			frappe.show_alert({
+				message: c.kelajak
+					? `${this.dmy(c.sana)} — dars hali o'tilmagan`
+					: `${this.dmy(c.sana)} — tuzatish muddati o'tgan`,
+				indicator: "orange",
+			});
 			return;
 		}
 		const o = this.d.oquvchilar[i]; const self = this;
@@ -684,10 +708,13 @@ class TZDarsSessiya {
 		const kunNomi = `${this.dmy(this.sana)}${this.d.dars && this.d.dars.kun ? " (" + this.esc(this.d.dars.kun) + ")" : ""}`;
 		if (!reja.oquv_reja) {
 			this.body.find(".sec-reja").html(`<div class="sec-t">O'quv reja</div>
+				<div class="kun-mavzu yoq"><div class="km-h">🎙 <b>${this.esc(kunNomi)}</b> — dars audiosi</div>
+					<div class="ds-audio"></div></div>
 				<div class="empty mini">Bu guruh va fan uchun mavzular hali biriktirilmagan.</div>
 				<div class="mv-cta"><button class="btn-mini mavzu-biriktir">📘 Chorak mavzularini biriktirish</button>
 				<div class="mini">Ro'yxatni ko'chirib joylashingiz yoki boshqa rejadan nusxa olishingiz mumkin</div></div>`);
 			this.body.find(".mavzu-biriktir").on("click", () => this.mavzuDialog());
+			this.mountAudio();
 			return;
 		}
 		const mv = reja.mavzular || [];
@@ -721,6 +748,7 @@ class TZDarsSessiya {
 					<div class="km-act"><button class="btn-mini ghost mavzu-ochir">🗑 Olib tashlash</button>
 						<span class="mini">boshqasini tanlab «Belgilash»ni bossangiz — almashadi</span></div>`
 				: `<div class="km-v yoq">⬜ Hali belgilanmagan — pastdan mavzuni tanlab «Belgilash»ni bosing</div>`}
+				<div class="km-audio"><span class="km-audio-t">🎙 Dars audiosi</span><div class="ds-audio"></div></div>
 			</div>
 			<div class="mv-list">${list || "<div class='mini'>Mavzular yo'q</div>"}</div>
 			<div class="mv-act">
@@ -769,6 +797,7 @@ class TZDarsSessiya {
 		});
 		this.body.find(".mavzu-biriktir").on("click", () => this.mavzuDialog());
 		this.body.find(".reja-ochish").on("click", () => frappe.set_route("Form", "Oquv Reja", reja.oquv_reja));
+		this.mountAudio();
 	}
 
 	// ---------- O'NG 3: uy vazifa — HAR KUN UCHUN ALOHIDA ----------

@@ -26,6 +26,10 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/target_zenit/css/target_zenit.css"
+# Dars audiosi vidjeti (dars-sessiya + mening-jadvalim)
+app_include_css = [
+	"/assets/target_zenit/css/dars_audio.css?v=20261015",
+]
 # ?v= — brauzer keshini yangilash uchun (fayl o'zgarganda raqamni oshiring)
 app_include_js = [
 	"/assets/target_zenit/js/instagram.js?v=20260825",
@@ -35,6 +39,8 @@ app_include_js = [
 	"/assets/target_zenit/js/payment_month.js?v=20260921",
 	# O'quv reja: «Chorak mavzularini biriktirish» dialogi (tz_mavzu_dialog)
 	"/assets/target_zenit/js/mavzu_import.js?v=20261012",
+	# Dars audiosini yozib olish vidjeti (dars-sessiya + mening-jadvalim)
+	"/assets/target_zenit/js/dars_audio.js?v=20261015",
 ]
 
 # include js, css files in header of web template

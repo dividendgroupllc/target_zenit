@@ -159,6 +159,67 @@ def _qongiroqlar(student: str, payer_phone=None, payer_name=None, limit: int = 6
 	return rows
 
 
+def _student_live(studentlar) -> dict:
+	"""student_id -> jonli ma'lumot: ism, sinf, to'lovchi, faollik.
+
+	Panel ismni HECH QACHON nusxadan o'qimaydi. `Qarz Ishi.student_name` va
+	`sinf` — fetch_from suratlari: o'quvchining ismi tuzatilsa (masalan
+	"Rustamov" -> "Rustamjonov") nusxa eskicha qolib ketadi va ro'yxat bilan
+	karta har xil ism ko'rsatardi. Shuning uchun har safar Student hujjatidan
+	student_id bo'yicha o'qiymiz — ism o'zgargan zahoti panelda ham o'zgaradi.
+
+	To'lovchi ham shu yerda: Student.payer -> ota-ona (Guardian) -> o'quvchining
+	o'zi zanjiri (`engine._payer_info` bilan bir xil mantiq, lekin hamma
+	o'quvchi uchun ikkita so'rovda)."""
+	studentlar = [x for x in {s for s in studentlar if s}]
+	if not studentlar:
+		return {}
+
+	out = {}
+	for st in frappe.get_all(
+		"Student",
+		filters={"name": ["in", studentlar]},
+		fields=[
+			"name", "student_name", "custom_sinf_guruh", "enabled", "date_of_leaving",
+			"custom_payer_name", "custom_payer_phone", "student_mobile_number",
+		],
+	):
+		out[st.name] = frappe._dict(
+			student_name=st.student_name,
+			sinf=st.custom_sinf_guruh,
+			enabled=st.enabled,
+			date_of_leaving=st.date_of_leaving,
+			payer_name=st.custom_payer_name,
+			payer_phone=st.custom_payer_phone,
+			_mobil=st.student_mobile_number,
+		)
+
+	# Ota-ona raqami — faqat to'lovchi telefoni bo'sh o'quvchilarga kerak
+	kerak = [s for s, v in out.items() if not v.payer_phone]
+	if kerak:
+		for g in frappe.db.sql(
+			"""SELECT sg.parent student, COALESCE(g.guardian_name, sg.guardian_name) nm,
+			          g.mobile_number tel
+			   FROM `tabStudent Guardian` sg
+			   LEFT JOIN `tabGuardian` g ON g.name = sg.guardian
+			   WHERE sg.parenttype = 'Student' AND sg.parent IN %s
+			     AND g.mobile_number IS NOT NULL AND g.mobile_number != ''
+			   ORDER BY sg.parent, sg.idx""",
+			(tuple(kerak),),
+			as_dict=True,
+		):
+			v = out.get(g.student)
+			if v and not v.payer_phone:
+				v.payer_phone = g.tel
+				v.payer_name = v.payer_name or g.nm
+
+	for v in out.values():
+		if not v.payer_phone:
+			v.payer_phone = v._mobil
+		v.pop("_mobil", None)
+	return out
+
+
 def _qongiroq_statistikasi(cases) -> None:
 	"""Navbat ro'yxatiga qo'ng'iroq soni va oxirgi suhbat vaqtini qo'shadi.
 
@@ -298,22 +359,21 @@ def get_data(ketganlar: int = 0):
 		limit_page_length=0,
 	)
 
-	# O'quvchining faolligi: nofaol (enabled=0) yoki ketgan (date_of_leaving)
-	# bo'lsa — u "ketgan" hisoblanadi.
-	holat_map = {}
-	if cases:
-		for st in frappe.get_all(
-			"Student",
-			filters={"name": ["in", list({c.student for c in cases})]},
-			fields=["name", "enabled", "date_of_leaving"],
-		):
-			holat_map[st.name] = st
+	# Ism, sinf, to'lovchi — Student hujjatidan JONLI (nusxadan emas), shu bilan
+	# birga faollik: nofaol (enabled=0) yoki ketgan (date_of_leaving) bo'lsa
+	# o'quvchi "ketgan" hisoblanadi.
+	live = _student_live([c.student for c in cases])
 	ketgan_soni = 0
 	tanlangan = []
 	for c in cases:
-		st = holat_map.get(c.student)
+		st = live.get(c.student)
+		if st:
+			c["student_name"] = st.student_name or c.student_name
+			c["sinf"] = st.sinf
+			c["payer_name"] = st.payer_name or c.payer_name
+			c["payer_phone"] = st.payer_phone or c.payer_phone
 		c["ketgan"] = 1 if (st and (not st.enabled or st.date_of_leaving)) else 0
-		c["ketgan_sana"] = (st or {}).get("date_of_leaving")
+		c["ketgan_sana"] = st.date_of_leaving if st else None
 		ketgan_soni += c["ketgan"]
 		if bool(c["ketgan"]) == bool(ketganlar):
 			tanlangan.append(c)
@@ -402,6 +462,16 @@ def get_case(name: str):
 	_guard()
 	qi = frappe.get_doc("Qarz Ishi", name)
 
+	# Ism/sinf/to'lovchi — Student hujjatidan jonli. Qarz Ishi'dagi nusxa
+	# (fetch_from surati) eskirgan bo'lishi mumkin; ro'yxat bilan karta
+	# har xil ism ko'rsatmasligi uchun ikkalasi ham shu manbadan oladi.
+	jonli = _student_live([qi.student]).get(qi.student)
+	if jonli:
+		qi.student_name = jonli.student_name or qi.student_name
+		qi.sinf = jonli.sinf
+		qi.payer_name = jonli.payer_name or qi.payer_name
+		qi.payer_phone = jonli.payer_phone or qi.payer_phone
+
 	months, payments, hisob, xulosa = [], [], None, None
 	if qi.tolov_rejasi:
 		tr = frappe.get_doc("Tolov Rejasi", qi.tolov_rejasi)
@@ -479,9 +549,14 @@ def get_case(name: str):
 				"name": ["!=", name],
 				"ishlov_status": ["not in", list(YOPIQ)],
 			},
-			fields=["name", "student_name", "qarz_summa", "masul", "ishlov_status"],
+			fields=["name", "student", "student_name", "qarz_summa", "masul", "ishlov_status"],
 			limit_page_length=10,
 		)
+		sib_live = _student_live([s.student for s in siblings])
+		for sb in siblings:
+			sb["student_name"] = (sib_live.get(sb.student) or {}).get(
+				"student_name"
+			) or sb.student_name
 
 	student_phone = frappe.db.get_value("Student", qi.student, "student_mobile_number")
 

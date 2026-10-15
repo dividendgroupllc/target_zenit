@@ -99,7 +99,9 @@ def sessiya_malumot(jadval_yozuvi: str, sana: str | None = None) -> dict:
 				"kelajak": d > bugun_s,
 				"jadval_yozuvi": kun_jy.get(d) or jadval_yozuvi,
 				"mavzu": (mavzu_map.get(d) or {}).get("mavzu"),
-				"tahrir": 1 if soz.tuzatish_mumkinmi(d, menejer=bah._menejermi(), s=s) else 0,
+				# kelajak dars uchun jurnal yopiq — hali o'tilmagan darsga baho qo'yilmaydi
+				"tahrir": 0 if d > bugun_s else (
+					1 if soz.tuzatish_mumkinmi(d, menejer=bah._menejermi(), s=s) else 0),
 			})
 
 		# Chorakda o'tilgan darslar soni (davomat foizi uchun).
@@ -221,7 +223,9 @@ def sessiya_malumot(jadval_yozuvi: str, sana: str | None = None) -> dict:
 
 def _chorak_dars_kunlari(jy, chorak: str | None, sana) -> dict:
 	"""Shu guruh+fan bo'yicha chorakdagi dars kunlari -> o'sha kundagi `Jadval Yozuvi`.
-	Haftalik jadvaldan hisoblanadi (kun -> hafta kuni), chorak boshidan bugungacha."""
+	Haftalik jadvaldan hisoblanadi (kun -> hafta kuni) — **chorak boshidan chorak oxirigacha**.
+	Jadval biz o'zgartirmagunimizcha amal qiladi, shuning uchun kelajak dars kunlari ham
+	chiqadi (ular `kelajak` belgisi bilan — baho qo'yilmaydi, lekin navigatsiya ishlaydi)."""
 	from datetime import timedelta
 
 	if not chorak:
@@ -231,8 +235,9 @@ def _chorak_dars_kunlari(jy, chorak: str | None, sana) -> dict:
 	if not t:
 		return {}
 	boshi, oxiri = getdate(t.term_start_date), getdate(t.term_end_date)
-	# Kelajakka chiqmaymiz (lekin tanlangan kun har holda qo'shiladi)
-	chek = min(oxiri, max(getdate(nowdate()), getdate(sana)))
+	# Butun chorak: kelajak dars kunlari ham kerak (jadval doimiy amal qiladi).
+	# Chorakdan tashqaridagi tanlangan kun yuqorida `sanalar`ga alohida qo'shiladi.
+	chek = oxiri
 	slots = frappe.get_all(
 		"Jadval Yozuvi",
 		filters={"versiya": jy.versiya, "guruh": jy.guruh, "fan": jy.fan},
