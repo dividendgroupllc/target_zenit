@@ -688,12 +688,17 @@ def _employee_advances():
     total = 0.0
     agg = defaultdict(float)
     try:
-        for r in frappe.get_all("Employee Advance", filters={"docstatus": 1},
-                                fields=["employee_name", "paid_amount", "claimed_amount", "return_amount"]):
+        rows = frappe.get_all(
+            "Employee Advance", filters={"docstatus": 1},
+            fields=["employee", "employee_name", "paid_amount", "claimed_amount", "return_amount"])
+        # Ism hujjatdagi nusxadan emas, Employee'dan jonli olinadi
+        from target_zenit.nomlar import xodim_nomlari
+        nomlar = xodim_nomlari([r.employee for r in rows])
+        for r in rows:
             outstanding = flt(r.paid_amount) - flt(r.claimed_amount) - flt(r.return_amount)
             if outstanding > 0:
                 total += outstanding
-                agg[r.employee_name or "—"] += outstanding
+                agg[nomlar.get(r.employee) or r.employee_name or "—"] += outstanding
     except Exception:
         pass
     top = [{"name": n, "amount": a} for n, a in sorted(agg.items(), key=lambda x: -x[1])[:5]]
@@ -3216,7 +3221,8 @@ def get_oqituvchi_samaradorligi(from_date=None, to_date=None, versiya=None):
 
         out.append({
             "instructor": ins.name,
-            "nomi": ins.instructor_name,
+            # Ism kadrlar hujjatidan (Employee) — Instructor nusxasi zaxira
+            "nomi": (emp.employee_name if emp else None) or ins.instructor_name,
             "employee": ins.employee,
             "lavozim": (emp.designation if emp else "") or "",
             "status": (emp.status if emp else "") or "",

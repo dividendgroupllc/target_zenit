@@ -15,6 +15,7 @@ from target_zenit.dars_jadvali.oqituvchi_jadval import (
 	_mavjudlikmi,
 	_max_darslar,
 )
+from target_zenit.nomlar import oqituvchi_nomlari
 
 
 def _oqituvchi_sigimi(ins: dict, ndars: int) -> dict:
@@ -75,6 +76,7 @@ def tahlil(versiya: str | None = None) -> dict:
 		fields=["name", "instructor_name", "custom_vakant", "custom_haftalik_norma",
 		        "custom_max_kun", "custom_max_kunlik_dars"],
 		order_by="instructor_name", limit_page_length=0)
+	ins_nom = oqituvchi_nomlari([i["name"] for i in ins_list])
 	oqituvchilar = []
 	oq_muammo = 0
 	for i in ins_list:
@@ -90,7 +92,8 @@ def tahlil(versiya: str | None = None) -> dict:
 		if holat != "ok":
 			oq_muammo += 1
 		oqituvchilar.append({
-			"nomi": i["instructor_name"], "talab": talab, "sigim": cap["sigim"],
+			"nomi": ins_nom.get(i["name"]) or i["instructor_name"],
+			"talab": talab, "sigim": cap["sigim"],
 			"norma": i.get("custom_haftalik_norma") or 0, "kunlar_bor": cap["kunlar_bor"],
 			"bosh": cap["sigim"] - talab, "holat": holat,
 		})

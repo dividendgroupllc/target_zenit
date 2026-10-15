@@ -244,6 +244,12 @@ def get_data(filters):
 
 	# Salary Slip'larni olish (Employee uchun)
 	salary_slips = []
+	# Xodim ismi — Employee hujjatidan jonli (Salary Slip'dagi nusxa emas:
+	# ism tuzatilganda eski hujjatlarda eskicha qolib ketadi)
+	xodim_ismi = (
+		frappe.db.get_value("Employee", party, "employee_name")
+		if party_type == "Employee" else None
+	) or party
 	if party_type == "Employee":
 		salary_slips = frappe.db.sql("""
             SELECT
@@ -283,7 +289,7 @@ def get_data(filters):
 				"posting_date": entry.posting_date,
 				"voucher_type": voucher_type,
 				"voucher_no": voucher_no,
-				"item_name": entry.get('employee_name', ''),
+				"item_name": xodim_ismi,
 				"qty": None,
 				"rate": None,
 				"currency": entry.get('currency', party_currency),

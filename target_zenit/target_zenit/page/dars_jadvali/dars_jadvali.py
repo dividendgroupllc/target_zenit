@@ -7,6 +7,8 @@ from collections import defaultdict
 
 import frappe
 
+from target_zenit.nomlar import oqituvchi_nomlari
+
 ALLOWED_ROLES = [
 	"System Manager", "Zavuch", "Academics User", "Education Manager",
 	"Sales Manager", "investor", "Xojakbar_Operator",
@@ -71,6 +73,9 @@ def get_data(versiya: str | None = None):
 		limit_page_length=0,
 	)
 
+	# O'qituvchi ismi nusxadan emas — Instructor->Employee zanjiridan jonli
+	oq_nom = oqituvchi_nomlari([y.oqituvchi for y in yozuvlar])
+
 	# sinf x kun x dars -> darslar ro'yxati (blokda bir nechta guruh bo'lishi mumkin)
 	katak = defaultdict(list)
 	yuklama = defaultdict(set)
@@ -83,7 +88,7 @@ def get_data(versiya: str | None = None):
 					"fan": y.fan,
 					"guruh": y.guruh,
 					"guruh_nomi": y.guruh_nomi,
-					"oqituvchi": y.oqituvchi_nomi or y.oqituvchi,
+					"oqituvchi": oq_nom.get(y.oqituvchi) or y.oqituvchi_nomi or y.oqituvchi,
 					"blok": y.blok,
 					"xona": y.xona,
 				}

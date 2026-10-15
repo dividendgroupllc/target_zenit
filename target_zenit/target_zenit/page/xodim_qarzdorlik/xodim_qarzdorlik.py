@@ -12,6 +12,8 @@ from __future__ import annotations
 import frappe
 from frappe.utils import flt
 
+from target_zenit.kadrlar import ish_haqi_kategoriyalari
+
 ALLOWED_ROLES = [
 	"System Manager", "Sales Manager", "HR Manager", "HR User",
 	"Accounts Manager", "Accounts User", "investor", "Xojakbar_Operator",
@@ -102,7 +104,13 @@ def get_data():
 		"kompaniya_qarzi_soni": sum(1 for r in out if r["saldo"] < -1000),
 		"jami": len(out),
 	}
-	return {"rows": out, "stats": stats}
+	return {
+		"rows": out,
+		"stats": stats,
+		# Filtr ro'yxati Employee maydonidan — qotib yozilmaydi (kadrlar yangi
+		# kategoriya qo'shsa panelda ham o'zi paydo bo'ladi)
+		"kategoriyalar": ish_haqi_kategoriyalari([r.get("kategoriya") for r in out]),
+	}
 
 
 @frappe.whitelist()

@@ -9,6 +9,7 @@ from frappe.utils import add_days, cint, getdate, nowdate
 from target_zenit import oquv_reja as oreja
 from target_zenit.dars_jadvali import baholash as bah
 from target_zenit.dars_jadvali import sozlamalar as soz
+from target_zenit.nomlar import oqituvchi_nomi, oqituvchi_nomlari
 
 KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
 
@@ -57,7 +58,8 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None, hafta: in
 
 	natija = {
 		"oqituvchi": oqituvchi,
-		"oqituvchi_nomi": frappe.db.get_value("Instructor", oqituvchi, "instructor_name") if oqituvchi else None,
+		# Ism Employee'dan jonli (Instructor.instructor_name — nusxa)
+		"oqituvchi_nomi": oqituvchi_nomi(oqituvchi),
 		"versiya": versiya,
 		"menejer": menejer,
 		"bugun_kuni": KUNLAR[getdate(nowdate()).weekday()],
@@ -65,9 +67,14 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None, hafta: in
 		"qongiroq": {},
 	}
 	if menejer:
-		natija["oqituvchilar"] = frappe.get_all(
-			"Instructor", fields=["name", "instructor_name"], order_by="instructor_name", limit_page_length=0
+		oqituvchilar = frappe.get_all(
+			"Instructor", fields=["name", "instructor_name"], limit_page_length=0
 		)
+		nomlar = oqituvchi_nomlari([o.name for o in oqituvchilar])
+		for o in oqituvchilar:
+			o["instructor_name"] = nomlar.get(o.name) or o.instructor_name
+		oqituvchilar.sort(key=lambda o: (o["instructor_name"] or "").lower())
+		natija["oqituvchilar"] = oqituvchilar
 	if not oqituvchi or not versiya:
 		return natija
 
@@ -105,7 +112,7 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None, hafta: in
 			cover_vazifalar.append({
 				"sana": str(o.sana), "kun": o.kun, "dars_raqami": o.dars_raqami,
 				"fan": o.fan, "guruh_nomi": o.guruh_nomi,
-				"asl_oqituvchi_nomi": frappe.db.get_value("Instructor", o.asl_oqituvchi, "instructor_name"),
+				"asl_oqituvchi_nomi": oqituvchi_nomi(o.asl_oqituvchi),
 				"boshlanish": _vaqt_str(jy.get("boshlanish")), "tugash": _vaqt_str(jy.get("tugash")),
 				"sabab": o.sabab,
 			})
@@ -122,7 +129,7 @@ def get_data(oqituvchi: str | None = None, versiya: str | None = None, hafta: in
 		o = ozg_map.get((d["sana"], d["name"]))
 		d["ozgarish"] = ({
 			"tur": o.tur,
-			"yangi_oqituvchi_nomi": frappe.db.get_value("Instructor", o.yangi_oqituvchi, "instructor_name") if o.yangi_oqituvchi else None,
+			"yangi_oqituvchi_nomi": oqituvchi_nomi(o.yangi_oqituvchi),
 			"sabab": o.sabab,
 		} if o else None)
 		# O'quv reja holati (faol reja + keyingi mavzu + o'tilganmi)
@@ -480,14 +487,14 @@ def bugun_batafsil(oqituvchi: str | None = None, sana: str | None = None) -> dic
 			continue
 		hammasi.append(dict(jy, qoshimcha=1, ozgarish={
 			"tur": o.tur, "sabab": o.sabab,
-			"asl_oqituvchi_nomi": frappe.db.get_value("Instructor", o.asl_oqituvchi, "instructor_name"),
+			"asl_oqituvchi_nomi": oqituvchi_nomi(o.asl_oqituvchi),
 		}))
 	for d in hammasi:
 		if not d.get("qoshimcha"):
 			o = ozg_oz.get(d["name"])
 			d["ozgarish"] = ({
 				"tur": o.tur, "sabab": o.sabab,
-				"yangi_oqituvchi_nomi": frappe.db.get_value("Instructor", o.yangi_oqituvchi, "instructor_name") if o.yangi_oqituvchi else None,
+				"yangi_oqituvchi_nomi": oqituvchi_nomi(o.yangi_oqituvchi),
 			} if o else None)
 	hammasi.sort(key=lambda d: (d.get("dars_raqami") or 0))
 	if not hammasi:

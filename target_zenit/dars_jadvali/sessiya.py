@@ -14,6 +14,7 @@ from target_zenit import oquv_reja as oreja
 from target_zenit.dars_jadvali import baholash as bah
 from target_zenit.dars_jadvali import sozlamalar as soz
 from target_zenit.dars_jadvali.oqituvchi_jadval import _vaqt_str
+from target_zenit.nomlar import oqituvchi_nomi
 
 # Hafta kunlari (0 = Dushanba) — jadvaldagi `kun` maydoni bilan mos
 KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
@@ -200,7 +201,9 @@ def sessiya_malumot(jadval_yozuvi: str, sana: str | None = None) -> dict:
 	return {
 		"dars": {
 			"jadval_yozuvi": jadval_yozuvi, "fan": jy.fan, "guruh": jy.guruh,
-			"guruh_nomi": jy.guruh_nomi, "oqituvchi_nomi": jy.oqituvchi_nomi,
+			# Ism nusxadan emas, Instructor->Employee zanjiridan jonli olinadi
+			"guruh_nomi": jy.guruh_nomi,
+			"oqituvchi_nomi": oqituvchi_nomi(jy.oqituvchi) or jy.oqituvchi_nomi,
 			"kun": jy.kun, "dars_raqami": jy.dars_raqami,
 			"boshlanish": _vaqt_str(jy.boshlanish), "tugash": _vaqt_str(jy.tugash),
 			"xona": jy.xona, "sana": str(sana),

@@ -7,6 +7,8 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
+from target_zenit.nomlar import oqituvchi_nomi, oqituvchi_nomlari
+
 KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma"]
 MENEJER = {"system manager", "zavuch", "academics user", "education manager"}
 
@@ -150,7 +152,8 @@ def oqituvchi_tori(oqituvchi: str, versiya: str | None = None) -> dict:
 
 	return {
 		"oqituvchi": oqituvchi,
-		"nomi": ins.get("instructor_name"),
+		# Ism Employee hujjatidan jonli (Instructor nusxasi zaxira)
+		"nomi": oqituvchi_nomi(oqituvchi) or ins.get("instructor_name"),
 		"vakant": ins.get("custom_vakant"),
 		"versiya": versiya,
 		"kunlar": KUNLAR,
@@ -191,12 +194,15 @@ def oqituvchilar(versiya: str | None = None, fan: str | None = None,
 			f["guruh"] = guruh
 		ruxsat = set(r.oqituvchi for r in frappe.get_all(
 			"Jadval Yozuvi", filters=f, fields=["oqituvchi"], limit_page_length=0) if r.oqituvchi)
+	nomlar = oqituvchi_nomlari([i["name"] for i in ins])
 	out = []
 	for i in ins:
 		if ruxsat is not None and i["name"] not in ruxsat:
 			continue
+		i["instructor_name"] = nomlar.get(i["name"]) or i["instructor_name"]
 		i["soat"] = soat.get(i["name"], 0)
 		out.append(i)
+	out.sort(key=lambda x: (x["instructor_name"] or "").lower())
 	return out
 
 
@@ -299,9 +305,11 @@ def kim_ola_oladi(kun: str, dars_raqami, fan: str | None = None,
 		fields=["name", "instructor_name", "custom_haftalik_norma"],
 		limit_page_length=0)
 
+	ins_nom = oqituvchi_nomlari([i["name"] for i in ins_list])
 	natija = []
 	for i in ins_list:
-		nm, name = i["instructor_name"], i["name"]
+		name = i["name"]
+		nm = ins_nom.get(name) or i["instructor_name"]
 		sabab = []
 		if name in band_now:
 			continue  # band — kandidat emas

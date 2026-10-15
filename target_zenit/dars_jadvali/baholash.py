@@ -10,6 +10,7 @@ from frappe import _
 from frappe.utils import getdate, nowdate
 
 from target_zenit.dars_jadvali import sozlamalar as soz
+from target_zenit.nomlar import oqituvchi_nomi
 
 # Davomat holatlari — sozlamalardan (kechikish yoqilgan/o'chirilgan)
 DAVOMAT = soz.DAVOMAT_HAMMASI
@@ -83,7 +84,8 @@ def dars_oquvchilari(jadval_yozuvi: str, sana: str | None = None) -> dict:
 		})
 	return {
 		"jadval_yozuvi": jadval_yozuvi, "guruh": jy.guruh, "guruh_nomi": jy.guruh_nomi,
-		"fan": jy.fan, "oqituvchi": jy.oqituvchi, "oqituvchi_nomi": jy.oqituvchi_nomi,
+		"fan": jy.fan, "oqituvchi": jy.oqituvchi,
+		"oqituvchi_nomi": oqituvchi_nomi(jy.oqituvchi) or jy.oqituvchi_nomi,
 		"kun": jy.kun, "dars_raqami": jy.dars_raqami, "sana": str(sana),
 		"chorak": _chorak(sana),
 		"oquvchilar": qatorlar,

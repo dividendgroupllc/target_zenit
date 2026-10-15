@@ -682,9 +682,21 @@ def _taqsimla(
 		alloc[r.name] = bor + a
 		pool -= a
 
-	# 5) Bog'lanmagan qaytim — oxirgi to'langan OYLIK qatordan (LIFO).
+	# 5) Bog'lanmagan qaytim — AVVAL taqsimlanmagan puldan (avans), keyin
+	#    oxirgi to'langan OYLIK qatordan (LIFO).
+	#
+	#    Avans birinchi bo'lishi SHART: odatda qaytim aynan ORTIQCHA to'langan
+	#    puldan beriladi (kassir ko'proq olgan, qolganini qaytargan). Uni oy
+	#    qatoridan yechsak, to'liq to'langan oy yana "to'lanmagan" bo'lib
+	#    ko'rinardi — holbuki o'sha oy uchun pul to'liq tushgan va ortiqchasi
+	#    avansda turibdi. (2026-10-15: Kamiljonov X. — 53.83 mln to'lov,
+	#    130 ming qaytim, 42 mln avans; panel 130 mingni qarz deb ko'rsatardi.)
+	#
 	#    SI qatorlariga tegilmaydi: ularning qaytimi faqat bog'langan bo'lishi kerak.
 	left_q = max(q_pool, 0.0)
+	avansdan = min(left_q, max(pool, 0.0))
+	pool -= avansdan
+	left_q -= avansdan
 	for r in reversed(oy_rows):
 		bor = qaytim.get(r.name, 0.0)
 		take = min(left_q, max(alloc.get(r.name, 0.0) - bor, 0.0))

@@ -1087,3 +1087,96 @@ def test_ism_jonli(case="QI-2026-142230"):
 		frappe.db.set_value("Student", student, "custom_sinf_guruh", eski_sinf, update_modified=False)
 		frappe.db.commit()
 		print("(ism va sinf tiklandi)")
+
+
+def test_bekor_korinmaydi(student="EDU-STU-2026-00591"):
+	"""Bekor qilingan nachisleniya panelda ko'rinmasligi kerak.
+
+	Shu o'quvchida bekor qilingan Sales Invoice (docstatus=2) qatorlari bor —
+	panel javobida ular bo'lmasligi va summalarga kirmasligi tekshiriladi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_bekor_korinmaydi
+	"""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	case = frappe.db.get_value("Qarz Ishi", {"student": student}, "name")
+	assert case, f"{student} uchun qarz ishi yo'q"
+
+	tr = frappe.db.get_value("Tolov Rejasi", {"student": student, "holat": "Faol"})
+	bekor = frappe.get_all(
+		"Tolov Rejasi Oyi",
+		filters={"parent": tr, "parenttype": "Tolov Rejasi", "holat": "Bekor"},
+		fields=["name", "oy_label", "amount", "manba_hujjat"],
+	)
+	print(f"{student}: bekor qilingan {len(bekor)} qator")
+	for b in bekor:
+		si_holat = frappe.db.get_value("Sales Invoice", b.manba_hujjat, "docstatus") if b.manba_hujjat else None
+		print(f"  {b.oy_label} — {b.amount:,.0f} (SI {b.manba_hujjat}, docstatus={si_holat})")
+	assert bekor, "sinov uchun bekor qilingan qator topilmadi"
+
+	d = panel.get_case(case)
+	nomlar = {b.oy_label for b in bekor}
+	yomon = [m for m in d["months"] if m["holat"] == "Bekor"]
+	assert not yomon, f"panelda bekor qator chiqdi: {yomon}"
+	x = d["xulosa"]
+	assert not [m for m in x["oylar"] if m["oy_label"] in nomlar and m["nachislangan"]], (
+		"xulosada bekor qator summasi bor")
+	bekor_summa = sum(b.amount for b in bekor)
+	jami_si = sum(q["nachislangan"] for q in x["qoshimcha"])
+	print(f"  panel qatorlari: {len(d['months'])} ta (bekorlar yo'q)")
+	print(f"  qo'shimcha nachisleniya jami: {jami_si:,.0f} "
+	      f"(bekor qilinganlari {bekor_summa:,.0f} kirmagan)")
+	print("OK — bekor qilingan nachisleniyalar panelda ko'rinmaydi")
+
+
+def sinov_izini_tozala(student="EDU-STU-2026-00498"):
+	"""Sinov paytida «ketgan» deb belgilanib qolgan o'quvchini tiklash
+	(lokal bazadagi iz). Panelning o'z `qaytardi` oqimidan foydalanadi."""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	st = frappe.db.get_value(
+		"Student", student, ["student_name", "enabled", "date_of_leaving"], as_dict=True)
+	print(f"{student} ({st.student_name}): enabled={st.enabled}, ketish={st.date_of_leaving}")
+	case = frappe.db.get_value("Qarz Ishi", {"student": student}, "name")
+	if case:
+		print("  natija:", panel.qaytardi(case))
+	else:
+		frappe.db.set_value("Student", student, {"enabled": 1, "date_of_leaving": None})
+		frappe.db.commit()
+	st = frappe.db.get_value(
+		"Student", student, ["enabled", "date_of_leaving"], as_dict=True)
+	bekor = frappe.db.sql(
+		"""SELECT COUNT(*) FROM `tabTolov Rejasi Oyi` o
+		   JOIN `tabTolov Rejasi` tr ON tr.name = o.parent
+		   WHERE tr.student = %s AND o.holat = 'Bekor'""", (student,))[0][0]
+	print(f"  hozir: enabled={st.enabled}, ketish={st.date_of_leaving}, bekor qatorlar={bekor}")
+
+
+def qaytimli_royxat():
+	"""Qaytimi bor hamma o'quvchi: qaytim jadvalga qarz bo'lib yozilganmi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.qaytimli_royxat
+	"""
+	rows = frappe.db.sql(
+		"""SELECT tr.name reja, tr.student, tr.student_name, tr.jami_qaytim,
+		          tr.qarz_bugun, tr.avans_summa,
+		          (SELECT COALESCE(SUM(o.qaytim), 0) FROM `tabTolov Rejasi Oyi` o
+		           WHERE o.parent = tr.name AND o.holat <> 'Bekor') jadvalda
+		   FROM `tabTolov Rejasi` tr
+		   WHERE tr.holat = 'Faol' AND tr.jami_qaytim > 0
+		   ORDER BY tr.jami_qaytim DESC""",
+		as_dict=True,
+	)
+	print(f"qaytimi bor o'quvchilar: {len(rows)} ta\n")
+	print(f"{'Oquvchi':<42}{'qaytim':>12}{'jadvalda':>12}{'qarz':>14}{'avans':>14}")
+	muammo = 0
+	for r in rows:
+		belgi = ""
+		if r.jadvalda > 0.5:
+			belgi = "  <-- oydan yechilgan" if r.avans_summa > 0.5 else "  (avans yo'q)"
+			muammo += 1 if r.avans_summa > 0.5 else 0
+		print(f"{(r.student_name or '')[:40]:<42}{r.jami_qaytim:>12,.0f}"
+		      f"{r.jadvalda:>12,.0f}{r.qarz_bugun:>14,.0f}{r.avans_summa:>14,.0f}{belgi}")
+	print(f"\njami qaytim: {sum(r.jami_qaytim for r in rows):,.0f} | "
+	      f"jadvalga yozilgan: {sum(r.jadvalda for r in rows):,.0f} | "
+	      f"avans borida oydan yechilgani: {muammo} ta")

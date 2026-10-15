@@ -56,11 +56,10 @@ class TZXodimQarzPanel {
 		return [...set].sort((a, b) => a.localeCompare(b));
 	}
 
-	// Ish haqi kategoriyalari — kanonik tartibda, faqat ma'lumotda uchraganlar
+	// Ish haqi kategoriyalari — Employee maydonidan (server beradi), tartibi
+	// maydondagidek; ro'yxat qotib yozilmaydi
 	kategoriyalar() {
-		const kanon = ["Admin oylik", "O'qituvchi", "Xodimlar", "Oshxona"];
-		const bor = new Set((this.data.rows || []).map((r) => r.kategoriya).filter(Boolean));
-		return kanon.filter((k) => bor.has(k));
+		return this.data.kategoriyalar || [];
 	}
 
 	filtered() {

@@ -12,6 +12,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
+from target_zenit.kadrlar import ish_haqi_kategoriyalari
+
 ROLLAR = ["System Manager", "Zavuch", "Xojakbar_Operator", "HR Manager", "HR User"]
 HAFTA = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"]
 
@@ -50,13 +52,6 @@ def get_data(yil=None, oy=None, kategoriya=None):
 	kunlar_soni = calendar.monthrange(yil, oy)[1]
 	oy_boshi, oy_oxiri = f"{yil}-{oy:02d}-01", f"{yil}-{oy:02d}-{kunlar_soni}"
 
-	# O'qituvchilar (Instructor orqali) — zavuchning asosiy ro'yxati
-	instr_emp = {
-		i.employee: i.instructor_name
-		for i in frappe.get_all("Instructor", fields=["employee", "instructor_name"],
-								limit_page_length=0) if i.employee
-	}
-
 	# Oylik tabel bilan BIR XIL tanlov: faqat "Oylik tabelda" belgisi qo'yilgan
 	# xodimlar (Active'lar ko'p, tabelga esa hozir real ishlayotganlar kiradi).
 	# Ishdan ketganlar — ketgan oyigacha ko'rinadi, keyin chiqib ketadi.
@@ -82,10 +77,11 @@ def get_data(yil=None, oy=None, kategoriya=None):
 	xodimlar = saralangan
 	# Filtr ro'yxati uchun — kategoriyalar filtrdan OLDIN yig'iladi,
 	# aks holda bittasini tanlagach qolganlari ro'yxatdan yo'qolardi
-	kanon = ["Admin oylik", "O'qituvchi", "Tutor", "Oshxona",
-			 "Texnik xodimlar", "Qorovullash xizmati", "Xodimlar"]
-	bor_kat = {(x.custom_ish_haqi_kategoriya or "").strip() for x in xodimlar}
-	kategoriyalar = [k for k in kanon if k in bor_kat] or kanon
+	# Ro'yxat Employee maydonidan olinadi (qotib yozilmaydi): kadrlar yangi
+	# kategoriya qo'shsa yoki nomini o'zgartirsa filtr ham o'zi yangilanadi.
+	kategoriyalar = ish_haqi_kategoriyalari(
+		[x.custom_ish_haqi_kategoriya for x in xodimlar]
+	)
 
 	# Ish haqi kategoriyasi (tabel) bo'yicha filtr — KO'P TANLOV:
 	# ro'yxatdagi istalgan kategoriyaga mos xodimlar ko'rsatiladi
@@ -153,7 +149,9 @@ def get_data(yil=None, oy=None, kategoriya=None):
 						   "koef": b["koef"] if b else None})
 		qatorlar.append({
 			"xodim": x.name,
-			"ism": instr_emp.get(x.name) or x.employee_name,
+			# Ism HAR DOIM Employee hujjatidan (xodim ID bo'yicha) — Instructor'dagi
+			# `instructor_name` nusxa, ism tuzatilganda eskicha qolib ketadi.
+			"ism": x.employee_name or x.name,
 			"lavozim": x.designation or "",
 			"kategoriya": x.custom_ish_haqi_kategoriya or "",
 			"soatbay": (x.custom_tolov_turi or "").strip() == "Soatbay",
@@ -169,7 +167,8 @@ def get_data(yil=None, oy=None, kategoriya=None):
 		"kategoriya": kategoriya or "",
 		"oy_ochiq": _oy_ochiqmi(yil, oy),
 		"bugun": str(bugun),
-		"oqituvchilar_soni": len(instr_emp),
+		# Instructor sifatida ro'yxatdan o'tgan xodimlar soni (ma'lumot uchun)
+		"oqituvchilar_soni": frappe.db.count("Instructor", {"employee": ["!=", ""]}),
 	}
 
 

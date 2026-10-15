@@ -360,7 +360,7 @@ class TZQarzPanel {
 			${(x && x.qoshimcha || []).length ? `<div class="box-t" style="margin-top:10px">Qo'shimcha nachisleniyalar (kitob, forma, yotoqxona)</div>
 			<table class="tbl mini-tbl"><thead><tr><th>Nachisleniya</th><th>Sana</th><th class="r">Summa</th>
 				<th class="r">To'langan</th><th class="r">Qoldiq</th><th>Holat</th></tr></thead>
-			<tbody>${(d.months || []).filter((m) => m.manba_hujjat).map((m) => `
+			<tbody>${(d.months || []).filter((m) => m.manba_hujjat && m.holat !== "Bekor").map((m) => `
 				<tr class="mh-${this.esc(m.holat)}"><td>${this.esc(m.oy_label)}
 						<a class="mini" href="/app/sales-invoice/${encodeURIComponent(m.manba_hujjat)}" target="_blank">↗</a></td>
 					<td>${this.dmy(m.due_date)}</td><td class="r">${this.fmt(m.amount)}</td>

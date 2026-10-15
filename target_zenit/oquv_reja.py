@@ -11,6 +11,8 @@ import frappe
 from frappe import _
 from frappe.utils import getdate, nowdate
 
+from target_zenit.nomlar import oqituvchi_nomi
+
 MENEJER_ROLLARI = {"system manager", "zavuch", "academics user", "education manager"}
 KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
 
@@ -149,7 +151,7 @@ def dars_detali(jadval_yozuvi: str, sana: str | None = None) -> dict:
 		"tugash": _vaqt_str(jy.tugash),
 		"xona": jy.xona,
 		"oqituvchi": jy.oqituvchi,
-		"oqituvchi_nomi": jy.oqituvchi_nomi,
+		"oqituvchi_nomi": oqituvchi_nomi(jy.oqituvchi) or jy.oqituvchi_nomi,
 		"sana": str(sana),
 	}
 	reja = aktiv_reja(jy.fan, jy.guruh, jy.guruh_nomi)

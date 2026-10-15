@@ -475,6 +475,10 @@ def get_case(name: str):
 	months, payments, hisob, xulosa = [], [], None, None
 	if qi.tolov_rejasi:
 		tr = frappe.get_doc("Tolov Rejasi", qi.tolov_rejasi)
+		# Bekor qilingan qatorlar KO'RSATILMAYDI: nachisleniyasi (Sales Invoice)
+		# bekor qilinganda yoki o'quvchi ketganda qator "Bekor" bo'ladi — u na
+		# qarzga kiradi, na to'lov kutiladi. Hisob-kitob ham shunday
+		# (engine va plan_xulosa Bekor qatorlarni tashlab ketadi).
 		months = [
 			{
 				"oy_label": r.oy_label, "due_date": r.due_date, "amount": r.amount,
@@ -484,6 +488,7 @@ def get_case(name: str):
 				"manba_hujjat": r.manba_hujjat, "izoh": r.izoh,
 			}
 			for r in tr.oylar
+			if r.holat != "Bekor"
 		]
 		from target_zenit.qarzdorlik import engine
 

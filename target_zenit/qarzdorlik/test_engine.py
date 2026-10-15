@@ -189,6 +189,29 @@ class TestTaqsimot(FrappeTestCase):
 		self.assertEqual(qaytim["r_sent"], 0)
 		self.assertEqual(alloc["r_kitob"], 2_000_000)
 
+	def test_qaytim_avvalo_avansdan_yechiladi(self):
+		"""Ortiqcha to'langan pul qaytarilsa, to'liq to'langan oy "to'lanmagan"
+		bo'lib qolmasligi kerak — qaytim avansdan beriladi."""
+		rows = [oy("r_sent", "2026-09-05", 5_000_000, "SI-SENT")]
+		alloc, qaytim, avans = taqsim(rows, tolov=8_000_000, qaytim=130_000)
+
+		self.assertEqual(alloc["r_sent"], 5_000_000)        # oy to'liq yopilgan
+		self.assertEqual(qaytim["r_sent"], 0)               # qator qarzga aylanmadi
+		self.assertEqual(avans, 2_870_000)                  # 3M avans - 130k qaytim
+
+	def test_avansdan_ortgan_qaytim_oydan_yechiladi(self):
+		"""Qaytim avansdan ko'p bo'lsa, ortig'i oxirgi to'langan oydan (LIFO)."""
+		rows = [
+			oy("r_sent", "2026-09-05", 5_000_000, "SI-SENT"),
+			oy("r_okt", "2026-10-05", 5_000_000, "SI-OKT"),
+		]
+		alloc, qaytim, avans = taqsim(rows, tolov=11_000_000, qaytim=1_500_000)
+
+		self.assertEqual(avans, 0)                          # 1M avans qaytimga ketdi
+		self.assertEqual(qaytim["r_okt"], 500_000)          # qolgan 500k oxirgi oydan
+		self.assertEqual(qaytim.get("r_sent", 0), 0)
+		self.assertEqual(alloc["r_okt"], 5_000_000)
+
 	# ------------------------------------------------------- pul saqlanishi
 
 	def test_pul_yoqolmaydi(self):

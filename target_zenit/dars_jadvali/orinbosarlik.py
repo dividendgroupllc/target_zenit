@@ -18,6 +18,7 @@ from target_zenit.dars_jadvali.oqituvchi_jadval import (
 	_mavjudlikmi,
 	_vaqt_str,
 )
+from target_zenit.nomlar import oqituvchi_nomi, oqituvchi_nomlari
 
 
 def _kun_nomi(sana) -> str:
@@ -52,18 +53,22 @@ def kun_darslari(sana: str, oqituvchi: str | None = None, versiya: str | None = 
 		order_by="dars_raqami asc", limit_page_length=0)
 
 	ozg = _ozgarishlar(sana, versiya)
+	# Ismlar nusxadan emas, Instructor->Employee zanjiridan (bitta so'rovda)
+	nomlar = oqituvchi_nomlari(
+		[y.oqituvchi for y in yozuvlar] + [o.yangi_oqituvchi for o in ozg.values()]
+	)
 	darslar = []
 	for y in yozuvlar:
 		o = ozg.get(y.name)
 		darslar.append({
 			"jadval_yozuvi": y.name, "dars_raqami": y.dars_raqami, "fan": y.fan,
 			"guruh_nomi": y.guruh_nomi, "asl_oqituvchi": y.oqituvchi,
-			"asl_oqituvchi_nomi": y.oqituvchi_nomi, "xona": y.xona,
+			"asl_oqituvchi_nomi": nomlar.get(y.oqituvchi) or y.oqituvchi_nomi, "xona": y.xona,
 			"boshlanish": _vaqt_str(y.boshlanish), "tugash": _vaqt_str(y.tugash),
 			"ozgarish": ({
 				"name": o.name, "tur": o.tur,
 				"yangi_oqituvchi": o.yangi_oqituvchi,
-				"yangi_oqituvchi_nomi": frappe.db.get_value("Instructor", o.yangi_oqituvchi, "instructor_name") if o.yangi_oqituvchi else None,
+				"yangi_oqituvchi_nomi": nomlar.get(o.yangi_oqituvchi),
 				"sabab": o.sabab,
 			} if o else None),
 		})
@@ -111,17 +116,21 @@ def guruh_kun(sana: str, guruh: str, versiya: str | None = None) -> dict:
 		(versiya, kun, guruh, f"%{nomi}%"), as_dict=True)
 
 	ozg = _ozgarishlar(sana, versiya)
+	nomlar = oqituvchi_nomlari(
+		[y.oqituvchi for y in yozuvlar] + [o.yangi_oqituvchi for o in ozg.values()]
+	)
 	darslar = []
 	for y in yozuvlar:
 		o = ozg.get(y.name)
 		darslar.append({
 			"jadval_yozuvi": y.name, "dars_raqami": y.dars_raqami, "fan": y.fan,
-			"guruh_nomi": y.guruh_nomi, "oqituvchi_nomi": y.oqituvchi_nomi,
+			"guruh_nomi": y.guruh_nomi,
+			"oqituvchi_nomi": nomlar.get(y.oqituvchi) or y.oqituvchi_nomi,
 			"xona": y.xona, "boshlanish": _vaqt_str(y.boshlanish),
 			"tugash": _vaqt_str(y.tugash),
 			"ozgarish": ({
 				"tur": o.tur,
-				"yangi_oqituvchi_nomi": frappe.db.get_value("Instructor", o.yangi_oqituvchi, "instructor_name") if o.yangi_oqituvchi else None,
+				"yangi_oqituvchi_nomi": nomlar.get(o.yangi_oqituvchi),
 				"sabab": o.sabab,
 			} if o else None),
 		})
@@ -159,6 +168,7 @@ def cover_kandidatlar(jadval_yozuvi: str, sana: str, versiya: str | None = None)
 
 	ins_list = frappe.get_all("Instructor", filters={"custom_vakant": 0},
 		fields=["name", "instructor_name", "custom_haftalik_norma"], limit_page_length=0)
+	ins_nom = oqituvchi_nomlari([i["name"] for i in ins_list])
 	natija = []
 	for i in ins_list:
 		name = i["name"]
@@ -173,7 +183,7 @@ def cover_kandidatlar(jadval_yozuvi: str, sana: str, versiya: str | None = None)
 		if norma and yuk >= norma:
 			sabab.append(f"norma to'lgan ({yuk}/{norma})")
 		natija.append({
-			"oqituvchi": name, "nomi": i["instructor_name"],
+			"oqituvchi": name, "nomi": ins_nom.get(name) or i["instructor_name"],
 			"fanni_oqitadi": name in fan_oqit,
 			"afzal": _mavjudlikmi(mav, kun, dars) == "afzal",
 			"soat": yuk, "norma": norma, "cover_soni": cover_soni.get(name, 0),
@@ -202,7 +212,7 @@ def cover_belgila(jadval_yozuvi: str, sana: str, yangi_oqituvchi: str, sabab: st
 	"""O'rinbosar tayinlash."""
 	_guard()
 	doc = _upsert(jadval_yozuvi, sana, "O'rinbosar", yangi_oqituvchi=yangi_oqituvchi, sabab=sabab)
-	return {"name": doc.name, "yangi_oqituvchi_nomi": frappe.db.get_value("Instructor", yangi_oqituvchi, "instructor_name")}
+	return {"name": doc.name, "yangi_oqituvchi_nomi": oqituvchi_nomi(yangi_oqituvchi)}
 
 
 @frappe.whitelist()
@@ -237,6 +247,7 @@ def cover_statistika(dan: str | None = None, gacha: str | None = None) -> list[d
 		f"""SELECT yangi_oqituvchi, COUNT(*) n FROM `tabJadval Ozgarishi`
 		    WHERE {' AND '.join(cond)} GROUP BY yangi_oqituvchi ORDER BY n DESC""",
 		tuple(args), as_dict=True)
+	nomlar = oqituvchi_nomlari([r.yangi_oqituvchi for r in rows])
 	for r in rows:
-		r["nomi"] = frappe.db.get_value("Instructor", r.yangi_oqituvchi, "instructor_name")
+		r["nomi"] = nomlar.get(r.yangi_oqituvchi)
 	return rows
