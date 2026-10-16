@@ -24,6 +24,109 @@ EXPENSE_PARENT_ACCOUNT_NAME = "Indirect Expenses"
 # uchun meta options ichida qoladi — aks holda eski yozuvni cancel/amend qilib bo'lmaydi.
 LEGACY_PARTY_TYPES = ("Расходы", "Дивиденд", "Дивиденд 1", "Дивиденд 2", "Дивиденд 3")
 
+# ---------------------------------------------------------------------------
+# To'lov kategoriyasi (faqat o'quvchi/mijoz to'lovida)
+# ---------------------------------------------------------------------------
+# O'quvchida bir vaqtda bir necha xil qarz bo'ladi: har oylik o'quv to'lovi va
+# bir martalik kitob / forma / yotoqxona. Nachisleniya (Sales Invoice) ham shu
+# itemlar bilan yoziladi. Kassir to'lov QAYSI qarz uchun kelganini kategoriya
+# bilan aytadi — tizim o'sha kategoriyadagi ochiq nachisleniyalarga avtomatik
+# bog'laydi (eskisidan yangisiga).
+#
+# Eski (kategoriya yozilmagan) hujjatlar — o'quv to'lovi hisoblanadi: o'sha
+# paytda kitob/forma uchun kassir `Nachisleniya` maydonini qo'lda tanlardi,
+# bog'lanmagan pul esa qarzdorlik panelida oylik o'quv qatorlariga ketadi.
+TOLOV_KATEGORIYALARI = ("O'quv to'lovi", "Kitob", "Forma", "Yotoqxona")
+DEFAULT_TOLOV_KATEGORIYASI = "O'quv to'lovi"
+
+# Kategoriya -> nachisleniya itemlari.
+#   `itemlar`  — SI'da ishlatiladigan aniq item kodlari;
+#   `guruhlar` — Item Group (kitob/forma kelajakda aniq nomlar bilan yozilsa ham
+#                kategoriya ishlashi uchun; masalan "Cambridge Math 7" -> Kitob).
+KATEGORIYA_ITEMLAR = {
+    "O'quv to'lovi": {"itemlar": ["O'qitish xizmati"], "guruhlar": []},
+    "Kitob": {"itemlar": ["Kitob"], "guruhlar": ["Kitoblar"]},
+    "Forma": {"itemlar": ["Forma"], "guruhlar": ["Maktab formasi"]},
+    "Yotoqxona": {"itemlar": ["Yotoqxona to'lovi"], "guruhlar": []},
+}
+
+
+def _kategoriya_sharti(category, args):
+    """SI shu kategoriyadagi item(lar)ni o'z ichiga olishi sharti (SQL).
+
+    `args` ichiga parametrlar qo'shiladi va shart matni qaytariladi; kategoriya
+    noma'lum bo'lsa None (ya'ni filtr qo'llanmaydi).
+    """
+    cfg = KATEGORIYA_ITEMLAR.get(category)
+    if not cfg:
+        return None
+
+    bloklar = []
+    if cfg["itemlar"]:
+        args["kat_itemlar"] = tuple(cfg["itemlar"])
+        bloklar.append("x.item_code IN %(kat_itemlar)s")
+    if cfg["guruhlar"]:
+        args["kat_guruhlar"] = tuple(cfg["guruhlar"])
+        bloklar.append("it.item_group IN %(kat_guruhlar)s")
+    if not bloklar:
+        return None
+
+    return f"""EXISTS (SELECT 1 FROM `tabSales Invoice Item` x
+                       LEFT JOIN `tabItem` it ON it.name = x.item_code
+                       WHERE x.parent = si.name AND ({' OR '.join(bloklar)}))"""
+
+
+def si_kategoriyalari(invoice) -> dict:
+    """Sales Invoice itemlari qaysi kategoriyalarga tegishli: {kategoriya: summa}.
+
+    Bazadagi haqiqat: nachisleniyalar aralash bo'lishi MUMKIN — 276 ta SI
+    "Forma + Kitob" birga yozilgan. Shuning uchun bitta hujjat bir necha
+    kategoriyaga tegishli bo'ladi.
+    """
+    if not invoice:
+        return {}
+
+    rows = frappe.db.sql("""
+        SELECT sii.item_code, it.item_group, SUM(sii.net_amount) amount
+        FROM `tabSales Invoice Item` sii
+        LEFT JOIN `tabItem` it ON it.name = sii.item_code
+        WHERE sii.parent = %s
+        GROUP BY sii.item_code, it.item_group
+    """, invoice, as_dict=True)
+
+    ballar = {}
+    for r in rows:
+        for kat, cfg in KATEGORIYA_ITEMLAR.items():
+            if r.item_code in cfg["itemlar"] or (r.item_group and r.item_group in cfg["guruhlar"]):
+                ballar[kat] = ballar.get(kat, 0) + flt(r.amount)
+                break
+    return ballar
+
+
+def aniqla_kategoriya(invoice, tanlangan=None):
+    """Nachisleniyaga mos kategoriya.
+
+    Kassir tanlagan kategoriya shu hujjatda BOR bo'lsa — uning tanlovi qoladi
+    (aralash "Forma + Kitob" nachisleniyasida ikkisi ham to'g'ri javob).
+    Aks holda eng ko'p summali item kategoriyasi olinadi.
+    """
+    ballar = si_kategoriyalari(invoice)
+    if not ballar:
+        return None
+    if tanlangan and tanlangan in ballar:
+        return tanlangan
+    return max(ballar.items(), key=lambda kv: kv[1])[0]
+
+
+@frappe.whitelist()
+def get_invoice_category(invoice, category=None):
+    """Kassa formasi uchun: tanlangan nachisleniyaga mos kategoriya.
+
+    `category` — kassir hozir tanlab turgani; shu hujjatga mos bo'lsa o'zi qoladi.
+    """
+    return aniqla_kategoriya(invoice, category)
+
+
 # party_name shu maydonlardan olinadi — hujjat nomidan (docname) emas.
 # Customer nomi keyin tahrirlansa ham party_name yangi customer_name'ni oladi.
 PARTY_NAME_FIELDS = {
@@ -55,6 +158,7 @@ class Kassa(Document):
         self.set_party_name()
         self.set_student_group()
         self.set_payment_month()
+        self.set_payment_category()
         self.set_display_currencies()
         self.set_payment_exchange_details()
         self.set_balance()
@@ -187,23 +291,39 @@ class Kassa(Document):
             left -= share
 
     def allocate_customer_invoices(self, pe):
-        """To'lovni FAQAT kassir tanlagan nachisleniyaga (Sales Invoice) bog'laydi.
+        """To'lovni o'quvchining ochiq nachisleniyalariga (Sales Invoice) bog'lash.
 
-        DIQQAT — avtomatik (FIFO) taqsimot ATAYLAB YO'Q (qaror 2026-10-12):
-        o'quvchilarda ikki xil to'lov bor — har oylik o'quv to'lovi va bir martalik
-        kitob/forma/yotoqxona. Har kim har xil to'laydi, shuning uchun avtomatik
-        taqsimot noto'g'ri nachisleniyani yopib qo'yardi.
-          * kitob/forma/yotoqxona — kassir `Nachisleniya` maydonida o'zi tanlaydi;
-          * o'quv to'lovi — bog'lanmaydi, qarzdorlik panelida oyma-oy ko'rinadi.
+        QAYSI nachisleniyaga — `payment_category` aytadi (o'quv to'lovi / kitob /
+        forma / yotoqxona). O'sha kategoriyadagi ochiq nachisleniyalarga
+        eskisidan yangisiga qarab yoziladi; ortgan pul avans bo'lib qoladi.
+
+        Nega kategoriya kerak (2026-10-12 → 2026-10-16 qarori): o'quvchida bir
+        vaqtda ikki xil qarz turadi — har oylik o'quv to'lovi va bir martalik
+        kitob/forma/yotoqxona. Avval kategoriya bo'lmaganida avtomatik taqsimot
+        noto'g'ri nachisleniyani yopib qo'yardi, shuning uchun o'chirilgan edi;
+        endi kategoriya taqsimot maydonini toraytiradi va avtomatik bog'lash
+        xavfsiz. Kassir aniq bitta hujjatni tanlasa (`sales_invoice`) — faqat
+        o'shanga bog'lanadi.
+
+        Eski (kategoriyasiz) to'lovlar o'zgarmaydi: bog'lanmagan pul qarzdorlik
+        panelida oylik o'quv qatorlariga ketadi (o'quv to'lovi hisoblanadi).
         """
-        if self.party_type != "Customer" or self.transaction_type != "Приход":
+        if self.party_type != "Customer":
             return
-        if not self.sales_invoice:
-            return          # tanlanmagan -> avans; o'quv to'lovi shu yo'l bilan ketadi
+        if self.transaction_type == "Расход":
+            self.allocate_customer_refund(pe)
+            return
+        if self.transaction_type != "Приход":
+            return
 
         party_account = pe.paid_from if pe.payment_type == "Receive" else pe.paid_to
-        invoices = get_customer_invoices(
-            self.party, self.company, account=party_account, invoice=self.sales_invoice)
+        if self.sales_invoice:
+            invoices = get_customer_invoices(
+                self.party, self.company, account=party_account, invoice=self.sales_invoice)
+        else:
+            invoices = get_customer_invoices(
+                self.party, self.company, account=party_account,
+                category=self.payment_category or DEFAULT_TOLOV_KATEGORIYASI)
         if not invoices:
             return
 
@@ -220,6 +340,52 @@ class Kassa(Document):
                 "total_amount": flt(inv["total"]),
                 "outstanding_amount": flt(inv["outstanding"]),
                 "allocated_amount": share,
+            })
+            left -= share
+
+    def allocate_customer_refund(self, pe):
+        """Qaytim (Расход) — ortiqcha to'langan nachisleniyaga bog'lash.
+
+        Haqiqiy oqim (bazadagi yozuvlar bilan tekshirilgan): ota-ona dollar yoki
+        yirik summa olib keladi, u o'quvchining hisobida (debitorka) turadi va
+        nachisleniyalarni yopadi; ortgan qoldiq esa **avans** bo'lib qoladi
+        ("kitob $200 dan qaytim" kabi). Qaytim shu avansdan beriladi — ya'ni
+        buxgalteriyada u hech qanday nachisleniyaga bog'lanmaydi va bog'lanishi
+        ham KERAK EMAS: o'quvchi hisobi avval kredit edi, qaytimdan keyin nolga
+        keladi. `payment_category` + `sales_invoice` esa qaytim QAYSI to'lov
+        uchun berilganini yozib qo'yadi (hisobot va qarzdorlik paneli uchun).
+
+        ERPNext qoidasi (sinab ko'rilgan): Payment Entry qaytimini nachisleniyaga
+        bog'lash FAQAT o'sha nachisleniya **ortiqcha to'langan** bo'lsa mumkin
+        (outstanding < 0, manfiy allocation). To'liq to'langan nachisleniyaga
+        bog'lash «has already been fully paid» xatosi bilan rad etiladi —
+        unday hollarda buxgalter kredit-nota yozishi kerak.
+        """
+        if self.party_type != "Customer" or self.transaction_type != "Расход":
+            return
+
+        party_account = pe.paid_to if pe.payment_type == "Pay" else pe.paid_from
+        invoices = get_overpaid_customer_invoices(
+            self.party, self.company, account=party_account,
+            category=None if self.sales_invoice else (self.payment_category
+                                                      or DEFAULT_TOLOV_KATEGORIYASI),
+            invoice=self.sales_invoice)
+        if not invoices:
+            return          # avans qaytarildi — bog'lanish shart emas
+
+        left = flt(pe.received_amount if pe.payment_type == "Pay" else pe.paid_amount)
+        for inv in invoices:
+            if left <= 0.005:
+                break
+            share = min(left, flt(inv["overpaid"]))
+            if share <= 0.005:
+                continue
+            pe.append("references", {
+                "reference_doctype": "Sales Invoice",
+                "reference_name": inv["name"],
+                "total_amount": flt(inv["total"]),
+                "outstanding_amount": -flt(inv["overpaid"]),
+                "allocated_amount": -share,          # qaytim = manfiy taqsimot
             })
             left -= share
 
@@ -580,6 +746,30 @@ class Kassa(Document):
             # bo'sh bo'lsa — bugungi oy (hujjat sanasi orqaga surilgan bo'lsa ham
             # operator odatda joriy oy uchun to'laydi; kerak bo'lsa qo'lda tanlaydi)
             self.payment_month = frappe.utils.today()[:7]
+
+    def set_payment_category(self):
+        """To'lov kategoriyasi (o'quv to'lovi / kitob / forma / yotoqxona).
+
+        Faqat o'quvchi (Customer) kirim to'lovida ishlatiladi — tizim shu
+        kategoriyadagi ochiq nachisleniyalarga avtomatik bog'laydi.
+        Bo'sh qolsa — o'quv to'lovi (eng ko'p uchraydigani).
+
+        Kassir `Nachisleniya` maydonida aniq hisob-fakturani tanlasa, kategoriya
+        SHU hujjatdan olinadi: Sales Invoice'dagi «Kassa (to'lov)» tugmasi ham
+        shu yo'l bilan keladi, va tanlangan hujjat kategoriyadan ustun turadi.
+        """
+        if self.transaction_type not in ("Приход", "Расход") or self.party_type != "Customer":
+            self.payment_category = None
+            return
+
+        if self.sales_invoice:
+            kat = aniqla_kategoriya(self.sales_invoice, self.payment_category)
+            if kat:
+                self.payment_category = kat
+                return
+
+        if self.payment_category not in TOLOV_KATEGORIYALARI:
+            self.payment_category = DEFAULT_TOLOV_KATEGORIYASI
 
     def set_student_group(self):
         """Customer o'quvchining Customer'i bo'lsa — uning sinfi (guruhi) ko'rsatiladi.
@@ -1062,6 +1252,46 @@ def get_expense_accounts(doctype, txt, searchfield, start, page_len, filters):
     })
 
 
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_customer_invoice_options(doctype, txt, searchfield, start, page_len, filters):
+    """`Nachisleniya` maydoni ro'yxati — o'quvchining shu KATEGORIYADAGI ochiq
+    nachisleniyalari (kategoriya berilmasa — hammasi).
+
+    Kassir qo'lda tanlaganda ham noto'g'ri kategoriyadagi hujjat chiqib
+    qolmaydi: kategoriya o'zgarsa ro'yxat ham o'zgaradi.
+    """
+    filters = filters or {}
+    customer = filters.get("customer")
+    if not customer:
+        return []
+
+    # Kirimda — ochiq (to'lanmagan) nachisleniyalar; qaytimda esa PULI TUSHGAN
+    # yoki ortiqcha to'langanlari (qaytim shular uchun beriladi).
+    if cint(filters.get("for_refund")):
+        pul_sharti = """(si.outstanding_amount < -0.005
+                         OR si.outstanding_amount < si.grand_total - 0.005)"""
+    else:
+        pul_sharti = "si.outstanding_amount > 0.005"
+
+    shart = ["si.docstatus = 1", "si.customer = %(c)s", pul_sharti, "si.name LIKE %(txt)s"]
+    args = {"c": customer, "txt": f"%{txt}%", "start": start, "page_len": page_len}
+    if filters.get("company"):
+        args["co"] = filters["company"]
+        shart.append("si.company = %(co)s")
+    kat_shart = _kategoriya_sharti(filters.get("category"), args)
+    if kat_shart:
+        shart.append(kat_shart)
+
+    return frappe.db.sql(f"""
+        SELECT si.name, si.posting_date, si.outstanding_amount
+        FROM `tabSales Invoice` si
+        WHERE {' AND '.join(shart)}
+        ORDER BY si.posting_date ASC, si.name ASC
+        LIMIT %(start)s, %(page_len)s
+    """, args)
+
+
 def validate_expense_account(expense_account, company, expense_group=None):
     """Xarajat hisobi tanlangan papka ichidagi leaf account ekanini tekshirish."""
     scope = _expense_scope(company, expense_group)
@@ -1313,23 +1543,29 @@ def get_kassa_payment_links(kassa):
     # 1) Payment Entry'ning references jadvali. Keyinroq Payment Reconciliation
     #    orqali ulangan bog'lanishlar ham shu yerga tushadi, shuning uchun
     #    "qachon bog'landi" degan farq ishonchli emas — ko'rsatilmaydi.
+    #    Xodim nachisleniyasi — Journal Entry, o'quvchi nachisleniyasi —
+    #    Sales Invoice; ikkisi ham shu ro'yxatga tushadi.
     for r in frappe.get_all(
             "Payment Entry Reference",
-            filters={"parent": pe_name, "reference_doctype": "Journal Entry"},
-            fields=["reference_name", "allocated_amount"]):
-        links.append({"journal_entry": r.reference_name,
+            filters={"parent": pe_name,
+                     "reference_doctype": ["in", ["Journal Entry", "Sales Invoice"]]},
+            fields=["reference_doctype", "reference_name", "allocated_amount"]):
+        links.append({"doctype": r.reference_doctype,
+                      "journal_entry": r.reference_name,
                       "amount": flt(r.allocated_amount)})
 
     # 2) Keyinroq Payment Reconciliation orqali ulanganlar (references'ga tushmaydi)
     seen = {x["journal_entry"] for x in links}
     for r in frappe.db.sql("""
-            SELECT ple.against_voucher_no je, ABS(ple.amount_in_account_currency) amt
+            SELECT ple.against_voucher_type dt, ple.against_voucher_no je,
+                   ABS(ple.amount_in_account_currency) amt
             FROM `tabPayment Ledger Entry` ple
             WHERE ple.voucher_no = %s AND ple.delinked = 0
               AND ple.against_voucher_no != ple.voucher_no
         """, pe_name, as_dict=True):
         if r.je and r.je not in seen:
-            links.append({"journal_entry": r.je, "amount": flt(r.amt)})
+            links.append({"doctype": r.dt or "Journal Entry",
+                          "journal_entry": r.je, "amount": flt(r.amt)})
             seen.add(r.je)
 
     currency = frappe.db.get_value("Payment Entry", pe_name, "paid_to_account_currency")
@@ -1337,14 +1573,20 @@ def get_kassa_payment_links(kassa):
 
 
 @frappe.whitelist()
-def get_customer_invoices(customer, company=None, account=None, invoice=None):
+def get_customer_invoices(customer, company=None, account=None, invoice=None, category=None):
     """Mijozning (o'quvchining) ochiq nachisleniyalari — Sales Invoice qoldiqlari.
 
     Xodim nachisleniyalari (get_employee_accruals) bilan bir xil mantiq:
       * faqat qoldig'i bor hisob-fakturalar, eskisidan yangisiga;
       * `account` berilsa — faqat SHU qarz hisobidagilari bog'lanadi (ERPNext
         talabi), boshqalari ham qaytariladi, lekin `linkable=0` belgisi bilan;
-      * `invoice` berilsa — faqat o'sha bitta hisob-faktura.
+      * `invoice` berilsa — faqat o'sha bitta hisob-faktura;
+      * `category` berilsa — faqat shu kategoriya itemlari bor nachisleniyalar
+        (o'quv to'lovi / kitob / forma / yotoqxona), ya'ni to'lov avtomatik
+        bog'lanadigan maydon.
+
+    Har qator uchun xodim jadvalidagidek `paid` (to'langani) va `payments`
+    (qaysi kassalar orqali) ham qaytariladi.
     """
     if not customer:
         return []
@@ -1355,6 +1597,10 @@ def get_customer_invoices(customer, company=None, account=None, invoice=None):
         shart.append("si.company = %(co)s")
     if invoice:
         shart.append("si.name = %(inv)s")
+    if category and not invoice:
+        kat_shart = _kategoriya_sharti(category, args)
+        if kat_shart:
+            shart.append(kat_shart)
 
     rows = frappe.db.sql(
         f"""SELECT si.name, si.posting_date, si.due_date, si.debit_to,
@@ -1375,9 +1621,142 @@ def get_customer_invoices(customer, company=None, account=None, invoice=None):
             "itemlar": r.itemlar or "",
             "total": flt(r.grand_total),
             "outstanding": flt(r.outstanding_amount),
+            "paid": flt(r.grand_total) - flt(r.outstanding_amount),
+            "payments": _si_payments(r.name),
             "currency": r.currency,
             "account": r.debit_to,
             # Faqat to'lovning kontragent hisobidagi fakturaga bog'lanish mumkin
             "linkable": 1 if (not account or r.debit_to == account) else 0,
         })
     return [x for x in out if x["linkable"]] if account else out
+
+
+@frappe.whitelist()
+def get_overpaid_customer_invoices(customer, company=None, account=None, category=None, invoice=None):
+    """Ortiqcha to'langan nachisleniyalar (outstanding < 0) — qaytim shularga bog'lanadi.
+
+    ERPNext faqat shunday nachisleniyaga manfiy taqsimotni ruxsat beradi.
+    """
+    if not customer:
+        return []
+
+    shart = ["si.docstatus = 1", "si.customer = %(c)s", "si.outstanding_amount < -0.005"]
+    args = {"c": customer, "co": company, "inv": invoice}
+    if company:
+        shart.append("si.company = %(co)s")
+    if invoice:
+        shart.append("si.name = %(inv)s")
+    elif category:
+        kat_shart = _kategoriya_sharti(category, args)
+        if kat_shart:
+            shart.append(kat_shart)
+
+    rows = frappe.db.sql(
+        f"""SELECT si.name, si.posting_date, si.debit_to, si.grand_total,
+                   si.outstanding_amount, si.currency,
+                   (SELECT GROUP_CONCAT(DISTINCT sii.item_code ORDER BY sii.idx SEPARATOR ' + ')
+                    FROM `tabSales Invoice Item` sii WHERE sii.parent = si.name) itemlar
+            FROM `tabSales Invoice` si
+            WHERE {' AND '.join(shart)}
+            ORDER BY si.posting_date ASC, si.name ASC""",
+        args, as_dict=True)
+
+    out = []
+    for r in rows:
+        out.append({
+            "name": r.name,
+            "sana": str(r.posting_date),
+            "itemlar": r.itemlar or "",
+            "total": flt(r.grand_total),
+            "overpaid": abs(flt(r.outstanding_amount)),
+            "currency": r.currency,
+            "account": r.debit_to,
+            "linkable": 1 if (not account or r.debit_to == account) else 0,
+        })
+    return [x for x in out if x["linkable"]] if account else out
+
+
+@frappe.whitelist()
+def get_customer_refund_info(customer, company=None, category=None, invoice=None):
+    """Qaytim uchun ma'lumot: o'quvchining hisobida TURGAN pul va u qaysi to'lovlardan.
+
+    Uch qism:
+      * `avans`    — hisobda qolgan (nachisleniyaga bog'lanmagan) to'lovlar: har
+                     biri qaysi Kassa orqali kelgani, qancha qolgani, qaysi
+                     nachisleniyalarni yopgani bilan. Minus qatorlar — avval
+                     berilgan qaytimlar.
+      * `jami`     — hozir hisobda turgan pul (shundan qaytim berish mumkin).
+      * `ortiqcha` — ortiqcha to'langan nachisleniyalar (qaytim ularga bog'lanadi).
+
+    Manba — Payment Ledger Entry: PE'ning o'ziga qarshi qolgan qoldiq
+    (`against_voucher_no = voucher_no`), ya'ni reconciliation hisobga olingan.
+    """
+    if not customer:
+        return {"avans": [], "jami": 0, "ortiqcha": [], "currency": None}
+
+    args = {"c": customer, "co": company}
+    shart = ["ple.party_type = 'Customer'", "ple.party = %(c)s", "ple.delinked = 0",
+             "ple.voucher_type = 'Payment Entry'", "ple.against_voucher_no = ple.voucher_no"]
+    if company:
+        shart.append("ple.company = %(co)s")
+
+    rows = frappe.db.sql(
+        f"""SELECT ple.voucher_no pe, ple.account_currency cur,
+                   SUM(ple.amount_in_account_currency) net,
+                   MAX(pe.posting_date) d, MAX(pe.reference_no) kassa,
+                   MAX(pe.payment_type) typ
+            FROM `tabPayment Ledger Entry` ple
+            LEFT JOIN `tabPayment Entry` pe ON pe.name = ple.voucher_no
+            WHERE {' AND '.join(shart)}
+            GROUP BY ple.voucher_no, ple.account_currency
+            HAVING ABS(SUM(ple.amount_in_account_currency)) > 0.005
+            ORDER BY d ASC""",
+        args, as_dict=True)
+
+    avans, jami, currency = [], 0.0, None
+    for r in rows:
+        qoldiq = -flt(r.net)        # kredit (manfiy) = hisobda turgan pul
+        jami += qoldiq
+        currency = currency or r.cur
+        siler = frappe.get_all(
+            "Payment Entry Reference",
+            filters={"parent": r.pe, "reference_doctype": "Sales Invoice"},
+            fields=["reference_name", "allocated_amount"])
+        avans.append({
+            "payment_entry": r.pe,
+            "kassa": r.kassa if (r.kassa and frappe.db.exists("Kassa", r.kassa)) else None,
+            "date": str(r.d) if r.d else "",
+            "turi": "qaytim" if r.typ == "Pay" else "to'lov",
+            "qoldiq": qoldiq,
+            "nachisleniyalar": [{"si": x.reference_name, "amount": flt(x.allocated_amount)}
+                                for x in siler],
+        })
+
+    ortiqcha = get_overpaid_customer_invoices(
+        customer, company, category=None if invoice else category, invoice=invoice)
+    return {"avans": avans, "jami": jami, "ortiqcha": ortiqcha,
+            "currency": currency or frappe.db.get_value("Company", company, "default_currency")}
+
+
+def _si_payments(invoice):
+    """Shu nachisleniyaga (Sales Invoice) bog'langan to'lovlar — Kassa raqami bilan.
+
+    `_accrual_payments` (xodim nachisleniyasi) bilan bir xil: operator Payment
+    Entry emas, Kassa bilan ishlaydi, shuning uchun mumkin bo'lsa Kassa
+    raqami ko'rsatiladi.
+    """
+    rows = frappe.db.sql("""
+        SELECT ple.voucher_no pe, ABS(ple.amount_in_account_currency) amt,
+               pe.posting_date d, pe.reference_no kassa
+        FROM `tabPayment Ledger Entry` ple
+        LEFT JOIN `tabPayment Entry` pe ON pe.name = ple.voucher_no
+        WHERE ple.against_voucher_no = %s AND ple.delinked = 0
+          AND ple.voucher_no != %s
+        ORDER BY pe.posting_date
+    """, (invoice, invoice), as_dict=True)
+    return [{
+        "payment_entry": r.pe,
+        "kassa": r.kassa if (r.kassa and frappe.db.exists("Kassa", r.kassa)) else None,
+        "amount": flt(r.amt),
+        "date": str(r.d) if r.d else "",
+    } for r in rows]

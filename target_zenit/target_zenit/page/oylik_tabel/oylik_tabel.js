@@ -77,6 +77,10 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		th.ot-yak-bosh { background:#fdecea !important; color:#c0392b; }
 		.ot-c-bonus { min-width:90px; text-align:right; cursor:pointer; }
 		.ot-c-kelgan { min-width:70px; font-weight:600; }
+		.ot-c-ushlov { min-width:95px; text-align:right; cursor:pointer; color:#c0392b; }
+		.ot-c-ushlov:hover { outline:2px solid var(--primary); outline-offset:-2px; }
+		.ot-c-ushlov.bosh { color:var(--text-muted); font-weight:400; }
+		.ot-c-ushlov .qolda-b { color:#b26a00; font-size:10px; display:block; line-height:1; }
 		.ot-c-bonus:hover, .ot-c-oylik-t:hover { outline:2px solid var(--primary); outline-offset:-2px; }
 		.ot-c-oylik-t { cursor:pointer; }
 		.ot-c-jami { min-width:120px; text-align:right; font-weight:700; }
@@ -237,6 +241,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				<div class="ot-plitka"><div class="son">${d.qatorlar.length}</div><div class="nom">Xodimlar</div></div>
 				<div class="ot-plitka"><div class="son">${fmt(d.jami_oylik)}</div><div class="nom">Jami hisoblangan (so'm)</div></div>
 				<div class="ot-plitka"><div class="son">${fmt(d.jami_bonus)}</div><div class="nom">Bonus − jarima (so'm)</div></div>
+				<div class="ot-plitka"><div class="son">−${fmt((d.jami_nalog || 0) + (d.jami_pitaniya || 0))}</div><div class="nom">Nalog + pitaniya (so'm)</div></div>
 			</div>`);
 
 		// jadval
@@ -244,7 +249,10 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		d.kunlar.forEach((k) => {
 			th += `<th class="${k.yakshanba ? "ot-yak-bosh" : ""}" title="${k.sana}${k.yakshanba ? " (yakshanba)" : ""}">${k.kun}</th>`;
 		});
-		th += `<th title="Musbat — bonus, manfiy — jarima">Bonus/Jarima</th><th class="ot-c-kelgan" title="Yo'qlamada 1 belgilangan kunlar soni">Kelgan kun</th><th>Jami (so'm)</th></tr>`;
+		th += `<th title="Musbat — bonus, manfiy — jarima">Bonus/Jarima</th><th class="ot-c-kelgan" title="Yo'qlamada 1 belgilangan kunlar soni">Kelgan kun</th>`;
+		th += `<th class="ot-c-ushlov" title="Soliq — QO'LDA kiritiladi, jamidan ayriladi">Nalog (so'm)</th>`;
+		th += `<th class="ot-c-ushlov" title="Ovqat — avtomatik: kelgan kun × ${fmt(d.pitaniya_kunlik)} so'm; jamidan ayriladi (qo'lda ham o'zgartirsa bo'ladi)">Pitaniya (so'm)</th>`;
+		th += `<th>Jami (so'm)</th></tr>`;
 
 		let rows = "";
 		d.qatorlar.forEach((q, i) => {
@@ -277,9 +285,15 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			tr += q.tolov_turi === "soat"
 				? `<td class="ot-c-kelgan" title="Oyda ishlagan soatlari">${koefFmt(q.koef_yigindi)} <small>soat</small></td>`
 				: `<td class="ot-c-kelgan" title="Kelgan kunlari (1 belgilanganlar), norma: ${q.ish_kuni}">${koefFmt(q.koef_yigindi)}</td>`;
-			const jamiIzoh = q.jami_manba === "qolda"
-				? `QO'LDA kiritilgan summa (avtomatik hisob: ${fmt(q.jami_avto)} so'm) — bosib o'zgartiring, 0 kiritsangiz avtoga qaytadi`
-				: `${q.tolov_turi === "soat" ? `Soat narxi: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)} soat` : `Kunlik: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)}`} — ming so'mga pastga yaxlitlangan. Bosib qo'lda o'zgartirsa bo'ladi`;
+			tr += `<td class="ot-c-ushlov${q.nalog ? "" : " bosh"}" data-tur="nalog" data-i="${i}" title="Nalog qo'lda kiritiladi — bosib o'zgartiring (0 = nalog yo'q). Jamidan ayriladi.">${q.nalog ? "−" + fmt(q.nalog) : "+"}</td>`;
+			const pitIzoh = q.pitaniya_manba === "qolda"
+				? `QO'LDA kiritilgan pitaniya (avtomatik: ${q.kelgan_kun} kun × ${fmt(q.pitaniya_kunlik)} = ${fmt(q.pitaniya_avto)} so'm) — bosib o'zgartiring`
+				: `Avtomatik: ${q.kelgan_kun} kelgan kun × ${fmt(q.pitaniya_kunlik)} so'm — bosib qo'lda o'zgartirsa bo'ladi`;
+			tr += `<td class="ot-c-ushlov${q.pitaniya ? "" : " bosh"}" data-tur="pitaniya" data-i="${i}" title="${pitIzoh}">${q.pitaniya ? "−" + fmt(q.pitaniya) : "0"}${q.pitaniya_manba === "qolda" ? `<span class="qolda-b">qo'lda</span>` : ""}</td>`;
+			const ushlovIzoh = `\nHisoblangan: ${fmt(q.hisob)} − nalog ${fmt(q.nalog)} − pitaniya ${fmt(q.pitaniya)} = ${fmt(q.jami)}`;
+			const jamiIzoh = (q.jami_manba === "qolda"
+				? `QO'LDA kiritilgan hisob summasi (avtomatik hisob: ${fmt(q.hisob_avto)} so'm) — bosib o'zgartiring, 0 kiritsangiz avtoga qaytadi`
+				: `${q.tolov_turi === "soat" ? `Soat narxi: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)} soat` : `Kunlik: ${fmt(q.kunlik_narx)} so'm × ${koefFmt(q.koef_yigindi)}`} — ming so'mga pastga yaxlitlangan. Bosib qo'lda o'zgartirsa bo'ladi`) + ushlovIzoh;
 			tr += `<td class="ot-c-jami ot-c-jami-t${q.jami_manba === "qolda" ? " qolda" : ""}" data-i="${i}" title="${jamiIzoh}">${fmt(q.jami)}${q.jami_manba === "qolda" ? `<span class="ot-manba-kassa" style="color:#b26a00">qo'lda</span>` : ""}</td></tr>`;
 			rows += tr;
 		});
@@ -288,6 +302,8 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			<td colspan="${d.kunlar.length}"></td>
 			<td style="text-align:right">${fmt(d.jami_bonus)}</td>
 			<td class="ot-c-kelgan">${koefFmt(d.qatorlar.reduce((s, q) => s + (q.koef_yigindi || 0), 0))}</td>
+			<td class="ot-c-ushlov">${fmt(d.jami_nalog)}</td>
+			<td class="ot-c-ushlov">${fmt(d.jami_pitaniya)}</td>
 			<td class="ot-c-jami">${fmt(d.jami_oylik)}</td></tr>`;
 
 		const $orab = $(`<div class="ot-jadval-orab"><table class="ot-jadval">
@@ -336,6 +352,11 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			});
 			$orab.on("click", "td.ot-c-bonus", function () {
 				bonusDialog(d.qatorlar[$(this).data("i")]);
+			});
+			$orab.on("click", "td.ot-c-ushlov", function () {
+				const q = d.qatorlar[$(this).data("i")];
+				if ($(this).data("tur") === "nalog") nalogDialog(q);
+				else pitaniyaDialog(q);
 			});
 			$orab.on("click", "td.ot-c-jami-t", function () {
 				jamiDialog(d.qatorlar[$(this).data("i")]);
@@ -418,17 +439,34 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		q.kunlar[j].koef = koef;
 		q.kunlar[j].holat = "saqlangan";
 		q.koef_yigindi = (q.koef_yigindi || 0) - eski + koef;
-		// jami — backend (_jami_yaxlitla) bilan bir xil: ming so'mga pastga
-		const eskiJami = q.jami;
-		q.jami_avto = Math.floor((q.kunlik_narx * q.koef_yigindi + (q.bonus || 0)) / 1000) * 1000;
-		if (q.jami_manba !== "qolda") q.jami = q.jami_avto;
+		// kelgan kun (pitaniya bazasi) — soati/koefi 0 dan katta kunlar
+		q.kelgan_kun = q.kunlar.filter((k) => (k.koef || 0) > 0).length;
+		const eskiJami = q.jami, eskiPit = q.pitaniya;
+		// pitaniya avtomatik bo'lsa kelgan kun bilan birga o'zgaradi
+		q.pitaniya_avto = q.kelgan_kun * (q.pitaniya_kunlik || 0);
+		if (q.pitaniya_manba !== "qolda") q.pitaniya = q.pitaniya_avto;
+		// hisob — backend (_jami_yaxlitla) bilan bir xil: ming so'mga pastga
+		q.hisob_avto = Math.floor((q.kunlik_narx * q.koef_yigindi + (q.bonus || 0)) / 1000) * 1000;
+		if (q.jami_manba !== "qolda") q.hisob = q.hisob_avto;
+		const ushlov = (q.nalog || 0) + (q.pitaniya || 0);
+		q.jami = Math.max(0, q.hisob - ushlov);
+		q.jami_avto = Math.max(0, q.hisob_avto - ushlov);
 		d.jami_oylik += q.jami - eskiJami;
+		d.jami_pitaniya += q.pitaniya - eskiPit;
 
 		const $tr = $joy.find(`tbody tr[data-xodim="${xodim}"]`);
 		$tr.find(`td.ot-kun[data-j="${j}"]`).removeClass("default").addClass("saqlangan").text(koefFmt(koef));
 		$tr.find("td.ot-c-kelgan").html(q.tolov_turi === "soat"
 			? `${koefFmt(q.koef_yigindi)} <small>soat</small>` : koefFmt(q.koef_yigindi));
-		if (q.jami_manba !== "qolda") $tr.find("td.ot-c-jami-t").text(fmt(q.jami));
+		$tr.find("td.ot-c-jami-t").html(fmt(q.jami)
+			+ (q.jami_manba === "qolda" ? `<span class="ot-manba-kassa" style="color:#b26a00">qo'lda</span>` : ""));
+		if (q.pitaniya_manba !== "qolda") {
+			$tr.find('td.ot-c-ushlov[data-tur="pitaniya"]')
+				.toggleClass("bosh", !q.pitaniya)
+				.text(q.pitaniya ? "−" + fmt(q.pitaniya) : "0");
+		}
+		$joy.find("tfoot td.ot-c-ushlov").eq(1).text(fmt(d.jami_pitaniya));
+		$joy.find(".ot-plitka .son").eq(3).text("−" + fmt((d.jami_nalog || 0) + (d.jami_pitaniya || 0)));
 		$joy.find("tfoot td.ot-c-kelgan").text(koefFmt(d.qatorlar.reduce((s, x) => s + (x.koef_yigindi || 0), 0)));
 		$joy.find("tfoot td.ot-c-jami").text(fmt(d.jami_oylik));
 		$joy.find(".ot-plitka .son").eq(1).text(fmt(d.jami_oylik));
@@ -526,6 +564,63 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			},
 		});
 		dlg.show();
+	}
+
+	function nalogDialog(q) {
+		const dlg = new frappe.ui.Dialog({
+			title: `${q.ismi} — nalog (${holat.data.oy_nomi} ${holat.data.yil})`,
+			fields: [{
+				fieldtype: "Currency", fieldname: "summa", label: "Nalog (so'm)",
+				default: q.nalog, reqd: 0,
+				description: "Qo'lda kiritiladi (avtomatik hisoblanmaydi). FAQAT shu oy uchun " +
+					"saqlanadi va JAMI'dan ayriladi. 0 kiritsangiz — nalog olib tashlanadi.",
+			}],
+			primary_action_label: "Saqlash",
+			primary_action: (v) => {
+				dlg.hide();
+				frappe.call({
+					method: "target_zenit.target_zenit.api.oylik_tabel.set_nalog",
+					args: { xodim: q.xodim, yil: holat.yil, oy: holat.oy, summa: v.summa || 0 },
+					freeze: true,
+					callback: () => yukla(),
+				});
+			},
+		});
+		dlg.show();
+	}
+
+	function pitaniyaDialog(q) {
+		const dlg = new frappe.ui.Dialog({
+			title: `${q.ismi} — pitaniya (${holat.data.oy_nomi} ${holat.data.yil})`,
+			fields: [{
+				fieldtype: "Currency", fieldname: "summa", label: "Pitaniya (so'm)",
+				default: q.pitaniya, reqd: 0,
+				description: `Avtomatik hisob: ${q.kelgan_kun} kelgan kun × ${fmt(q.pitaniya_kunlik)} = `
+					+ `<b>${fmt(q.pitaniya_avto)}</b> so'm. Qo'lda kiritilgan summa FAQAT shu oy uchun `
+					+ `amal qiladi (0 ham saqlanadi — "ushlanmaydi"). Avtomatik hisobga qaytarish uchun `
+					+ `"🔄 Avtoga qaytarish" tugmasini bosing.`,
+			}],
+			primary_action_label: "Saqlash",
+			primary_action: (v) => {
+				dlg.hide();
+				saqlaPitaniya(q, { summa: v.summa || 0 });
+			},
+			secondary_action_label: "🔄 Avtoga qaytarish",
+			secondary_action: () => {
+				dlg.hide();
+				saqlaPitaniya(q, { avto: 1 });
+			},
+		});
+		dlg.show();
+	}
+
+	function saqlaPitaniya(q, args) {
+		frappe.call({
+			method: "target_zenit.target_zenit.api.oylik_tabel.set_pitaniya",
+			args: Object.assign({ xodim: q.xodim, yil: holat.yil, oy: holat.oy }, args),
+			freeze: true,
+			callback: () => yukla(),
+		});
 	}
 
 	function oyYop(d) {

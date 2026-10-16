@@ -59,6 +59,11 @@ OQITUVCHI_ISH_KUNI = 21
 # chiqsa 445 000 beriladi, 1 600 500 chiqsa ham 1 600 000 — doim pastga.
 JAMI_YAXLITLASH = 1000
 
+# Pitaniya (ovqat) — kelgan KUN uchun ushlab qolinadi: kelgan kun x shu narx.
+# Soatbayda ham KUNLAR soni olinadi (soati > 0 bo'lgan kunlar), soatlar emas.
+# Hisoblangan qiymat ustidan qo'lda ham yozish mumkin ("Tabel Pitaniya").
+PITANIYA_KUNLIK = 25000
+
 
 def _jami_yaxlitla(summa):
     """Ming so'mga pastga kesish: 1 600 999 -> 1 600 000."""
@@ -151,6 +156,30 @@ def _oy_jami_map(yil, oy, emp_ids):
         return {}
     return {r.xodim: flt(r.summa) for r in frappe.get_all(
         "Tabel Jami",
+        filters={"yil": cint(yil), "oy": cint(oy), "xodim": ["in", emp_ids]},
+        fields=["xodim", "summa"],
+    )}
+
+
+def _oy_nalog_map(yil, oy, emp_ids):
+    """Shu oy uchun QO'LDA kiritilgan nalog summalari: {xodim: summa} ("Tabel Nalog").
+    Nalog avtomatik hisoblanmaydi — faqat qo'lda yoziladi, jamidan ayriladi."""
+    if not emp_ids:
+        return {}
+    return {r.xodim: flt(r.summa) for r in frappe.get_all(
+        "Tabel Nalog",
+        filters={"yil": cint(yil), "oy": cint(oy), "xodim": ["in", emp_ids]},
+        fields=["xodim", "summa"],
+    )}
+
+
+def _oy_pitaniya_map(yil, oy, emp_ids):
+    """Shu oy uchun pitaniya QO'LDA override'lari: {xodim: summa} ("Tabel Pitaniya").
+    Yozuvi bo'lmagan xodimda pitaniya avtomatik: kelgan kun x PITANIYA_KUNLIK."""
+    if not emp_ids:
+        return {}
+    return {r.xodim: flt(r.summa) for r in frappe.get_all(
+        "Tabel Pitaniya",
         filters={"yil": cint(yil), "oy": cint(oy), "xodim": ["in", emp_ids]},
         fields=["xodim", "summa"],
     )}
@@ -454,6 +483,8 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
     oy_ish_kuni = _oy_ish_kuni_map(yil, oy, emp_ids)
     oy_oylik = _oy_oylik_map(yil, oy, emp_ids)
     oy_jami = _oy_jami_map(yil, oy, emp_ids)
+    oy_nalog = _oy_nalog_map(yil, oy, emp_ids)
+    oy_pitaniya = _oy_pitaniya_map(yil, oy, emp_ids)
 
     # Oylik (baza): avval SHU OYga qotirilgan "Tabel Oylik" yozuvi,
     # bo'lmasa SSA'dan; bo'lmasa Kassa taklifi
@@ -517,6 +548,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
         ketgan = getdate(x.relieving_date) if x.relieving_date else None
         kun_qatori = []
         koef_yigindi = 0.0
+        kelgan_kun = 0               # pitaniya uchun: ishlagan KUNLAR soni
         for kd in kunlar:
             k = kd["kun"]
             sana_k = date(yil, oy, k)
@@ -535,6 +567,8 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
                 koef = 0.0
                 holat = "default"
             koef_yigindi += koef
+            if koef > 0:
+                kelgan_kun += 1      # soatbayda ham: soati bor kun = kelgan kun
             kun_qatori.append({"koef": koef, "holat": holat})
 
         bonus = bonus_map.get(x.name, 0.0)
@@ -553,13 +587,26 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             else:
                 ish_kuni, ik_manba = _default_ish_kuni(x.designation), "default"
             kunlik_narx = (oylik["summa"] / ish_kuni) if ish_kuni else 0.0
-        # nachisleniya uchun aniq summa — ming so'mga pastga yaxlitlanadi;
+        # Hisoblangan ish haqi — ming so'mga pastga yaxlitlanadi;
         # qo'lda kiritilgan jami bo'lsa — o'sha ustun keladi (bonus ham ichida)
-        jami_avto = _jami_yaxlitla(kunlik_narx * koef_yigindi + bonus)
+        hisob_avto = _jami_yaxlitla(kunlik_narx * koef_yigindi + bonus)
         if x.name in oy_jami:
-            jami, jami_manba = oy_jami[x.name], "qolda"
+            hisob, hisob_manba = oy_jami[x.name], "qolda"
         else:
-            jami, jami_manba = jami_avto, "avto"
+            hisob, hisob_manba = hisob_avto, "avto"
+
+        # Ushlovlar: nalog (faqat qo'lda) va pitaniya (kelgan kun x narx,
+        # qo'lda override qilinishi mumkin) — yaxlitlashdan KEYIN ayriladi
+        nalog = flt(oy_nalog.get(x.name, 0.0))
+        pitaniya_avto = flt(kelgan_kun * PITANIYA_KUNLIK)
+        if x.name in oy_pitaniya:
+            pitaniya, pitaniya_manba = flt(oy_pitaniya[x.name]), "qolda"
+        else:
+            pitaniya, pitaniya_manba = pitaniya_avto, "avto"
+        ushlov = nalog + pitaniya
+        jami = max(0.0, hisob - ushlov)
+        jami_manba = hisob_manba
+        jami_avto = max(0.0, hisob_avto - ushlov)
 
         qatorlar.append({
             "xodim": x.name,
@@ -575,6 +622,14 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             "koef_yigindi": koef_yigindi,
             "kunlik_narx": kunlik_narx,
             "bonus": bonus,
+            "kelgan_kun": kelgan_kun,
+            "nalog": nalog,
+            "pitaniya": pitaniya,
+            "pitaniya_avto": pitaniya_avto,
+            "pitaniya_manba": pitaniya_manba,
+            "pitaniya_kunlik": PITANIYA_KUNLIK,
+            "hisob": hisob,
+            "hisob_avto": hisob_avto,
             "jami": jami,
             "jami_avto": jami_avto,
             "jami_manba": jami_manba,
@@ -591,6 +646,9 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
         "qatorlar": qatorlar,
         "jami_oylik": sum(q["jami"] for q in qatorlar),
         "jami_bonus": sum(q["bonus"] for q in qatorlar),
+        "jami_nalog": sum(q["nalog"] for q in qatorlar),
+        "jami_pitaniya": sum(q["pitaniya"] for q in qatorlar),
+        "pitaniya_kunlik": PITANIYA_KUNLIK,
     }
 
 
@@ -909,8 +967,9 @@ def set_jami(xodim, yil, oy, summa):
     """Yakuniy JAMI oylikni qo'lda o'rnatish (FAQAT shu oy uchun) -> "Tabel Jami".
 
     Qo'lda kiritilgan summa avtomatik hisob o'rnini bosadi (bonus ham ichida
-    hisoblanadi). 0 yoki bo'sh kiritilsa — qo'lda qiymat O'CHIRILADI va
-    avtomatik hisobga qaytadi."""
+    hisoblanadi) — bu HISOBLANGAN (brutto) summa: ustidan nalog va pitaniya
+    ushlovlari baribir ayriladi. 0 yoki bo'sh kiritilsa — qo'lda qiymat
+    O'CHIRILADI va avtomatik hisobga qaytadi."""
     _tahrir_tekshir()
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
@@ -946,6 +1005,68 @@ def set_jami(xodim, yil, oy, summa):
     _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Jami (qo'lda)",
             str(eski) if eski is not None else "avto", str(summa))
     return {"ok": True, "summa": summa}
+
+
+def _oy_yozuv_set(doctype, xodim, yil, oy, summa, maydon, ochir_nol=True):
+    """Oyga bog'langan bitta summa yozuvini (Tabel Nalog / Tabel Pitaniya)
+    o'rnatish/o'chirish. ochir_nol=True bo'lsa 0 — yozuvni O'CHIRADI.
+    Qaytadi: (eski qiymat yoki None, yangi holat matni)."""
+    _tahrir_tekshir()
+    yil, oy = cint(yil), cint(oy)
+    summa = flt(summa)
+    if summa < 0:
+        frappe.throw(_("Summa manfiy bo'lmaydi"))
+    _ochiq_tekshir(yil, oy)
+
+    emp = frappe.db.get_value("Employee", xodim, ["name", "employee_name"], as_dict=True)
+    if not emp:
+        frappe.throw(_("Xodim topilmadi"))
+
+    mavjud = frappe.db.get_value(
+        doctype, {"xodim": xodim, "yil": yil, "oy": oy}, ["name", "summa"], as_dict=True
+    )
+    eski = flt(mavjud.summa) if mavjud else None
+
+    if ochir_nol and summa == 0:
+        if mavjud:
+            frappe.delete_doc(doctype, mavjud.name, ignore_permissions=True, force=True)
+        yangi_matn = "o'chirildi"
+    elif mavjud:
+        frappe.db.set_value(doctype, mavjud.name, "summa", summa)
+        yangi_matn = str(summa)
+    else:
+        frappe.get_doc({
+            "doctype": doctype,
+            "xodim": xodim, "yil": yil, "oy": oy, "summa": summa,
+        }).insert(ignore_permissions=True)
+        yangi_matn = str(summa)
+
+    _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", maydon,
+            str(eski) if eski is not None else "", yangi_matn)
+    return eski, yangi_matn
+
+
+@frappe.whitelist()
+def set_nalog(xodim, yil, oy, summa):
+    """Nalog (soliq) summasini QO'LDA o'rnatish — FAQAT shu oy uchun.
+    Jamidan ayriladi. 0 kiritilsa yozuv o'chadi (nalog yo'q)."""
+    _oy_yozuv_set("Tabel Nalog", xodim, yil, oy, summa, "Nalog")
+    return {"ok": True, "summa": flt(summa)}
+
+
+@frappe.whitelist()
+def set_pitaniya(xodim, yil, oy, summa=0, avto=0):
+    """Pitaniya (ovqat) ushlovini qo'lda o'rnatish — FAQAT shu oy uchun.
+
+    Odatda avtomatik: kelgan kun x PITANIYA_KUNLIK. Shu endpoint bilan
+    ustidan yozib qo'yish mumkin (0 ham haqiqiy qiymat — "ushlanmaydi").
+    avto=1 bo'lsa qo'lda qiymat O'CHIRILADI va avtomatik hisobga qaytadi."""
+    if cint(avto):
+        _oy_yozuv_set("Tabel Pitaniya", xodim, yil, oy, 0, "Pitaniya", ochir_nol=True)
+        return {"ok": True, "avto": True}
+    # 0 ham saqlanadi — "bu oyda pitaniya ushlanmaydi" degani
+    _oy_yozuv_set("Tabel Pitaniya", xodim, yil, oy, summa, "Pitaniya", ochir_nol=False)
+    return {"ok": True, "summa": flt(summa)}
 
 
 # ---------------------------------------------------------------- avto-nachisleniya

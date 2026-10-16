@@ -29,6 +29,7 @@
   "party_currency",
   "column_break_2",
   "payment_month",
+  "payment_category",
   "sales_invoice",
   "nachisleniya_html",
   "expense_account",
@@ -299,15 +300,24 @@
    "label": "За какой месяц"
   },
   {
+   "fieldname": "payment_category",
+   "fieldtype": "Select",
+   "label": "To'lov kategoriyasi",
+   "options": "O'quv to'lovi\nKitob\nForma\nYotoqxona",
+   "default": "O'quv to'lovi",
+   "depends_on": "eval:doc.party_type=='Customer' && in_list(['Приход', 'Расход'], doc.transaction_type)",
+   "description": "Kirimda — to'lov shu kategoriyadagi ochiq nachisleniyalarga avtomatik bog'lanadi; chiqimda (qaytim) — qaytim shu kategoriya hisobiga yoziladi"
+  },
+  {
    "fieldname": "sales_invoice",
    "label": "Nachisleniya (Sales Invoice)",
    "fieldtype": "Link",
    "options": "Sales Invoice",
-   "depends_on": "eval:doc.party_type=='Customer' && doc.transaction_type=='Приход'",
-   "description": "Bo'sh qoldirilsa — to'lov eng eski to'lanmagan nachisleniyalardan boshlab avtomatik taqsimlanadi"
+   "depends_on": "eval:doc.party_type=='Customer' && in_list(['Приход', 'Расход'], doc.transaction_type)",
+   "description": "Kirim: bo'sh qoldirilsa — kategoriyadagi eng eski to'lanmagan nachisleniyalardan boshlab avtomatik bog'lanadi. Qaytim: pul qaysi nachisleniya uchun olingan bo'lsa — o'sha tanlanadi."
   },
   {
-   "depends_on": "eval:doc.party_type === 'Employee'",
+   "depends_on": "eval:in_list(['Employee', 'Customer'], doc.party_type)",
    "fieldname": "nachisleniya_html",
    "fieldtype": "HTML",
    "label": "Начисление за месяц"

@@ -44,6 +44,27 @@ frappe.ui.form.on("Kassa", {
         // hisobiga ta'sir qiladi). Shu holatni o'zimiz to'ldiramiz.
         frm.trigger("tz_fill_party_derived");
 
+        // Sales Invoice'dan ochilgan yangi Kassa: `sales_invoice` to'g'ridan-to'g'ri
+        // yozilgani uchun trigger ishlamaydi — kategoriyani o'zimiz moslaymiz.
+        if (frm.is_new() && frm.doc.sales_invoice && frm.doc.party_type === "Customer"
+                && frm._tz_si_cat !== frm.doc.sales_invoice) {
+            frm._tz_si_cat = frm.doc.sales_invoice;
+            frm.trigger("sales_invoice");
+        }
+
+        // Nachisleniya ro'yxati — o'quvchining SHU KATEGORIYADAGI ochiq nachisleniyalari
+        frm.set_query("sales_invoice", function() {
+            return {
+                query: "target_zenit.target_zenit.doctype.kassa.kassa.get_customer_invoice_options",
+                filters: {
+                    customer: frm.doc.party,
+                    company: frm.doc.company,
+                    category: frm.doc.payment_category,
+                    for_refund: frm.doc.transaction_type === "Расход" ? 1 : 0,
+                },
+            };
+        });
+
         // Xarajat hisoblari — faqat tanlangan papka ichidan
         frm.set_query("expense_account", function() {
             return {
@@ -203,6 +224,33 @@ frappe.ui.form.on("Kassa", {
     },
 
     sales_invoice: function(frm) {
+        // Aniq nachisleniya tanlansa — kategoriya SHU hujjatdan olinadi
+        // (server ham validate'da shunday qiladi, bu faqat darhol ko'rinishi uchun).
+        if (frm.doc.sales_invoice && frm.doc.party_type === "Customer") {
+            frappe.call({
+                method: "target_zenit.target_zenit.doctype.kassa.kassa.get_invoice_category",
+                args: { invoice: frm.doc.sales_invoice, category: frm.doc.payment_category },
+                callback: (r) => {
+                    if (r.message && r.message !== frm.doc.payment_category) {
+                        frm._tz_skip_si_clear = true;      // kategoriya triggeri hujjatni tozalamasin
+                        frm.set_value("payment_category", r.message);
+                    }
+                    load_customer_invoices(frm);
+                },
+            });
+            return;
+        }
+        load_customer_invoices(frm);
+    },
+
+    payment_category: function(frm) {
+        // Kategoriya o'zgardi — tanlangan nachisleniya boshqa kategoriyadan bo'lsa
+        // bo'shatiladi (aks holda to'lov noto'g'ri qarzga ketardi).
+        if (frm._tz_skip_si_clear) {
+            frm._tz_skip_si_clear = false;
+        } else if (frm.doc.sales_invoice) {
+            frm.set_value("sales_invoice", "");
+        }
         load_customer_invoices(frm);
     },
 
@@ -595,6 +643,12 @@ frappe.ui.form.on("Kassa", {
         frm.set_value("party_name", "");
         frm.set_value("student_group", "");
         frm.set_value("expense_account_name", "");
+        frm.set_value("sales_invoice", "");
+        // Kategoriya faqat o'quvchi to'lovida ishlatiladi; boshqa turga o'tilsa
+        // nachisleniya jadvali ham tozalanadi (eski kontragentning qatorlari qolmasin).
+        frm.set_value("payment_category",
+            frm.doc.party_type === "Customer" ? "O'quv to'lovi" : "");
+        load_nachisleniya(frm);
 
         if (isExpensePartyType(frm.doc.party_type)) {
             frm.set_df_property("expense_account", "reqd", 1);
@@ -932,72 +986,173 @@ function load_customer_invoices(frm) {
     if (!box || !box.$wrapper) return;
     const show = (html) => box.$wrapper.html(html);
 
-    if (frm.doc.party_type !== "Customer" || frm.doc.transaction_type !== "Приход" || !frm.doc.party) {
-        return;   // boshqa holatlarni load_employee_accrual boshqaradi
-    }
+    if (frm.doc.party_type !== "Customer") return;   // boshqasini load_employee_accrual boshqaradi
+    if (!frm.doc.party || !in_list(["Приход", "Расход"], frm.doc.transaction_type)) { show(""); return; }
     if (frm.doc.docstatus === 1) { show_payment_links(frm, show); return; }
+    if (frm.doc.transaction_type === "Расход") { load_customer_refund(frm, show); return; }
 
+    const kat = frm.doc.payment_category || "O'quv to'lovi";
     show(`<div class="text-muted small">Nachisleniyalar tekshirilyapti…</div>`);
     frappe.call({
         method: "target_zenit.target_zenit.doctype.kassa.kassa.get_customer_invoices",
-        args: { customer: frm.doc.party, company: frm.doc.company, invoice: frm.doc.sales_invoice || null },
+        args: {
+            customer: frm.doc.party,
+            company: frm.doc.company,
+            invoice: frm.doc.sales_invoice || null,
+            category: frm.doc.sales_invoice ? null : kat,
+        },
         callback: (r) => {
             const list = r.message || [];
+            const esc = frappe.utils.escape_html;
             if (!list.length) {
                 show(`<div class="alert alert-warning" style="padding:8px 10px;margin:0">
-                    Ochiq nachisleniya yo'q — to'lov <b>avans</b> bo'lib qoladi.</div>`);
+                    <b>${esc(kat)}</b> uchun ochiq nachisleniya yo'q — to'lov <b>avans</b> bo'lib qoladi.<br>
+                    <span class="small">Nachisleniya yozilganda keyinroq bog'lanadi; yoki kategoriyani
+                    tekshirib ko'ring.</span></div>`);
                 return;
             }
-            const fmt0 = (n) => frappe.format(n, { fieldtype: "Currency", options: "currency" });
-            // Nachisleniya TANLANMAGAN bo'lsa — hech narsa bog'lanmaydi (avto FIFO yo'q).
-            // O'quv to'lovi shu yo'l bilan ketadi; kitob/forma/yotoqxona uchun kassir tanlaydi.
-            if (!frm.doc.sales_invoice) {
-                show(`<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px">
-                    <div class="small" style="margin-bottom:6px">
-                        <b>Nachisleniya tanlanmagan</b> — to'lov hech qaysi hisob-fakturaga bog'lanmaydi
-                        (o'quv to'lovi shunday ketadi, qarzdorlik panelida oyma-oy ko'rinadi).<br>
-                        Kitob / forma / yotoqxona to'lovi bo'lsa — yuqoridagi
-                        <b>«Nachisleniya»</b> maydonidan kerakligini tanlang.</div>
-                    <table class="table table-bordered" style="margin:0;font-size:12px">
-                        <thead><tr><th>Sana</th><th>Ochiq nachisleniya</th><th class="text-right">Qoldiq</th></tr></thead>
-                        <tbody>${list.map((x) => `<tr>
-                            <td>${frappe.datetime.str_to_user(x.sana)}</td>
-                            <td><a href="/app/sales-invoice/${encodeURIComponent(x.name)}" target="_blank">${frappe.utils.escape_html(x.name)}</a>
-                                <div class="text-muted small">${frappe.utils.escape_html(x.itemlar || "")}</div></td>
-                            <td class="text-right">${fmt0(x.outstanding)}</td></tr>`).join("")}</tbody>
-                    </table></div>`);
-                return;
-            }
-            const fmt = (n) => frappe.format(n, { fieldtype: "Currency", options: "currency" });
-            const jami = list.reduce((a, x) => a + flt(x.outstanding), 0);
+            const cur = (list[0] || {}).currency;
+            const fmt = (v) => format_currency(v, cur);
+
+            // Shu to'lovdan qaysi nachisleniyaga qancha tushishi — serverdagi taqsimot
+            // bilan bir xil tartibda (eskisidan yangisiga, qoldig'igacha).
             const summa = flt(frm.doc.amount);
-            let qoldiq = summa, rows = "";
-            for (const x of list) {
+            let qoldiq = summa;
+            const rows = list.map((x) => {
                 const ulush = Math.min(qoldiq, flt(x.outstanding));
                 qoldiq -= ulush;
-                rows += `<tr>
-                    <td>${frappe.datetime.str_to_user(x.sana)}</td>
-                    <td><a href="/app/sales-invoice/${encodeURIComponent(x.name)}" target="_blank">${frappe.utils.escape_html(x.name)}</a>
-                        <div class="text-muted small">${frappe.utils.escape_html(x.itemlar || "")}</div></td>
-                    <td class="text-right">${fmt(x.outstanding)}</td>
-                    <td class="text-right"><b style="color:var(--green-600)">${ulush > 0.005 ? fmt(ulush) : "—"}</b></td></tr>`;
-            }
-            show(`<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px">
-                <div class="small text-muted" style="margin-bottom:6px">
-                    Tanlangan nachisleniya — to'lov shunga bog'lanadi</div>
-                <table class="table table-bordered" style="margin:0;font-size:12px">
-                    <thead><tr><th>Sana</th><th>Hujjat</th><th class="text-right">Qoldiq</th>
+                const pays = (x.payments || []).map((p) => {
+                    const ref = p.kassa
+                        ? `<a href="/app/kassa/${encodeURIComponent(p.kassa)}" target="_blank">${esc(p.kassa)}</a>`
+                        : esc(p.payment_entry || "—");
+                    return `<div class="small text-muted">${ref}`
+                        + `${p.date ? " · " + frappe.datetime.str_to_user(p.date) : ""}`
+                        + ` · ${fmt(p.amount)}</div>`;
+                }).join("");
+                return `<tr>
+                    <td><a href="/app/sales-invoice/${encodeURIComponent(x.name)}" target="_blank">${esc(x.name)}</a>
+                        <div class="small text-muted">${frappe.datetime.str_to_user(x.sana)}`
+                        + `${x.itemlar ? " · " + esc(x.itemlar) : ""}</div></td>
+                    <td class="text-right">${fmt(x.total)}</td>
+                    <td class="text-right">${x.paid > 0.005 ? fmt(x.paid) : `<span class="text-muted">—</span>`}${pays}</td>
+                    <td class="text-right"><b>${fmt(x.outstanding)}</b></td>
+                    <td class="text-right"><b style="color:var(--green-600)">${ulush > 0.005 ? fmt(ulush) : "—"}</b></td>
+                </tr>`;
+            }).join("");
+
+            const tTotal = list.reduce((n, x) => n + flt(x.total), 0);
+            const tPaid = list.reduce((n, x) => n + flt(x.paid), 0);
+            const tLeft = list.reduce((n, x) => n + flt(x.outstanding), 0);
+            const sarlavha = frm.doc.sales_invoice
+                ? `Tanlangan nachisleniya — to'lov FAQAT shunga bog'lanadi`
+                : `<b>${esc(kat)}</b> bo'yicha ochiq nachisleniyalar — to'lov eskisidan boshlab shularga bog'lanadi`;
+
+            show(`<div style="border:1px solid var(--border-color);border-radius:6px;padding:8px 10px">
+                <div class="small text-muted" style="margin-bottom:6px">${sarlavha}</div>
+                <table class="table table-bordered table-sm" style="margin:0;font-size:12px">
+                    <thead><tr><th>Nachisleniya</th><th class="text-right">Nachisleniya summasi</th>
+                        <th class="text-right">To'langan (qaysi kassadan)</th><th class="text-right">Qoldiq</th>
                         <th class="text-right">Shu to'lovdan</th></tr></thead>
                     <tbody>${rows}</tbody>
-                    <tfoot><tr><td colspan="2"><b>Jami ochiq</b></td>
-                        <td class="text-right"><b>${fmt(jami)}</b></td>
-                        <td class="text-right"><b>${fmt(summa - qoldiq)}</b></td></tr></tfoot>
+                    <tfoot><tr>
+                        <th>JAMI</th>
+                        <th class="text-right">${fmt(tTotal)}</th>
+                        <th class="text-right">${fmt(tPaid)}</th>
+                        <th class="text-right" style="color:var(--red-600)">${fmt(tLeft)}</th>
+                        <th class="text-right" style="color:var(--green-600)">${fmt(summa - qoldiq)}</th>
+                    </tr></tfoot>
                 </table>
-                ${qoldiq > 0.005 ? `<div class="small text-muted" style="margin-top:4px">
-                    Ortiqcha ${fmt(qoldiq)} — avans bo'lib qoladi</div>` : ""}
+                ${qoldiq > 0.005 ? `<div class="small text-muted" style="margin-top:6px">
+                    Ortiqcha ${fmt(qoldiq)} — <b>avans</b> bo'lib qoladi</div>` : ""}
             </div>`);
         },
     });
+}
+
+// Qaytim (Расход): o'quvchining hisobida TURGAN pul ko'rsatiladi — qaytim shundan
+// beriladi. Haqiqiy holat: ota-ona dollar/yirik summa olib keladi, nachisleniyalar
+// yopiladi, qoldig'i hisobda turadi ("kitob $200 dan qaytim"). Ortiqcha to'langan
+// nachisleniya bo'lsa — qaytim ERPNext'da unga manfiy taqsimot bilan bog'lanadi.
+function load_customer_refund(frm, show) {
+    const kat = frm.doc.payment_category || "O'quv to'lovi";
+    show(`<div class="text-muted small">Hisobdagi pul tekshirilyapti…</div>`);
+    frappe.call({
+        method: "target_zenit.target_zenit.doctype.kassa.kassa.get_customer_refund_info",
+        args: {
+            customer: frm.doc.party, company: frm.doc.company,
+            category: kat, invoice: frm.doc.sales_invoice || null,
+        },
+        callback: (r) => {
+            const d = r.message || {};
+            const esc = frappe.utils.escape_html;
+            const fmt = (v) => format_currency(v, d.currency);
+            const summa = flt(frm.doc.amount);
+            let html = "";
+
+            const rows = (d.avans || []).map((a) => {
+                const ref = a.kassa
+                    ? `<a href="/app/kassa/${encodeURIComponent(a.kassa)}" target="_blank">${esc(a.kassa)}</a>`
+                    : esc(a.payment_entry);
+                const siler = (a.nachisleniyalar || []).map((x) =>
+                    `<div class="small text-muted"><a href="/app/sales-invoice/${encodeURIComponent(x.si)}" target="_blank">${esc(x.si)}</a> · ${fmt(x.amount)}</div>`
+                ).join("") || `<div class="small text-muted">— bog'lanmagan (avans)</div>`;
+                const manfiy = a.qoldiq < 0;
+                return `<tr>
+                    <td>${ref}<div class="small text-muted">${a.date ? frappe.datetime.str_to_user(a.date) : ""} · ${esc(a.turi)}</div></td>
+                    <td>${siler}</td>
+                    <td class="text-right"><b style="color:var(--${manfiy ? "red" : "green"}-600)">${fmt(a.qoldiq)}</b></td>
+                </tr>`;
+            }).join("");
+
+            if (rows) {
+                const yetarli = flt(d.jami) + 0.005 >= summa;
+                html += `<div style="border:1px solid var(--border-color);border-radius:6px;padding:8px 10px">
+                    <div class="small text-muted" style="margin-bottom:6px">
+                        O'quvchi hisobida turgan pul — qaytim shundan beriladi</div>
+                    <table class="table table-bordered table-sm" style="margin:0;font-size:12px">
+                        <thead><tr><th>To'lov (kassa)</th><th>Qaysi nachisleniyaga ketgan</th>
+                            <th class="text-right">Hisobda qolgan</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                        <tfoot><tr><th colspan="2">HOZIR HISOBDA</th>
+                            <th class="text-right" style="color:var(--green-600)">${fmt(d.jami)}</th></tr>
+                        ${summa > 0.005 ? `<tr><th colspan="2">Shu qaytimdan keyin</th>
+                            <th class="text-right" style="color:var(--${yetarli ? "" : "red-600"})">${fmt(flt(d.jami) - summa)}</th></tr>` : ""}
+                        </tfoot>
+                    </table>
+                    <div class="small text-muted" style="margin-top:6px">
+                        Qaytim <b>${esc(kat)}</b> hisobiga yoziladi${frm.doc.sales_invoice
+                            ? ` · nachisleniya: <b>${esc(frm.doc.sales_invoice)}</b>` : ""}</div>
+                </div>`;
+                if (!yetarli && summa > 0.005) {
+                    html += `<div class="alert alert-warning small" style="padding:8px 10px;margin:8px 0 0">
+                        <b>Diqqat:</b> qaytim hisobdagi puldan ko'p
+                        (${fmt(summa - flt(d.jami))} ortiq). Bu summa <b>allaqachon nachisleniyani
+                        yopgan</b> puldan olinadi — ya'ni o'quvchida yana qarz paydo bo'ladi.
+                        Agar nachisleniyaning o'zi kamayishi kerak bo'lsa, buxgalter
+                        <b>kredit-nota</b> yozishi lozim.</div>`;
+                }
+            } else {
+                html += `<div class="alert alert-warning small" style="padding:8px 10px;margin:0">
+                    <b>O'quvchi hisobida turgan pul yo'q.</b> Qaytim berilsa, o'quvchida
+                    shu summada <b>qarz</b> paydo bo'ladi (nachisleniyani kamaytirish kerak
+                    bo'lsa — kredit-nota).</div>`;
+            }
+
+            if ((d.ortiqcha || []).length) {
+                const olar = d.ortiqcha.map((x) => `<tr>
+                    <td><a href="/app/sales-invoice/${encodeURIComponent(x.name)}" target="_blank">${esc(x.name)}</a>
+                        <div class="small text-muted">${frappe.datetime.str_to_user(x.sana)}${x.itemlar ? " · " + esc(x.itemlar) : ""}</div></td>
+                    <td class="text-right"><b>${fmt(x.overpaid)}</b></td></tr>`).join("");
+                html += `<div style="border:1px solid var(--border-color);border-radius:6px;padding:8px 10px;margin-top:8px">
+                    <div class="small text-muted" style="margin-bottom:6px">
+                        Ortiqcha to'langan nachisleniyalar — qaytim <b>shularga bog'lanadi</b></div>
+                    <table class="table table-bordered table-sm" style="margin:0;font-size:12px">
+                        <thead><tr><th>Nachisleniya</th><th class="text-right">Ortiqcha</th></tr></thead>
+                        <tbody>${olar}</tbody></table></div>`;
+            }
+            show(html);
+        },
+    }).catch(() => show(`<div class="text-muted small">Hisobdagi pulni yuklab bo'lmadi.</div>`));
 }
 
 function load_nachisleniya(frm) {
@@ -1113,8 +1268,9 @@ function show_payment_links(frm, show) {
             </div>`);
             return;
         }
+        const route = (dt) => (dt === "Sales Invoice" ? "sales-invoice" : "journal-entry");
         const rows = d.links.map((x) => `<tr>
-            <td><a href="/app/journal-entry/${encodeURIComponent(x.journal_entry)}" target="_blank">${esc(x.journal_entry)}</a></td>
+            <td><a href="/app/${route(x.doctype)}/${encodeURIComponent(x.journal_entry)}" target="_blank">${esc(x.journal_entry)}</a></td>
             <td class="text-right"><b>${fmt(x.amount)}</b></td>
         </tr>`).join("");
         const total = d.links.reduce((n, x) => n + (x.amount || 0), 0);
