@@ -4,7 +4,7 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-09-10 15:06:45.360948",
+ "modified": "2026-10-16 13:30:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "investor-dashboard",
@@ -25,6 +25,9 @@
   },
   {
    "role": "Operator"
+  },
+  {
+   "role": "Nigora_Moliya"
   }
  ],
  "script": null,

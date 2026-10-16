@@ -1104,6 +1104,7 @@ ALLOWED_ROLES = [
     "investor",
     "Xojakbar_Operator",
     "Operator",
+    "Nigora_Moliya",
 ]
 
 

@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import frappe
 
-ALLOWED_ROLES = ["System Manager", "Sales Manager", "Sales User", "Sotuv meneger", "Xojakbar_Operator"]
+ALLOWED_ROLES = ["System Manager", "Sales Manager", "Sales User", "Sotuv meneger", "Xojakbar_Operator",
+                 "Nigora_Moliya"]
 
 STUDENT_FIELDS = [
     "name",
