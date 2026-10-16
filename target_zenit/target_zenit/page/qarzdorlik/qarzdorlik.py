@@ -12,6 +12,7 @@ from frappe.utils import cint, flt, getdate, nowdate
 ALLOWED_ROLES = [
 	"System Manager", "Sales Manager", "Sales User", "Sotuv meneger",
 	"investor", "Xojakbar_Operator",
+	"Nigora_Moliya",
 ]
 YOPIQ = ("Yopildi - To'landi", "Yopildi - Boshqa")
 

@@ -272,6 +272,12 @@ has_permission = {
 	"Telefon Qongirogi": "target_zenit.target_zenit.doctype.telefon_qongirogi.telefon_qongirogi.has_permission",
 }
 
+# Moliya bo'limi boshlig'i roli (Nigora_Moliya) — Page/Workspace JSON'laridagi
+# rol havolasi ishlashi uchun rol sinxronizatsiyadan OLDIN yaratiladi
+before_migrate = [
+	"target_zenit.moliya_rol.before_migrate",
+]
+
 after_migrate = [
 	"target_zenit.telefoniya.setup.after_migrate",
 	# Student/Employee ismi o'zgarganda muzlab qolgan nusxalarni moslash
@@ -285,6 +291,8 @@ after_migrate = [
 	"target_zenit.dars_jadvali.setup.after_migrate",
 	# Student: chegirma foizi maydoni + yakuniy/oylik read-only
 	"target_zenit.student_tarif.after_migrate",
+	# Nigora_Moliya roli va doctype ruxsatlari (idempotent)
+	"target_zenit.moliya_rol.after_migrate",
 ]
 
 # Scheduled Tasks

@@ -17,6 +17,7 @@ from target_zenit.kadrlar import ish_haqi_kategoriyalari
 ALLOWED_ROLES = [
 	"System Manager", "Sales Manager", "HR Manager", "HR User",
 	"Accounts Manager", "Accounts User", "investor", "Xojakbar_Operator",
+	"Nigora_Moliya",
 ]
 
 def _guard():
