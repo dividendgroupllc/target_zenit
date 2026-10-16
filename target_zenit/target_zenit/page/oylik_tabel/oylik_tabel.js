@@ -80,6 +80,8 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		.ot-c-ushlov { min-width:95px; text-align:right; cursor:pointer; color:#c0392b; }
 		.ot-c-ushlov:hover { outline:2px solid var(--primary); outline-offset:-2px; }
 		.ot-c-ushlov.bosh { color:var(--text-muted); font-weight:400; }
+		.ot-jadval td.ot-ro { cursor:default !important; }
+		.ot-jadval td.ot-ro:hover { outline:none !important; }
 		.ot-c-ushlov .qolda-b { color:#b26a00; font-size:10px; display:block; line-height:1; }
 		.ot-c-bonus:hover, .ot-c-oylik-t:hover { outline:2px solid var(--primary); outline-offset:-2px; }
 		.ot-c-oylik-t { cursor:pointer; }
@@ -173,6 +175,11 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			d.holat === "Yopilmoqda" ? '<span class="ot-badge yopilmoqda">⏳ Yopilmoqda...</span>' :
 			'<span class="ot-badge yopiq">🔒 Yopiq</span>';
 		if (d.faqat_oqish) badge += ' <span class="ot-badge yopiq" title="Sizning rolingiz tabelni faqat ko\'rishga ruxsat beradi">👁 Faqat o\'qish</span>';
+		const MAYDON_NOMI = { koef: "yo'qlama", oylik: "oylik", ish_kuni: "ish kuni", jami: "jami", bonus: "bonus/jarima", nalog: "nalog", pitaniya: "pitaniya", oy_yopish: "oy yopish" };
+		if (d.qisman_tahrir) {
+			const nomlar = (d.tahrir_maydonlar || []).map((m) => MAYDON_NOMI[m] || m).join(", ");
+			badge += ` <span class="ot-badge yopilmoqda" title="Sizning rolingizda faqat shu ustunlar tahrirlanadi">✏️ Faqat: ${frappe.utils.escape_html(nomlar)}</span>`;
+		}
 
 		// Xodimlar ko'p-tanlov filtri menyusi (checkbox ro'yxat + ichki qidiruv)
 		const xfOptlar = d.qatorlar.map((q) => `<label>
@@ -334,8 +341,11 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			frappe.set_route("List", "Tabel Ozgarish Jurnali", { oy: `${d.yil}-${String(d.oy).padStart(2, "0")}` });
 		});
 
-		// hodisalar
-		if (d.tahrir_mumkin) {
+		// hodisalar — har ustun o'z "maydon" huquqiga qarab yoqiladi
+		// (rolga qarab qisman bo'lishi mumkin: masalan Nigora_Moliya faqat
+		// nalog/pitaniya/bonus ni o'zgartiradi)
+		const mumkin = (m) => d.tahrir_mumkin && (d.tahrir_maydonlar || []).indexOf(m) !== -1;
+		if (mumkin("koef")) {
 			// Yo'qlama: kunbay — katak bosilganda KELDI/KELMADI tanlovi ochiladi
 			// (bitta bosish bilan istalgan holat); soatbay — soat kiritish oynasi
 			$orab.on("click", "td.ot-kun:not(.kirmagan)", function () {
@@ -347,26 +357,52 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				}
 				koefPop($(this), q, j);
 			});
+		}
+		if (mumkin("oylik")) {
 			$orab.on("click", "td.ot-c-oylik-t", function () {
 				oylikDialog(d.qatorlar[$(this).data("i")]);
 			});
+		}
+		if (mumkin("bonus")) {
 			$orab.on("click", "td.ot-c-bonus", function () {
 				bonusDialog(d.qatorlar[$(this).data("i")]);
 			});
-			$orab.on("click", "td.ot-c-ushlov", function () {
-				const q = d.qatorlar[$(this).data("i")];
-				if ($(this).data("tur") === "nalog") nalogDialog(q);
-				else pitaniyaDialog(q);
-			});
+		}
+		$orab.on("click", "td.ot-c-ushlov", function () {
+			const q = d.qatorlar[$(this).data("i")];
+			const tur = $(this).data("tur");
+			if (!mumkin(tur)) return;
+			if (tur === "nalog") nalogDialog(q);
+			else pitaniyaDialog(q);
+		});
+		if (mumkin("jami")) {
 			$orab.on("click", "td.ot-c-jami-t", function () {
 				jamiDialog(d.qatorlar[$(this).data("i")]);
 			});
+		}
+		if (mumkin("ish_kuni")) {
 			$orab.on("click", "td.ot-c-ishkun", function () {
 				const q = d.qatorlar[$(this).data("i")];
 				if (q.tolov_turi === "soat") return;   // soatbayda norma ish kuni yo'q
 				ishKuniDialog(q);
 			});
 		}
+		// Tahrirlanmaydigan ustunlar: kursor/hover o'chadi, tooltip almashadi
+		const USTUN_SEL = {
+			koef: "td.ot-kun:not(.kirmagan)",
+			oylik: "td.ot-c-oylik-t",
+			ish_kuni: "td.ot-c-ishkun",
+			bonus: "td.ot-c-bonus",
+			jami: "td.ot-c-jami-t",
+			nalog: 'td.ot-c-ushlov[data-tur="nalog"]',
+			pitaniya: 'td.ot-c-ushlov[data-tur="pitaniya"]',
+		};
+		Object.keys(USTUN_SEL).forEach((m) => {
+			if (mumkin(m)) return;
+			$orab.find(USTUN_SEL[m]).addClass("ot-ro").attr("title", d.faqat_oqish
+				? "Faqat o'qish rejimi"
+				: `Sizning rolingizda "${MAYDON_NOMI[m]}" ustuni tahrirlanmaydi`);
+		});
 	}
 
 	// ---------------------------------------------------------------- dialoglar

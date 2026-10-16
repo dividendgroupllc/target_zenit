@@ -66,6 +66,13 @@ class TZYoqlama {
 		const kataklar = r.kunlik.map((c, i) => {
 			const k = kunlar[i];
 			const darsli = r.dars_kunlari.includes(new Date(k.sana).getDay() === 0 ? 6 : new Date(k.sana).getDay() - 1);
+			// Ishga kirmagan / ishdan ketgan kunlar — oylik tabeldagi kabi "—"
+			if (c.tashqari) {
+				const izoh = c.tashqari === "ketgan"
+					? `${r.ketgan_sana} da ishdan ketgan`
+					: `${r.kirgan_sana} da ishga kirgan`;
+				return `<td><button class="yc tashqari" disabled title="${k.sana} · ${izoh}">—</button></td>`;
+			}
 			let cls = "yc", matn = "";
 			if (c.holat === "Present") { cls += " keldi"; matn = r.soatbay ? (c.koef || "") : "✓"; }
 			else if (c.holat === "Absent") { cls += " yoq"; matn = "✕"; }
@@ -82,7 +89,7 @@ class TZYoqlama {
 				title="${k.sana}${darsli ? " · darsi bor" : ""}${d.faqat_bugun && !bugunmi ? " · faqat bugungi kun belgilanadi" : ""}">${matn}</button></td>`;
 		}).join("");
 		return `<tr>
-			<th class="nom"><b>${this.esc(r.ism)}</b><span>${this.esc(r.kategoriya || r.lavozim || "")}${r.soatbay ? " · soatbay" : ""}</span></th>
+			<th class="nom" title="${this.esc(r.ism)}${r.ketgan_sana ? ` — ${r.ketgan_sana} da ishdan ketgan` : ""}"><b>${this.esc(r.ism)}</b><span>${this.esc(r.kategoriya || r.lavozim || "")}${r.soatbay ? " · soatbay" : ""}</span>${r.ketgan_sana ? `<span class="ketgan">ketgan: ${this.esc(r.ketgan_sana)}</span>` : ""}</th>
 			${kataklar}
 			<td class="jami"><b>${r.keldi}</b></td></tr>`;
 	}
@@ -135,7 +142,7 @@ class TZYoqlama {
 				<div class="chips kchips" title="Kategoriya — bir nechtasini tanlash mumkin">${katlar}</div>
 				<div class="spacer"></div>
 				<span class="legend"><i class="keldi"></i> keldi <i class="yoq"></i> kelmadi
-					<i class="darsli"></i> darsi bor kun <i class="bosh"></i> belgilanmagan · katakni bosing — tanlov ochiladi</span>
+					<i class="darsli"></i> darsi bor kun <i class="bosh"></i> belgilanmagan · <b>—</b> ishlamagan kun (kirmagan/ketgan) · katakni bosing — tanlov ochiladi</span>
 			</div>
 
 			<div class="card scroll-x">

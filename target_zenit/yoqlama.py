@@ -140,13 +140,26 @@ def get_data(yil=None, oy=None, kategoriya=None):
 	for x in xodimlar:
 		kunlik = []
 		keldi = 0
+		# Ishga kirgan/ketgan sanalari — oylik tabeldagi kabi: xodim ishlamagan
+		# kunlar "—" bo'lib ko'rinadi va belgilanmaydi (ketgani bir ko'rishda bilinadi)
+		kirgan = getdate(x.date_of_joining) if x.date_of_joining else None
+		ketgan = getdate(x.relieving_date) if x.relieving_date else None
 		for kd in kunlar:
+			sana_d = getdate(kd["sana"])
+			if kirgan and sana_d < kirgan:
+				kunlik.append({"sana": kd["sana"], "holat": None, "koef": None,
+							   "tashqari": "kirmagan"})
+				continue
+			if ketgan and sana_d > ketgan:
+				kunlik.append({"sana": kd["sana"], "holat": None, "koef": None,
+							   "tashqari": "ketgan"})
+				continue
 			b = belgilar.get(f"{x.name}|{kd['sana']}")
 			holat = b["status"] if b else None
 			if holat == "Present":
 				keldi += 1
 			kunlik.append({"sana": kd["sana"], "holat": holat,
-						   "koef": b["koef"] if b else None})
+						   "koef": b["koef"] if b else None, "tashqari": None})
 		qatorlar.append({
 			"xodim": x.name,
 			# Ism HAR DOIM Employee hujjatidan (xodim ID bo'yicha) — Instructor'dagi
@@ -155,6 +168,8 @@ def get_data(yil=None, oy=None, kategoriya=None):
 			"lavozim": x.designation or "",
 			"kategoriya": x.custom_ish_haqi_kategoriya or "",
 			"soatbay": (x.custom_tolov_turi or "").strip() == "Soatbay",
+			"kirgan_sana": str(kirgan) if kirgan else None,
+			"ketgan_sana": str(ketgan) if ketgan else None,
 			"dars_kunlari": sorted(darsli.get(x.name, [])),
 			"kunlik": kunlik,
 			"keldi": keldi,
@@ -192,9 +207,18 @@ def belgila(xodim, sana, holat, koef=None):
 		frappe.throw(_("Bu oy yopilgan — o'zgartirib bo'lmaydi"))
 
 	emp = frappe.db.get_value(
-		"Employee", xodim, ["name", "company", "custom_tolov_turi"], as_dict=True)
+		"Employee", xodim,
+		["name", "company", "custom_tolov_turi", "date_of_joining", "relieving_date"],
+		as_dict=True)
 	if not emp:
 		frappe.throw(_("Xodim topilmadi"))
+	# Ishga kirishdan oldin / ishdan ketgandan keyin yo'qlama bo'lmaydi
+	if emp.date_of_joining and sana < getdate(emp.date_of_joining):
+		frappe.throw(_("Xodim {0} da ishga kirgan — undan oldingi kunga yozib bo'lmaydi")
+					 .format(emp.date_of_joining))
+	if emp.relieving_date and sana > getdate(emp.relieving_date):
+		frappe.throw(_("Xodim {0} da ishdan ketgan — undan keyingi kunga yozib bo'lmaydi")
+					 .format(emp.relieving_date))
 	soatbay = (emp.custom_tolov_turi or "").strip() == "Soatbay"
 
 	if holat == "tozalash":

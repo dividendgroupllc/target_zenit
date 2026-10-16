@@ -139,3 +139,6 @@
 .yq-pop .p-toza { color:var(--muted, #64748b); padding:6px 9px; }
 .yq-pop .p-toza:hover { border-color:var(--muted, #64748b); }
 .tz-yoqlama .kchips { max-width:52vw; }
+/* Ishga kirmagan / ishdan ketgan kunlar — oylik tabeldagi "—" kabi */
+.tz-yoqlama button.yc.tashqari { background:var(--card-2); border-style:dashed; color:var(--muted); opacity:1; }
+.tz-yoqlama .ytbl tbody th.nom span.ketgan { display:block; font-size:10px; line-height:1.1; color:#d8443c; font-weight:600; }

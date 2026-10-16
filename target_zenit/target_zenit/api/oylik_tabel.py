@@ -190,6 +190,17 @@ def _oy_pitaniya_map(yil, oy, emp_ids):
 # Bu rollar tabelni faqat KO'RADI — hech narsani o'zgartira olmaydi
 FAQAT_OQISH_ROLLARI = {"investor"}
 
+# Tahrirlanadigan "maydonlar" (har bir yozuvchi endpoint bittasiga tegishli)
+MAYDONLAR = ("koef", "oylik", "ish_kuni", "jami", "bonus", "nalog", "pitaniya", "oy_yopish")
+
+# QISMAN tahrir rollari: rol -> faqat shu maydonlarni o'zgartira oladi.
+# Moliya bo'limi boshlig'i (Nigora) ushlov/bonus bilan ishlaydi: yo'qlamaga
+# (keldi/kelmadi) va ish haqi summalariga (oylik, norma ish kuni, jami)
+# TEGA OLMAYDI, oyni yopa/ocha olmaydi.
+QISMAN_TAHRIR_ROLLARI = {
+    "nigora_moliya": {"nalog", "pitaniya", "bonus"},
+}
+
 
 def _ruxsat_rollari():
     """Kirish huquqi sahifaning (Page) role ro'yxatidan olinadi —
@@ -208,18 +219,42 @@ def _rol_tekshir():
         frappe.throw(_("Oylik tabelga ruxsatingiz yo'q"), frappe.PermissionError)
 
 
-def _tahrir_mumkinmi():
-    """Tahrir huquqi: sahifa rollaridan faqat-o'qish bo'lmagani ham bo'lishi kerak
-    (masalan, foydalanuvchida faqat 'investor' bo'lsa — ko'radi, o'zgartirmaydi)."""
+def _tahrir_maydonlari():
+    """Foydalanuvchi o'zgartira oladigan maydonlar to'plami.
+
+    Sahifa rollari bo'yicha: faqat-o'qish roli hech narsa bermaydi, qisman
+    tahrir roli (masalan Nigora_Moliya) o'z ro'yxatini beradi, qolgan har
+    qanday rol — HAMMASI. Bir nechta rol bo'lsa ruxsatlar BIRLASHTIRILADI."""
     rollar = set(_ruxsat_rollari()) & set(frappe.get_roles())
-    return any(r.strip().lower() not in FAQAT_OQISH_ROLLARI for r in rollar)
+    ruxsat = set()
+    for r in rollar:
+        kalit = r.strip().lower()
+        if kalit in FAQAT_OQISH_ROLLARI:
+            continue
+        if kalit in QISMAN_TAHRIR_ROLLARI:
+            ruxsat |= QISMAN_TAHRIR_ROLLARI[kalit]
+        else:
+            return set(MAYDONLAR)          # to'liq huquqli rol topildi
+    return ruxsat
 
 
-def _tahrir_tekshir():
+def _tahrir_mumkinmi():
+    """Hech bo'lmasa bitta maydonni o'zgartira oladimi (investor — False)."""
+    return bool(_tahrir_maydonlari())
+
+
+def _tahrir_tekshir(maydon=None):
+    """maydon berilsa — AYNAN shu maydonga huquq tekshiriladi."""
     _rol_tekshir()
-    if not _tahrir_mumkinmi():
+    ruxsat = _tahrir_maydonlari()
+    if not ruxsat:
         frappe.throw(_("Oylik tabel siz uchun faqat o'qish rejimida — o'zgartirish mumkin emas"),
                      frappe.PermissionError)
+    if maydon and maydon not in ruxsat:
+        xabar = (_("Sizning rolingizda oyni yopish/qayta ochish mumkin emas")
+                 if maydon == "oy_yopish"
+                 else _("Sizning rolingizda bu ustunni o'zgartirish mumkin emas"))
+        frappe.throw(xabar, frappe.PermissionError)
 
 
 # ---------------------------------------------------------------- yordamchi
@@ -665,19 +700,23 @@ def get_tabel(yil=None, oy=None):
     tabel = _tabel_doc(yil, oy)
     oy_oxiri = _oy_chegara(yil, oy)[1]
 
-    tahrir = _tahrir_mumkinmi()        # investor kabi faqat-o'qish rollarida False
+    ruxsat = _tahrir_maydonlari()      # investor kabi faqat-o'qish rollarida bo'sh
+    tahrir = bool(ruxsat)
     natija["holat"] = tabel.holat
     natija["faqat_oqish"] = not tahrir
     natija["tahrir_mumkin"] = tahrir and tabel.holat == "Ochiq"
-    natija["yopish_mumkin"] = tahrir and tabel.holat == "Ochiq" and bugun >= oy_oxiri
-    natija["ochish_mumkin"] = tahrir and tabel.holat == "Yopiq"
+    # qaysi ustunlar tahrirlanadi (JS kliklarni shu bo'yicha yoqadi/o'chiradi)
+    natija["tahrir_maydonlar"] = sorted(ruxsat)
+    natija["qisman_tahrir"] = tahrir and ruxsat != set(MAYDONLAR)
+    natija["yopish_mumkin"] = ("oy_yopish" in ruxsat) and tabel.holat == "Ochiq" and bugun >= oy_oxiri
+    natija["ochish_mumkin"] = ("oy_yopish" in ruxsat) and tabel.holat == "Yopiq"
     return natija
 
 
 @frappe.whitelist()
 def set_koef(xodim, sana, koef):
     """Bitta kun katakchasini o'zgartirish -> Attendance yoziladi."""
-    _tahrir_tekshir()
+    _tahrir_tekshir("koef")
     sana = getdate(sana)
     koef = flt(koef)
     if sana > getdate(nowdate()):
@@ -756,7 +795,7 @@ def set_oylik(xodim, yil, oy, summa):
       * SSA ham oy boshidan yoziladi (HRMS/payroll mosligi uchun), lekin
         faqat SHU OY ichidagi eski SSA'lar bekor qilinadi — keyingi
         oylarning SSA'lariga tegilmaydi."""
-    _tahrir_tekshir()
+    _tahrir_tekshir("oylik")
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
     if summa < 0:
@@ -833,7 +872,7 @@ def set_ish_kuni(xodim, yil, oy, kun):
     Har oyning normasi har xil bo'lishi mumkin (sentabr 26, avgust 5 ...),
     shuning uchun qiymat oyga biriktiriladi. Yozuv bo'lmagan oylarda xodimning
     doimiy normasi (Employee.custom_ish_kuni) yoki default (21/26) amal qiladi."""
-    _tahrir_tekshir()
+    _tahrir_tekshir("ish_kuni")
     yil, oy = cint(yil), cint(oy)
     kun = cint(kun)
     if not (1 <= kun <= 31):
@@ -874,7 +913,7 @@ def set_bonus(xodim, yil, oy, summa):
     Additional Salary'ga yo'l qo'ymagani uchun "Jarima" (Deduction)
     komponentida musbat summa sifatida saqlanadi; tabel hisobida esa
     ayirib hisoblanadi. 0 — bonus/jarima olib tashlanadi."""
-    _tahrir_tekshir()
+    _tahrir_tekshir("bonus")
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
     _ochiq_tekshir(yil, oy)
@@ -970,7 +1009,7 @@ def set_jami(xodim, yil, oy, summa):
     hisoblanadi) — bu HISOBLANGAN (brutto) summa: ustidan nalog va pitaniya
     ushlovlari baribir ayriladi. 0 yoki bo'sh kiritilsa — qo'lda qiymat
     O'CHIRILADI va avtomatik hisobga qaytadi."""
-    _tahrir_tekshir()
+    _tahrir_tekshir("jami")
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
     if summa < 0:
@@ -1011,7 +1050,7 @@ def _oy_yozuv_set(doctype, xodim, yil, oy, summa, maydon, ochir_nol=True):
     """Oyga bog'langan bitta summa yozuvini (Tabel Nalog / Tabel Pitaniya)
     o'rnatish/o'chirish. ochir_nol=True bo'lsa 0 — yozuvni O'CHIRADI.
     Qaytadi: (eski qiymat yoki None, yangi holat matni)."""
-    _tahrir_tekshir()
+    _tahrir_tekshir(maydon.lower())
     yil, oy = cint(yil), cint(oy)
     summa = flt(summa)
     if summa < 0:
@@ -1280,7 +1319,7 @@ def oy_yop(yil, oy):
     """Oyni yopish: bo'sh kunlar Attendance bilan to'ldiriladi (default),
     hammasi submit bo'ladi, oylik summalar SSA sifatida saqlanadi, tabel qulflanadi.
     Og'ir ish — fonda (background job) bajariladi."""
-    _tahrir_tekshir()
+    _tahrir_tekshir("oy_yopish")
     yil, oy = cint(yil), cint(oy)
     _ochiq_tekshir(yil, oy)
     oy_oxiri = _oy_chegara(yil, oy)[1]
@@ -1408,7 +1447,7 @@ def oy_och(yil, oy):
     submit qilingani BEKOR qilinadi (unga ulangan to'lovlar avtomatik
     yechiladi va yana avans bo'lib qoladi), qoralama esa o'chiriladi.
     Oy qayta yopilganda yangi summalar bilan yangi JE yaratiladi."""
-    _tahrir_tekshir()
+    _tahrir_tekshir("oy_yopish")
     yil, oy = cint(yil), cint(oy)
     tabel = _tabel_doc(yil, oy)
     if tabel.holat != "Yopiq":
