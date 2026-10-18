@@ -103,7 +103,7 @@
 .tz-yoqlama .ytbl th.kun em { font-style:normal; font-size:9px; color:var(--muted); }
 .tz-yoqlama .ytbl th.kun.dam { background:var(--page); }
 .tz-yoqlama .ytbl th.nom { position:sticky; left:0; z-index:3; background:var(--card-2); text-align:left;
-  min-width:190px; padding:6px 10px; }
+  min-width:210px; max-width:230px; padding:6px 10px; }
 .tz-yoqlama .ytbl tbody th.nom { z-index:1; font-weight:500; }
 .tz-yoqlama .ytbl tbody th.nom b { display:block; font-size:12.5px; }
 .tz-yoqlama .ytbl tbody th.nom span { font-size:10px; color:var(--muted); }
@@ -142,3 +142,6 @@
 /* Ishga kirmagan / ishdan ketgan kunlar — oylik tabeldagi "—" kabi */
 .tz-yoqlama button.yc.tashqari { background:var(--card-2); border-style:dashed; color:var(--muted); opacity:1; }
 .tz-yoqlama .ytbl tbody th.nom span.ketgan { display:block; font-size:10px; line-height:1.1; color:#d8443c; font-weight:600; }
+.tz-yoqlama .ytbl tbody th.nom span.fan { display:block; font-size:10px; line-height:1.15; color:var(--brand);
+  max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tz-yoqlama .ytbl th.jami.kerak, .tz-yoqlama .ytbl td.jami.kerak { color:var(--muted); font-weight:600; }

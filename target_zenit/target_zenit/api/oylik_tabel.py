@@ -185,6 +185,32 @@ def _oy_pitaniya_map(yil, oy, emp_ids):
     )}
 
 
+def _oy_pitaniyasiz_map(yil, oy, emp_ids):
+    """"Pitaniyasiz" bayrog'i: {xodim: 0/1}. Qoida — oyning O'Z yozuvi bo'lsa
+    o'sha; bo'lmasa ENG YAQIN OLDINGI oy yozuvi DEFAULT bo'lib o'tadi
+    (kelajak oylar oldingi oyning holatini meros qiladi, lekin har oy o'z
+    yozuvi bilan mustaqil o'zgartiriladi — boshqa oy o'zgarmaydi)."""
+    if not emp_ids:
+        return {}
+    kalit = cint(yil) * 100 + cint(oy)
+    out, eng = {}, {}
+    for r in frappe.get_all(
+        "Tabel Pitaniyasiz",
+        filters={"xodim": ["in", list(emp_ids)]},
+        fields=["xodim", "yil", "oy", "holat"],
+        limit_page_length=0,
+    ):
+        k = cint(r.yil) * 100 + cint(r.oy)
+        if k <= kalit and (r.xodim not in eng or k > eng[r.xodim]):
+            eng[r.xodim] = k
+            out[r.xodim] = cint(r.holat)
+    return out
+
+
+def _pitaniyasizmi(xodim, yil, oy) -> bool:
+    return bool(_oy_pitaniyasiz_map(yil, oy, [xodim]).get(xodim))
+
+
 # ---------------------------------------------------------------- ruxsat
 
 # Bu rollar tabelni faqat KO'RADI — hech narsani o'zgartira olmaydi
@@ -500,7 +526,8 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
         "Employee",
         filters={"custom_tabelda": 1, "date_of_joining": ["<=", oy_oxiri]},
         fields=["name", "employee_name", "designation", "custom_ish_kuni",
-                "custom_tolov_turi", "date_of_joining", "status", "relieving_date"],
+                "custom_tolov_turi", "custom_ish_haqi_kategoriya",
+                "date_of_joining", "status", "relieving_date"],
         order_by="employee_name asc",
     )
     saralangan = []
@@ -520,6 +547,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
     oy_jami = _oy_jami_map(yil, oy, emp_ids)
     oy_nalog = _oy_nalog_map(yil, oy, emp_ids)
     oy_pitaniya = _oy_pitaniya_map(yil, oy, emp_ids)
+    oy_pitsiz = _oy_pitaniyasiz_map(yil, oy, emp_ids)
 
     # Oylik (baza): avval SHU OYga qotirilgan "Tabel Oylik" yozuvi,
     # bo'lmasa SSA'dan; bo'lmasa Kassa taklifi
@@ -631,10 +659,15 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             hisob, hisob_manba = hisob_avto, "avto"
 
         # Ushlovlar: nalog (faqat qo'lda) va pitaniya (kelgan kun x narx,
-        # qo'lda override qilinishi mumkin) — yaxlitlashdan KEYIN ayriladi
+        # qo'lda override qilinishi mumkin) — yaxlitlashdan KEYIN ayriladi.
+        # "Pitaniyasiz" belgisi qo'yilgan xodimda pitaniya DOIM 0 — avto ham,
+        # qo'lda ham hisoblanmaydi/yozilmaydi.
         nalog = flt(oy_nalog.get(x.name, 0.0))
-        pitaniya_avto = flt(kelgan_kun * PITANIYA_KUNLIK)
-        if x.name in oy_pitaniya:
+        pitaniyasiz = cint(oy_pitsiz.get(x.name, 0))
+        pitaniya_avto = 0.0 if pitaniyasiz else flt(kelgan_kun * PITANIYA_KUNLIK)
+        if pitaniyasiz:
+            pitaniya, pitaniya_manba = 0.0, "yoq"
+        elif x.name in oy_pitaniya:
             pitaniya, pitaniya_manba = flt(oy_pitaniya[x.name]), "qolda"
         else:
             pitaniya, pitaniya_manba = pitaniya_avto, "avto"
@@ -647,6 +680,9 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             "xodim": x.name,
             "ismi": x.employee_name,
             "lavozim": x.designation or "",
+            # filtr/nachisleniya bilan BIR XIL qoida: aniq tanlov -> lavozimdan taxmin
+            "kategoriya": _ish_haqi_kategoriya(
+                x.custom_ish_haqi_kategoriya, x.designation, x.custom_tolov_turi),
             "tolov_turi": "soat" if soatbay else "kun",
             "ish_kuni": ish_kuni,
             "ish_kuni_manba": ik_manba,
@@ -663,6 +699,7 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             "pitaniya_avto": pitaniya_avto,
             "pitaniya_manba": pitaniya_manba,
             "pitaniya_kunlik": PITANIYA_KUNLIK,
+            "pitaniyasiz": pitaniyasiz,
             "hisob": hisob,
             "hisob_avto": hisob_avto,
             "jami": jami,
@@ -1100,12 +1137,53 @@ def set_pitaniya(xodim, yil, oy, summa=0, avto=0):
     Odatda avtomatik: kelgan kun x PITANIYA_KUNLIK. Shu endpoint bilan
     ustidan yozib qo'yish mumkin (0 ham haqiqiy qiymat — "ushlanmaydi").
     avto=1 bo'lsa qo'lda qiymat O'CHIRILADI va avtomatik hisobga qaytadi."""
+    if _pitaniyasizmi(xodim, cint(yil), cint(oy)):
+        frappe.throw(_("Bu xodimga shu oyda «pitaniyasiz» belgisi qo'yilgan — "
+                       "pitaniya yozib bo'lmaydi. Avval Ish kuni ustunidagi "
+                       "belgini olib tashlang."))
     if cint(avto):
         _oy_yozuv_set("Tabel Pitaniya", xodim, yil, oy, 0, "Pitaniya", ochir_nol=True)
         return {"ok": True, "avto": True}
     # 0 ham saqlanadi — "bu oyda pitaniya ushlanmaydi" degani
     _oy_yozuv_set("Tabel Pitaniya", xodim, yil, oy, summa, "Pitaniya", ochir_nol=False)
     return {"ok": True, "summa": flt(summa)}
+
+
+@frappe.whitelist()
+def set_pitaniyasiz(xodim, yil, oy, holat):
+    """"Pitaniyasiz" belgisi — FAQAT shu oy uchun yoziladi.
+
+    Belgilangan xodimga pitaniya avto 0 bo'ladi va qo'lda ham yozilmaydi.
+    O'z yozuvi bo'lmagan KEYINGI oylarga shu holat DEFAULT bo'lib o'tadi
+    (har oyda mustaqil o'zgartirsa bo'ladi — oldingi oylar o'zgarmaydi)."""
+    _tahrir_tekshir("pitaniya")
+    yil, oy = cint(yil), cint(oy)
+    holat = 1 if cint(holat) else 0
+    _ochiq_tekshir(yil, oy)
+    emp = frappe.db.get_value("Employee", xodim, ["name", "employee_name"], as_dict=True)
+    if not emp:
+        frappe.throw(_("Xodim topilmadi"))
+
+    eski = 1 if _pitaniyasizmi(xodim, yil, oy) else 0
+    mavjud = frappe.db.get_value(
+        "Tabel Pitaniyasiz", {"xodim": xodim, "yil": yil, "oy": oy}, "name")
+    if mavjud:
+        frappe.db.set_value("Tabel Pitaniyasiz", mavjud, "holat", holat)
+    else:
+        frappe.get_doc({
+            "doctype": "Tabel Pitaniyasiz",
+            "xodim": xodim, "yil": yil, "oy": oy, "holat": holat,
+        }).insert(ignore_permissions=True)
+
+    if holat:
+        # belgisi qo'yildi — shu oyning qo'lda pitaniya override'i ham o'chadi
+        nom = frappe.db.get_value("Tabel Pitaniya", {"xodim": xodim, "yil": yil, "oy": oy})
+        if nom:
+            frappe.delete_doc("Tabel Pitaniya", nom, ignore_permissions=True, force=True)
+
+    _jurnal(xodim, emp.employee_name, f"{yil}-{oy:02d}", "Pitaniyasiz",
+            "ha" if eski else "yo'q", "ha" if holat else "yo'q")
+    return {"ok": True, "holat": holat}
 
 
 # ---------------------------------------------------------------- avto-nachisleniya
@@ -1358,6 +1436,15 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
                 frappe.get_doc({
                     "doctype": "Tabel Ish Kuni",
                     "xodim": emp, "yil": yil, "oy": oy, "kun": cint(q["ish_kuni"]),
+                }).insert(ignore_permissions=True)
+            # "pitaniyasiz" belgisi ham OYga qotiriladi — yopilgan oy keyin
+            # boshqa oylardagi belgi o'zgarishidan ta'sirlanmasin
+            if not frappe.db.exists("Tabel Pitaniyasiz",
+                                    {"xodim": emp, "yil": yil, "oy": oy}):
+                frappe.get_doc({
+                    "doctype": "Tabel Pitaniyasiz",
+                    "xodim": emp, "yil": yil, "oy": oy,
+                    "holat": cint(q.get("pitaniyasiz")),
                 }).insert(ignore_permissions=True)
 
             # 1) Oylik summa SSA'da yo'q bo'lsa — ko'rsatilgan qiymat bilan saqlab qo'yamiz

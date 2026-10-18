@@ -1,0 +1,140 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"7yDdDIJt6Z\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Kassa</b></span>\",\"col\":12}},{\"id\":\"wMXq6Njvpf\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Kassa\",\"col\":3}},{\"id\":\"cKB6B6Zah1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Kunlik kurs\",\"col\":3}},{\"id\":\"fiBjoFmS5W\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Oylik tabel\",\"col\":3}},{\"id\":\"W7R7YZVgfM\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Xodimlar qarzdorligi\",\"col\":3}},{\"id\":\"_Hyjn75XEf\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'quvchilar qarzdorligi\",\"col\":3}},{\"id\":\"wlKTUXRjl_\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Investor paneli\",\"col\":3}},{\"id\":\"17v2N0X7Ee\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Sotuv paneli\",\"col\":3}},{\"id\":\"3fbOnlM7lf\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"DDS\",\"col\":3}},{\"id\":\"iiesh2JXbY\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"P&L (Foyda va zarar)\",\"col\":3}},{\"id\":\"zKCWBgRcld\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Ombor qoldig'i\",\"col\":3}},{\"id\":\"-Pb8qZUdQu\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Mijozlar\",\"col\":3}},{\"id\":\"eSy-2NJeHp\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Ta'minotchilar\",\"col\":3}},{\"id\":\"hRYbK0mtGn\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'quvchilar\",\"col\":3}},{\"id\":\"WMt7VXW4gC\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Ota-onalar (Guardian)\",\"col\":3}},{\"id\":\"MpvgAd1jAH\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Xodimlar\",\"col\":3}}]",
+ "creation": "2026-10-16 13:00:00",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "accounting",
+ "idx": 0,
+ "indicator_color": "",
+ "is_hidden": 0,
+ "label": "Kassa Nigora",
+ "links": [],
+ "modified": "2026-10-16 17:39:05.431087",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Kassa Nigora",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Accounts Manager"
+  },
+  {
+   "role": "Nigora_Moliya"
+  }
+ ],
+ "sequence_id": 99.2,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Kassa",
+   "link_to": "Kassa",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Kunlik kurs",
+   "link_to": "Currency Exchange",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "label": "Oylik tabel",
+   "link_to": "oylik-tabel",
+   "type": "Page"
+  },
+  {
+   "color": "Red",
+   "label": "Xodimlar qarzdorligi",
+   "link_to": "xodim-qarzdorlik",
+   "type": "Page"
+  },
+  {
+   "color": "Red",
+   "label": "O'quvchilar qarzdorligi",
+   "link_to": "qarzdorlik",
+   "type": "Page"
+  },
+  {
+   "color": "Purple",
+   "label": "Investor paneli",
+   "link_to": "investor-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Pink",
+   "label": "Sotuv paneli",
+   "link_to": "sotuv-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Grey",
+   "label": "DDS",
+   "link_to": "DDS",
+   "report_ref_doctype": "GL Entry",
+   "type": "Report"
+  },
+  {
+   "color": "Grey",
+   "label": "P&L (Foyda va zarar)",
+   "link_to": "Profit and Loss Statement",
+   "report_ref_doctype": "GL Entry",
+   "type": "Report"
+  },
+  {
+   "color": "Grey",
+   "label": "Ombor qoldig'i",
+   "link_to": "Stock Balance",
+   "report_ref_doctype": "Stock Ledger Entry",
+   "type": "Report"
+  },
+  {
+   "color": "Yellow",
+   "doc_view": "List",
+   "label": "Mijozlar",
+   "link_to": "Customer",
+   "type": "DocType"
+  },
+  {
+   "color": "Yellow",
+   "doc_view": "List",
+   "label": "Ta'minotchilar",
+   "link_to": "Supplier",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "O'quvchilar",
+   "link_to": "Student",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Ota-onalar (Guardian)",
+   "link_to": "Guardian",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Xodimlar",
+   "link_to": "Employee",
+   "type": "DocType"
+  }
+ ],
+ "title": "Kassa Nigora"
+}

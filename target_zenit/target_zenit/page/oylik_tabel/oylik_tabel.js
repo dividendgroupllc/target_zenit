@@ -16,6 +16,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		data: null,
 		qidiruv: "",
 		tanlangan: [],      // xodimlar ko'p-tanlov filtri (bo'sh = hammasi)
+		kats: [],           // ish haqi kategoriyalari filtri — ko'p tanlov (bo'sh = hammasi)
 	};
 
 	// ---------------------------------------------------------------- CSS
@@ -41,6 +42,10 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		.ot-pop .ot-pop-keldi { color:#1a7f4e; } .ot-pop .ot-pop-keldi:hover { background:rgba(26,127,78,.12); border-color:#1a7f4e; }
 		.ot-pop .ot-pop-kelmadi { color:#c0392b; } .ot-pop .ot-pop-kelmadi:hover { background:rgba(192,57,43,.10); border-color:#c0392b; }
 		/* xodimlar ko'p-tanlov filtri */
+		.ot-katlar { display:flex; gap:5px; flex-wrap:wrap; }
+		.ot-kat { border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-muted);
+			border-radius:999px; padding:3px 11px; font-size:12px; cursor:pointer; }
+		.ot-kat.on { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
 		.ot-xf { position:relative; }
 		.ot-xf-btn { border:1px solid var(--border-color); background:var(--card-bg); border-radius:6px; padding:5px 12px; cursor:pointer; color:var(--text-color); font-size:13px; }
 		.ot-xf-btn.faol { border-color:var(--primary); color:var(--primary); font-weight:600; }
@@ -63,6 +68,10 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		td.ot-c-ishkun { cursor:pointer; font-weight:600; }
 		td.ot-c-ishkun:hover { outline:2px solid var(--primary); outline-offset:-2px; }
 		td.ot-c-ishkun.default { font-weight:400; color:var(--text-muted); }
+		.ot-pitsiz { display:block; font-size:10px; line-height:1.3; color:var(--text-muted); cursor:pointer; margin:2px 0 0; font-weight:400; white-space:nowrap; }
+		.ot-pitsiz input { vertical-align:-1px; margin:0 3px 0 0; cursor:pointer; }
+		.ot-pitsiz:has(input:checked) { color:#b26a00; font-weight:600; }
+		td.ot-c-ushlov.pitsiz { color:var(--text-muted); cursor:default; }
 		.ot-jadval thead .ot-c-nr, .ot-jadval thead .ot-c-ism, .ot-jadval thead .ot-c-lavozim, .ot-jadval thead .ot-c-oylik, .ot-jadval thead .ot-c-ishkun { z-index:4; }
 		.ot-kun { min-width:34px; cursor:pointer; }
 		.ot-kun:hover { outline:2px solid var(--primary); outline-offset:-2px; }
@@ -152,13 +161,52 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 	}
 
 	// Qatorlarni qidiruv + tanlangan xodimlar bo'yicha ko'rsatish/yashirish
+	// Ko'rinadigan qatorlar — qidiruv + xodim tanlovi + kategoriya chiplari
+	function korinadiganlar() {
+		const q = holat.qidiruv || "", sel = holat.tanlangan, kats = holat.kats;
+		return (holat.data.qatorlar || []).filter((r) => {
+			const ism = ((r.ismi || "") + " " + (r.lavozim || "")).toLowerCase();
+			return ism.includes(q)
+				&& (!sel.length || sel.indexOf(r.xodim) !== -1)
+				&& (!kats.length || kats.indexOf(r.kategoriya) !== -1);
+		});
+	}
+
 	function filtrla() {
-		const q = holat.qidiruv || "", sel = holat.tanlangan;
+		const q = holat.qidiruv || "", sel = holat.tanlangan, kats = holat.kats;
 		$joy.find("tbody tr").each(function () {
 			const ism = String($(this).data("ism") || "");
 			const xid = String($(this).data("xodim") || "");
-			$(this).toggle(ism.includes(q) && (!sel.length || sel.indexOf(xid) !== -1));
+			const kat = String($(this).data("kat") || "");
+			$(this).toggle(ism.includes(q)
+				&& (!sel.length || sel.indexOf(xid) !== -1)
+				&& (!kats.length || kats.indexOf(kat) !== -1));
 		});
+		jamiYangila();
+	}
+
+	// Plitkalar va futer JAMI'lari — FILTRLANGAN (ko'rinayotgan) qatorlardan
+	function jamiYangila() {
+		const rows = korinadiganlar();
+		const sum = (f) => rows.reduce((s, r) => s + (f(r) || 0), 0);
+		const bonus = sum((r) => Math.max(r.bonus || 0, 0));
+		const jarima = -rows.reduce((s, r) => s + Math.min(r.bonus || 0, 0), 0);
+		const nalog = sum((r) => r.nalog);
+		const pit = sum((r) => r.pitaniya);
+		const jami = sum((r) => r.jami);
+		const son = $joy.find(".ot-plitka .son");
+		son.eq(0).text(rows.length);
+		son.eq(1).text("+" + fmt(bonus));
+		son.eq(2).text("−" + fmt(jarima));
+		son.eq(3).text("−" + fmt(nalog));
+		son.eq(4).text("−" + fmt(pit));
+		son.eq(5).text(fmt(jami));
+		const ft = $joy.find("tfoot td");
+		ft.eq(6).text(fmt(sum((r) => r.bonus)));
+		ft.eq(7).text(koefFmt(sum((r) => r.koef_yigindi)));
+		ft.eq(8).text(fmt(nalog));
+		ft.eq(9).text(fmt(pit));
+		ft.eq(10).text(fmt(jami));
 	}
 
 	// ---------------------------------------------------------------- chizish
@@ -181,6 +229,12 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			badge += ` <span class="ot-badge yopilmoqda" title="Sizning rolingizda faqat shu ustunlar tahrirlanadi">✏️ Faqat: ${frappe.utils.escape_html(nomlar)}</span>`;
 		}
 
+		// Ish haqi kategoriyasi chiplari — ko'p tanlov (yo'qlama sahifasidagidek)
+		const KATLAR = ["Admin oylik", "O'qituvchi", "Tutor", "Oshxona", "Texnik xodimlar", "Qorovullash xizmati"];
+		const borKat = new Set(d.qatorlar.map((q) => q.kategoriya));
+		const katChips = KATLAR.filter((k) => borKat.has(k)).map((k) =>
+			`<button class="ot-kat ${holat.kats.indexOf(k) !== -1 ? "on" : ""}" data-kat="${frappe.utils.escape_html(k)}">${frappe.utils.escape_html(k)}</button>`).join("");
+
 		// Xodimlar ko'p-tanlov filtri menyusi (checkbox ro'yxat + ichki qidiruv)
 		const xfOptlar = d.qatorlar.map((q) => `<label>
 			<input type="checkbox" value="${frappe.utils.escape_html(q.xodim)}" ${holat.tanlangan.indexOf(q.xodim) !== -1 ? "checked" : ""}>
@@ -196,6 +250,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				</div>
 				${badge}
 				<span class="ot-info">${d.kun_soni} kun; norma ish kuni: o'qituvchi <b>21</b>, boshqalar <b>26</b> ("Ish kuni" ustunida o'zgartiriladi)</span>
+				<div class="ot-katlar" title="Ish haqi kategoriyasi — bir nechtasini tanlash mumkin">${katChips}</div>
 				<div class="ot-xf">
 					<button class="ot-xf-btn ${holat.tanlangan.length ? "faol" : ""}">👥 Xodimlar${holat.tanlangan.length ? ` · ${holat.tanlangan.length}` : ""} ▾</button>
 					<div class="ot-xf-menu" style="display:none">
@@ -242,13 +297,17 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		$(document).off("click.otxf").on("click.otxf", () => $xfMenu.hide());
 		$joy.append($bosh);
 
-		// plitkalar
+		// plitkalar — bonus/jarima alohida (q.bonus imzoli: + bonus, − jarima)
+		const jamiBonus = d.qatorlar.reduce((s, q) => s + Math.max(q.bonus || 0, 0), 0);
+		const jamiJarima = d.qatorlar.reduce((s, q) => s - Math.min(q.bonus || 0, 0), 0);
 		$joy.append(`
 			<div class="ot-plitkalar">
 				<div class="ot-plitka"><div class="son">${d.qatorlar.length}</div><div class="nom">Xodimlar</div></div>
-				<div class="ot-plitka"><div class="son">${fmt(d.jami_oylik)}</div><div class="nom">Jami hisoblangan (so'm)</div></div>
-				<div class="ot-plitka"><div class="son">${fmt(d.jami_bonus)}</div><div class="nom">Bonus − jarima (so'm)</div></div>
-				<div class="ot-plitka"><div class="son">−${fmt((d.jami_nalog || 0) + (d.jami_pitaniya || 0))}</div><div class="nom">Nalog + pitaniya (so'm)</div></div>
+				<div class="ot-plitka"><div class="son" style="color:#1a7f4e">+${fmt(jamiBonus)}</div><div class="nom">Bonus (so'm)</div></div>
+				<div class="ot-plitka"><div class="son" style="color:#c0392b">−${fmt(jamiJarima)}</div><div class="nom">Jarima (so'm)</div></div>
+				<div class="ot-plitka"><div class="son" style="color:#c0392b">−${fmt(d.jami_nalog || 0)}</div><div class="nom">Nalog (so'm)</div></div>
+				<div class="ot-plitka"><div class="son" style="color:#c0392b">−${fmt(d.jami_pitaniya || 0)}</div><div class="nom">Pitaniya (so'm)</div></div>
+				<div class="ot-plitka" style="border-color:var(--primary)"><div class="son">${fmt(d.jami_oylik)}</div><div class="nom">UMUMIY to'lanadigan (so'm)</div></div>
 			</div>`);
 
 		// jadval
@@ -262,18 +321,22 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 		th += `<th>Jami (so'm)</th></tr>`;
 
 		let rows = "";
+		// "Pitaniyasiz" checkbox'i pitaniya maydoni huquqi bilan boshqariladi
+		const pitOk = d.tahrir_mumkin && (d.tahrir_maydonlar || []).indexOf("pitaniya") !== -1;
+		const pitsizChk = (q, i) => `<label class="ot-pitsiz" title="Pitaniya hisoblanmasin — FAQAT shu oy uchun. Belgi keyingi oyga default bo'lib o'tadi (u yerda ham o'zgartirsa bo'ladi), oldingi oylar o'zgarmaydi.">
+			<input type="checkbox" data-i="${i}" ${q.pitaniyasiz ? "checked" : ""} ${pitOk ? "" : "disabled"}>ovqatsiz</label>`;
 		d.qatorlar.forEach((q, i) => {
 			let manba = "";
 			if (q.oylik.manba === "kassa") manba = '<span class="ot-manba-kassa">Kassa taklifi*</span>';
 			if (q.oylik.manba === "yoq") manba = '<span class="ot-manba-kassa ot-manba-yoq">kiritilmagan</span>';
-			let tr = `<tr data-ism="${frappe.utils.escape_html(((q.ismi || "") + " " + (q.lavozim || "")).toLowerCase())}" data-xodim="${q.xodim}">
+			let tr = `<tr data-ism="${frappe.utils.escape_html(((q.ismi || "") + " " + (q.lavozim || "")).toLowerCase())}" data-xodim="${q.xodim}" data-kat="${frappe.utils.escape_html(q.kategoriya || "")}">
 				<td class="ot-c-nr">${i + 1}</td>
 				<td class="ot-c-ism" title="${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? ` — ${q.ketgan_sana} da ishdan ketgan` : ""}">${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? `<span class="ot-ketgan">ketgan: ${q.ketgan_sana}</span>` : ""}</td>
 				<td class="ot-c-lavozim" title="${frappe.utils.escape_html(q.lavozim || "")}">${frappe.utils.escape_html(q.lavozim || "—")}</td>
 				<td class="ot-c-oylik ot-c-oylik-t" data-i="${i}" title="${q.tolov_turi === "soat" ? "SOAT NARXI — bosib FAQAT shu oy uchun o'zgartiring" : "Bosib FAQAT shu oy uchun o'zgartiring — boshqa oylarga ta'sir qilmaydi"}">${fmt(q.oylik.summa)}${q.tolov_turi === "soat" ? '<span class="ot-manba-kassa" style="color:var(--text-muted)">soat narxi</span>' : ""}${manba}</td>
 				${q.tolov_turi === "soat"
-					? `<td class="ot-c-ishkun default" data-i="${i}" title="Soatbay xodim — norma ish kuni qatnashmaydi, hisob soatlardan">soatbay</td>`
-					: `<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="${q.ish_kuni_manba === "oy" ? "Shu oy uchun kiritilgan" : q.ish_kuni_manba === "xodim" ? "Xodimning doimiy normasi" : "Default"} norma ish kuni — bosib FAQAT shu oy uchun o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}</td>`}`;
+					? `<td class="ot-c-ishkun default" data-i="${i}" title="Soatbay xodim — norma ish kuni qatnashmaydi, hisob soatlardan">soatbay${pitsizChk(q, i)}</td>`
+					: `<td class="ot-c-ishkun ${q.ish_kuni_manba === "default" ? "default" : ""}" data-i="${i}" title="${q.ish_kuni_manba === "oy" ? "Shu oy uchun kiritilgan" : q.ish_kuni_manba === "xodim" ? "Xodimning doimiy normasi" : "Default"} norma ish kuni — bosib FAQAT shu oy uchun o'zgartiring (kunlik narx = oylik / shu son)">${q.ish_kuni}${pitsizChk(q, i)}</td>`}`;
 			q.kunlar.forEach((kq, j) => {
 				const kd = d.kunlar[j];
 				if (kq.holat === "kirmagan") {
@@ -293,10 +356,14 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				? `<td class="ot-c-kelgan" title="Oyda ishlagan soatlari">${koefFmt(q.koef_yigindi)} <small>soat</small></td>`
 				: `<td class="ot-c-kelgan" title="Kelgan kunlari (1 belgilanganlar), norma: ${q.ish_kuni}">${koefFmt(q.koef_yigindi)}</td>`;
 			tr += `<td class="ot-c-ushlov${q.nalog ? "" : " bosh"}" data-tur="nalog" data-i="${i}" title="Nalog qo'lda kiritiladi — bosib o'zgartiring (0 = nalog yo'q). Jamidan ayriladi.">${q.nalog ? "−" + fmt(q.nalog) : "+"}</td>`;
-			const pitIzoh = q.pitaniya_manba === "qolda"
-				? `QO'LDA kiritilgan pitaniya (avtomatik: ${q.kelgan_kun} kun × ${fmt(q.pitaniya_kunlik)} = ${fmt(q.pitaniya_avto)} so'm) — bosib o'zgartiring`
-				: `Avtomatik: ${q.kelgan_kun} kelgan kun × ${fmt(q.pitaniya_kunlik)} so'm — bosib qo'lda o'zgartirsa bo'ladi`;
-			tr += `<td class="ot-c-ushlov${q.pitaniya ? "" : " bosh"}" data-tur="pitaniya" data-i="${i}" title="${pitIzoh}">${q.pitaniya ? "−" + fmt(q.pitaniya) : "0"}${q.pitaniya_manba === "qolda" ? `<span class="qolda-b">qo'lda</span>` : ""}</td>`;
+			const pitIzoh = q.pitaniyasiz
+				? "Bu xodimga SHU OYda pitaniya hisoblanmaydi (Ish kuni ustunidagi «ovqatsiz» belgisi) — yozib ham bo'lmaydi"
+				: q.pitaniya_manba === "qolda"
+					? `QO'LDA kiritilgan pitaniya (avtomatik: ${q.kelgan_kun} kun × ${fmt(q.pitaniya_kunlik)} = ${fmt(q.pitaniya_avto)} so'm) — bosib o'zgartiring`
+					: `Avtomatik: ${q.kelgan_kun} kelgan kun × ${fmt(q.pitaniya_kunlik)} so'm — bosib qo'lda o'zgartirsa bo'ladi`;
+			tr += q.pitaniyasiz
+				? `<td class="ot-c-ushlov bosh pitsiz" data-tur="pitaniya" data-i="${i}" title="${pitIzoh}">—<span class="qolda-b" style="color:var(--text-muted)">ovqatsiz</span></td>`
+				: `<td class="ot-c-ushlov${q.pitaniya ? "" : " bosh"}" data-tur="pitaniya" data-i="${i}" title="${pitIzoh}">${q.pitaniya ? "−" + fmt(q.pitaniya) : "0"}${q.pitaniya_manba === "qolda" ? `<span class="qolda-b">qo'lda</span>` : ""}</td>`;
 			const ushlovIzoh = `\nHisoblangan: ${fmt(q.hisob)} − nalog ${fmt(q.nalog)} − pitaniya ${fmt(q.pitaniya)} = ${fmt(q.jami)}`;
 			const jamiIzoh = (q.jami_manba === "qolda"
 				? `QO'LDA kiritilgan hisob summasi (avtomatik hisob: ${fmt(q.hisob_avto)} so'm) — bosib o'zgartiring, 0 kiritsangiz avtoga qaytadi`
@@ -372,8 +439,28 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			const q = d.qatorlar[$(this).data("i")];
 			const tur = $(this).data("tur");
 			if (!mumkin(tur)) return;
+			if (tur === "pitaniya" && q.pitaniyasiz) {
+				frappe.show_alert({
+					message: "Bu xodimga shu oyda «ovqatsiz» belgisi qo'yilgan — pitaniya yozilmaydi. Ish kuni ustunidagi belgini oching.",
+					indicator: "orange",
+				});
+				return;
+			}
 			if (tur === "nalog") nalogDialog(q);
 			else pitaniyaDialog(q);
+		});
+		// "Pitaniyasiz" checkbox'i — Ish kuni ustunida (katak dialogini ochmasin)
+		$orab.on("click", ".ot-pitsiz", (e) => e.stopPropagation());
+		$orab.on("change", ".ot-pitsiz input", function (e) {
+			e.stopPropagation();
+			const q = d.qatorlar[$(this).data("i")];
+			frappe.call({
+				method: "target_zenit.target_zenit.api.oylik_tabel.set_pitaniyasiz",
+				args: { xodim: q.xodim, yil: d.yil, oy: d.oy, holat: this.checked ? 1 : 0 },
+				freeze: true,
+				callback: () => yukla(),
+				error: () => yukla(),
+			});
 		});
 		if (mumkin("jami")) {
 			$orab.on("click", "td.ot-c-jami-t", function () {
@@ -502,10 +589,11 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				.text(q.pitaniya ? "−" + fmt(q.pitaniya) : "0");
 		}
 		$joy.find("tfoot td.ot-c-ushlov").eq(1).text(fmt(d.jami_pitaniya));
-		$joy.find(".ot-plitka .son").eq(3).text("−" + fmt((d.jami_nalog || 0) + (d.jami_pitaniya || 0)));
+		// plitkalar tartibi: 0 Xodimlar, 1 Bonus, 2 Jarima, 3 Nalog, 4 Pitaniya, 5 UMUMIY
+		$joy.find(".ot-plitka .son").eq(4).text("−" + fmt(d.jami_pitaniya || 0));
 		$joy.find("tfoot td.ot-c-kelgan").text(koefFmt(d.qatorlar.reduce((s, x) => s + (x.koef_yigindi || 0), 0)));
 		$joy.find("tfoot td.ot-c-jami").text(fmt(d.jami_oylik));
-		$joy.find(".ot-plitka .son").eq(1).text(fmt(d.jami_oylik));
+		$joy.find(".ot-plitka .son").eq(5).text(fmt(d.jami_oylik));
 	}
 
 	function oylikDialog(q) {

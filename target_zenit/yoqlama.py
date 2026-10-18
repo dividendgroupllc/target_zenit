@@ -40,6 +40,43 @@ def _oy_ochiqmi(yil, oy) -> bool:
 	return holat != "Yopiq"
 
 
+def _norma_map(yil, oy, nomlar):
+	"""Shu oy uchun qo'lda kiritilgan norma ish kunlari ("Tabel Ish Kuni")."""
+	if not nomlar:
+		return {}
+	return {r.xodim: cint(r.kun) for r in frappe.get_all(
+		"Tabel Ish Kuni", filters={"yil": yil, "oy": oy, "xodim": ["in", nomlar]},
+		fields=["xodim", "kun"], limit_page_length=0, ignore_permissions=True)}
+
+
+def _kerak_kun(x, kunlar, dars_kunlari, norma_map, kirgan, ketgan):
+	"""Xodim shu oyda NECHA KUN kelishi kerak + bu son qayerdan olingani.
+
+	Dars jadvalida kunlari bor xodim (o'qituvchi) — jadval bo'yicha: oyda
+	uning dars kunlari necha marta keladi (ishga kirgan/ketgan sanasi
+	hisobga olinadi). Jadvali yo'q xodim — oylik tabeldagi norma ish kuni
+	zanjiri: "Tabel Ish Kuni" -> Employee.custom_ish_kuni -> default
+	(o'qituvchi 21, boshqalar 26)."""
+	if dars_kunlari:
+		n = 0
+		for kd in kunlar:
+			d = getdate(kd["sana"])
+			if d.weekday() not in dars_kunlari:
+				continue
+			if kirgan and d < kirgan:
+				continue
+			if ketgan and d > ketgan:
+				continue
+			n += 1
+		return n, "jadval"
+	if x.name in norma_map:
+		return norma_map[x.name], "oy"
+	if cint(x.get("custom_ish_kuni")):
+		return cint(x.get("custom_ish_kuni")), "xodim"
+	from target_zenit.target_zenit.api.oylik_tabel import _default_ish_kuni
+	return _default_ish_kuni(x.designation), "default"
+
+
 @frappe.whitelist()
 def get_data(yil=None, oy=None, kategoriya=None):
 	"""Oylik yo'qlama to'ri: xodimlar x kunlar. Pul maydonlari qaytarilmaydi.
@@ -60,7 +97,8 @@ def get_data(yil=None, oy=None, kategoriya=None):
 		filters={"custom_tabelda": 1, "date_of_joining": ["<=", oy_oxiri]},
 		# DIQQAT: oylik/summa maydonlari ATAYLAB olinmaydi
 		fields=["name", "employee_name", "designation", "custom_tolov_turi",
-				"custom_ish_haqi_kategoriya", "date_of_joining", "relieving_date", "status"],
+				"custom_ish_haqi_kategoriya", "custom_ish_kuni",
+				"date_of_joining", "relieving_date", "status"],
 		order_by="employee_name",
 		limit_page_length=0,
 		ignore_permissions=True,
@@ -116,25 +154,46 @@ def get_data(yil=None, oy=None, kategoriya=None):
 				"status": a.status, "koef": flt(a.custom_koef),
 			}
 
-	# Dars jadvalidan: kim qaysi hafta kunlari dars qiladi (yo'qlama uchun yo'riqnoma)
+	# Dars jadvalidan: kim qaysi hafta kunlari dars qiladi (yo'qlama uchun
+	# yo'riqnoma) va QAYSI FANlardan kiradi
 	darsli = {}
+	fanlar = {}
 	versiya = frappe.db.get_value("Jadval Versiyasi", {"holat": "Faol"}, "name") \
 		or frappe.db.get_value("Jadval Versiyasi", {}, "name")
 	if versiya:
-		KUN_RAQAM = {"Dushanba": 0, "Seshanba": 1, "Chorshanba": 2, "Payshanba": 3, "Juma": 4}
-		for j in frappe.get_all(
+		KUN_RAQAM = {"Dushanba": 0, "Seshanba": 1, "Chorshanba": 2, "Payshanba": 3,
+					 "Juma": 4, "Shanba": 5}
+		# Instructor -> Employee bitta so'rovda (har yozuv uchun alohida emas)
+		ins_emp = {i.name: i.employee for i in frappe.get_all(
+			"Instructor", fields=["name", "employee"], limit_page_length=0) if i.employee}
+		yozuvlar = frappe.get_all(
 			"Jadval Yozuvi", filters={"versiya": versiya},
-			fields=["oqituvchi", "kun"], limit_page_length=0,
-		):
-			emp = frappe.db.get_value("Instructor", j.oqituvchi, "employee") if j.oqituvchi else None
-			if emp and j.kun in KUN_RAQAM:
+			fields=["oqituvchi", "kun", "fan"], limit_page_length=0,
+		)
+		# Fan nomlari (Course docname -> course_name)
+		fan_kodlari = {j.fan for j in yozuvlar if j.fan}
+		fan_nomi = {}
+		if fan_kodlari:
+			fan_nomi = {c.name: (c.course_name or c.name) for c in frappe.get_all(
+				"Course", filters={"name": ["in", list(fan_kodlari)]},
+				fields=["name", "course_name"], limit_page_length=0)}
+		for j in yozuvlar:
+			emp = ins_emp.get(j.oqituvchi)
+			if not emp:
+				continue
+			if j.kun in KUN_RAQAM:
 				darsli.setdefault(emp, set()).add(KUN_RAQAM[j.kun])
+			if j.fan:
+				fanlar.setdefault(emp, set()).add(fan_nomi.get(j.fan, j.fan))
 
 	kunlar = []
 	for k in range(1, kunlar_soni + 1):
 		d = getdate(f"{yil}-{oy:02d}-{k:02d}")
 		kunlar.append({"kun": k, "sana": str(d), "hafta": HAFTA[d.weekday()],
 					   "dam": d.weekday() >= 5, "kelajak": d > bugun})
+
+	# "Nechi kun kelishi kerak" uchun oylik tabeldagi norma ish kuni zanjiri
+	norma_map = _norma_map(yil, oy, nomlar)
 
 	qatorlar = []
 	for x in xodimlar:
@@ -160,6 +219,8 @@ def get_data(yil=None, oy=None, kategoriya=None):
 				keldi += 1
 			kunlik.append({"sana": kd["sana"], "holat": holat,
 						   "koef": b["koef"] if b else None, "tashqari": None})
+		kerak_kun, kerak_manba = _kerak_kun(x, kunlar, darsli.get(x.name), norma_map,
+											kirgan, ketgan)
 		qatorlar.append({
 			"xodim": x.name,
 			# Ism HAR DOIM Employee hujjatidan (xodim ID bo'yicha) — Instructor'dagi
@@ -170,6 +231,9 @@ def get_data(yil=None, oy=None, kategoriya=None):
 			"soatbay": (x.custom_tolov_turi or "").strip() == "Soatbay",
 			"kirgan_sana": str(kirgan) if kirgan else None,
 			"ketgan_sana": str(ketgan) if ketgan else None,
+			"fanlar": sorted(fanlar.get(x.name, [])),
+			"kerak_kun": kerak_kun,
+			"kerak_manba": kerak_manba,
 			"dars_kunlari": sorted(darsli.get(x.name, [])),
 			"kunlik": kunlik,
 			"keldi": keldi,

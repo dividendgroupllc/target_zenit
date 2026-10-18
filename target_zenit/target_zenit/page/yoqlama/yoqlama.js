@@ -89,15 +89,34 @@ class TZYoqlama {
 				title="${k.sana}${darsli ? " · darsi bor" : ""}${d.faqat_bugun && !bugunmi ? " · faqat bugungi kun belgilanadi" : ""}">${matn}</button></td>`;
 		}).join("");
 		return `<tr>
-			<th class="nom" title="${this.esc(r.ism)}${r.ketgan_sana ? ` — ${r.ketgan_sana} da ishdan ketgan` : ""}"><b>${this.esc(r.ism)}</b><span>${this.esc(r.kategoriya || r.lavozim || "")}${r.soatbay ? " · soatbay" : ""}</span>${r.ketgan_sana ? `<span class="ketgan">ketgan: ${this.esc(r.ketgan_sana)}</span>` : ""}</th>
+			<th class="nom" title="${this.esc(r.ism)}${r.lavozim ? ` — ${this.esc(r.lavozim)}` : ""}${r.fanlar && r.fanlar.length ? ` · fanlar: ${this.esc(r.fanlar.join(", "))}` : ""}${r.ketgan_sana ? ` — ${r.ketgan_sana} da ishdan ketgan` : ""}"><b>${this.esc(r.ism)}</b><span>${this.esc(r.lavozim || r.kategoriya || "")}${r.soatbay ? " · soatbay" : ""}</span>${r.fanlar && r.fanlar.length ? `<span class="fan">${this.esc(this.fanQisqa(r.fanlar))}</span>` : ""}${r.ketgan_sana ? `<span class="ketgan">ketgan: ${this.esc(r.ketgan_sana)}</span>` : ""}</th>
 			${kataklar}
-			<td class="jami"><b>${r.keldi}</b></td></tr>`;
+			<td class="jami"><b>${r.keldi}</b></td>
+			<td class="jami kerak" title="${this.kerakIzoh(r)}">${r.kerak_kun}</td></tr>`;
+	}
+
+	// Fanlar ko'p bo'lsa ism ustuni cho'zilib ketmasin: 3 tasi + "+N"
+	fanQisqa(fanlar) {
+		return fanlar.length > 3
+			? `${fanlar.slice(0, 3).join(", ")} +${fanlar.length - 3}`
+			: fanlar.join(", ");
+	}
+
+	// "Kerak" ustuni izohi — son qayerdan olingani
+	kerakIzoh(r) {
+		if (r.kerak_manba === "jadval") {
+			return `Dars jadvali bo'yicha: shu oyda ${r.kerak_kun} dars kuni`
+				+ (r.fanlar && r.fanlar.length ? ` · ${r.fanlar.join(", ")}` : "");
+		}
+		const m = { oy: "shu oy uchun kiritilgan norma", xodim: "xodimning doimiy normasi",
+			default: "default norma (o'qituvchi 21, boshqalar 26)" }[r.kerak_manba] || "norma";
+		return `Norma ish kuni — ${m}`;
 	}
 
 	tbodyHtml() {
 		const rows = this.qatorlar();
 		return rows.map((r) => this.rowHtml(r)).join("")
-			|| `<tr><td colspan="40" class="empty">Xodim topilmadi</td></tr>`;
+			|| `<tr><td colspan="41" class="empty">Xodim topilmadi</td></tr>`;
 	}
 
 	// Qidiruvda FAQAT jadval tanasi yangilanadi — input fokusi saqlanadi
@@ -147,7 +166,7 @@ class TZYoqlama {
 
 			<div class="card scroll-x">
 				<table class="ytbl">
-					<thead><tr><th class="nom nom-head">Xodim (${this.qatorlar().length})</th>${head}<th class="jami">Keldi</th></tr></thead>
+					<thead><tr><th class="nom nom-head">Xodim (${this.qatorlar().length})</th>${head}<th class="jami">Keldi</th><th class="jami kerak" title="Shu oyda necha kun kelishi kerak">Kerak</th></tr></thead>
 					<tbody>${this.tbodyHtml()}</tbody>
 				</table>
 			</div>
