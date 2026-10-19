@@ -32,6 +32,20 @@ from target_zenit.telefoniya import storage
 # shuning uchun xom fayl uchun xavfsiz chegara ~13 MB.
 MAKS_INLINE_BAYT = 13 * 1024 * 1024
 
+# Qayta urinish: 429 (limit) va 5xx (503 "high demand") — vaqtinchalik xatolar.
+URINISH = 4
+KUTISH = (2, 8, 25)          # sekund: urinishlar orasidagi pauza
+VAQTINCHALIK_KODLAR = {408, 429, 500, 502, 503, 504, 529}
+
+
+class VaqtinchalikXato(Exception):
+	"""Provayder tomonidagi o'tkinchi muammo (band, limit, tarmoq).
+
+	Doimiy xatodan (noto'g'ri kalit, buzuq fayl) ataylab ajratilgan: doimiy xatoda
+	hujjat `holat="Xato"` bo'lib navbatdan chiqadi, vaqtinchalik xatoda esa
+	`holat="Yozuv bor"` qolib, soatlik vazifa uni qayta oladi.
+	"""
+
 MIME = {
 	"mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg", "opus": "audio/ogg",
 	"m4a": "audio/mp4", "aac": "audio/aac", "amr": "audio/amr", "3gp": "audio/3gpp",
@@ -66,6 +80,7 @@ def _sozlamalar() -> dict:
 		"til": (getattr(s, "stt_til", None) or "uz").strip(),
 		"min_sek": cint(getattr(s, "stt_min_sekund", None)) or 5,
 		"maks_daq": cint(getattr(s, "stt_maks_daqiqa", None)) or 30,
+		"zaxira": (getattr(s, "stt_zaxira_model", None) or "").strip(),
 		"kalit": _kalit(s),
 	}
 
@@ -144,6 +159,12 @@ def transkripsiya_qil(qongiroq: str, majburiy: bool = False, qayta: bool = False
 			matn, model = _mohir(toliq, s)
 		else:
 			frappe.throw(_("Noma'lum STT provayder: {0}").format(s["provayder"]))
+	except VaqtinchalikXato as e:
+		# Provayder band/limit — hujjat navbatda QOLADI (holat "Yozuv bor"), faqat
+		# sabab yoziladi. Soatlik `qolganlarni_qil` keyinroq qayta uradi.
+		doc.db_set("xato_matni", f"Vaqtinchalik: {e}"[:500], notify=True)
+		frappe.db.commit()
+		return {"holat": "vaqtinchalik", "sabab": str(e)[:300], "qayta": "soatlik vazifa uradi"}
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), f"STT xato: {qongiroq}")
 		_xato(doc, f"{type(e).__name__}: {e}"[:500])
@@ -195,9 +216,11 @@ def _davomiylik(yol: str) -> float | None:
 
 # ---------------------------------------------------------------- provayderlar
 def _gemini(yol: str, s: dict) -> tuple[str, str]:
-	"""Google Gemini — audioni to'g'ridan-to'g'ri oladi (STT+diarizatsiya bir so'rovda)."""
-	import requests
+	"""Google Gemini — audioni to'g'ridan-to'g'ri oladi (STT+diarizatsiya bir so'rovda).
 
+	Modellar ro'yxati bo'yicha ketadi: asosiy model, keyin (sozlangan bo'lsa) zaxira.
+	Har biri bir necha marta qayta uriniladi — 503 "high demand" o'tkinchi holat.
+	"""
 	if not s["kalit"]:
 		frappe.throw(_("Gemini API kalit kiritilmagan (Telefoniya Sozlamalari)."))
 
@@ -205,22 +228,63 @@ def _gemini(yol: str, s: dict) -> tuple[str, str]:
 	with open(yol, "rb") as f:
 		b64 = base64.standard_b64encode(f.read()).decode()
 
-	r = requests.post(
-		"https://generativelanguage.googleapis.com/v1beta/interactions",
-		headers={"x-goog-api-key": s["kalit"], "Content-Type": "application/json"},
-		json={
-			"model": s["model"],
-			"input": [
-				{"type": "text", "text": PROMPT},
-				{"type": "audio", "data": b64,
-				 "mime_type": MIME.get(kengaytma, "audio/mpeg")},
-			],
-		},
-		timeout=900,
-	)
-	if r.status_code != 200:
-		frappe.throw(_("Gemini {0}: {1}").format(r.status_code, r.text[:400]))
-	return _gemini_matn(r.json()), s["model"]
+	modellar = [s["model"]] + ([s["zaxira"]] if s.get("zaxira") and s["zaxira"] != s["model"] else [])
+	oxirgi: Exception | None = None
+
+	for model in modellar:
+		try:
+			return _gemini_soro(model, b64, kengaytma, s["kalit"]), model
+		except VaqtinchalikXato as e:
+			# Bu model band — zaxira model bo'lsa unga o'tamiz
+			oxirgi = e
+			if model != modellar[-1]:
+				frappe.logger("telefoniya").warning(f"STT: {model} band, zaxiraga o'tildi: {e}")
+			continue
+
+	raise oxirgi or VaqtinchalikXato("Gemini javob bermadi")
+
+
+def _gemini_soro(model: str, b64: str, kengaytma: str, kalit: str) -> str:
+	"""Bitta modelga so'rov — vaqtinchalik xatolarda qayta urinadi."""
+	import random
+	import time
+
+	import requests
+
+	body = {
+		"model": model,
+		"input": [
+			{"type": "text", "text": PROMPT},
+			{"type": "audio", "data": b64, "mime_type": MIME.get(kengaytma, "audio/mpeg")},
+		],
+	}
+
+	for urinish in range(URINISH):
+		try:
+			r = requests.post(
+				"https://generativelanguage.googleapis.com/v1beta/interactions",
+				headers={"x-goog-api-key": kalit, "Content-Type": "application/json"},
+				json=body, timeout=900,
+			)
+		except requests.RequestException as e:
+			sabab = VaqtinchalikXato(f"tarmoq: {type(e).__name__}")
+		else:
+			if r.status_code == 200:
+				return _gemini_matn(r.json())
+			if r.status_code in VAQTINCHALIK_KODLAR:
+				sabab = VaqtinchalikXato(f"Gemini {r.status_code} ({model}): {r.text[:200]}")
+			else:
+				# 400/401/403 — kalit, model nomi yoki fayl muammosi. Qayta urinish
+				# foyda bermaydi, shuning uchun darhol doimiy xato beramiz.
+				frappe.throw(_("Gemini {0} ({1}): {2}").format(r.status_code, model, r.text[:400]))
+
+		if urinish < URINISH - 1:
+			kut = KUTISH[min(urinish, len(KUTISH) - 1)] + random.uniform(0, 2)
+			frappe.logger("telefoniya").warning(
+				f"STT qayta urinish {urinish + 1}/{URINISH} ({kut:.0f}s kutib): {sabab}")
+			time.sleep(kut)
+
+	raise sabab
 
 
 def _gemini_matn(javob: dict) -> str:

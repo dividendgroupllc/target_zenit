@@ -1,5 +1,5 @@
 # Copyright (c) 2026, Target Zenit
-# Birlashgan dars sessiyasi — eduvisit "session" uslubi: bitta darsда davomat + baho +
+# Birlashgan dars sessiyasi — "session" uslubi: bitta darsda davomat + baho +
 # mavzu (o'tilgan) + uy vazifa BIR joyda. Faqat ma'lumot yig'adi va uy vazifani saqlaydi;
 # davomat/baho = baholash.natija_saqla, mavzu = oquv_reja.dars_otdim orqali.
 from __future__ import annotations

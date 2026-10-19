@@ -19,6 +19,7 @@
   "ai_yoqilgan",
   "stt_provayder",
   "gemini_model",
+  "stt_zaxira_model",
   "gemini_api_kalit",
   "column_break_ai",
   "stt_til",
@@ -121,6 +122,14 @@
    "description": "gemini-3.8-flash (aniqroq) yoki gemini-3.8-flash-lite (2x arzon)"
   },
   {
+   "fieldname": "stt_zaxira_model",
+   "fieldtype": "Data",
+   "label": "Zaxira model",
+   "default": "gemini-3.8-flash-lite",
+   "depends_on": "eval:doc.stt_provayder=='gemini'",
+   "description": "Asosiy model band bo'lsa (503 high demand) shunga o'tadi. Bo'sh = zaxira yo'q"
+  },
+  {
    "fieldname": "gemini_api_kalit",
    "fieldtype": "Password",
    "label": "Gemini API kalit",
@@ -156,7 +165,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-19 12:00:00.000000",
+ "modified": "2026-10-19 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Telefoniya Sozlamalari",

@@ -111,7 +111,7 @@
    "label": "Hodisa kodi"
   },
   {
-   "description": "Manba hodisa ID (dedup uchun, masalan eduvisit: ev-12345)",
+   "description": "Manba hodisa ID (dedup uchun, masalan: hik-12345)",
    "fieldname": "external_event_id",
    "fieldtype": "Data",
    "label": "Manba hodisa ID",
