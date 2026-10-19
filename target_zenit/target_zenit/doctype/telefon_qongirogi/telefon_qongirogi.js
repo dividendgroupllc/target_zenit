@@ -2,6 +2,7 @@
 frappe.ui.form.on("Telefon Qongirogi", {
 	refresh(frm) {
 		pleer_chiz(frm);
+		transkript_tugma(frm);
 
 		if (frm.doc.admission_lead) {
 			frm.add_custom_button(__("Murojaatni ochish"), () =>
@@ -47,4 +48,36 @@ function pleer_chiz(frm) {
 			${__("Chap kanal — menejer, o'ng kanal — mijoz.")} ${hajm}
 		</div>
 	`);
+}
+
+// Nutq -> matn: yozuv bor bo'lsa qo'lda ham ishga tushirish mumkin.
+// Avtomatik oqim: yozuv kelganda telefoniya/api.py o'zi navbatga qo'yadi.
+function transkript_tugma(frm) {
+	if (frm.is_new() || !frm.doc.yozuv_bor || frm.doc.yozuv_ochirildi) return;
+
+	const bor = !!frm.doc.transkript;
+	frm.add_custom_button(bor ? __("Transkriptni yangilash") : __("Transkripsiya qilish"), () => {
+		if (bor && !confirm(__("Mavjud transkript ustiga yoziladi. Davom etamizmi?"))) return;
+		frappe.call({
+			method: "target_zenit.telefoniya.stt.qolda",
+			args: { qongiroq: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Nutq matnga aylantirilmoqda… (bir necha sekund)"),
+			callback: (r) => {
+				const m = r.message || {};
+				if (m.holat === "tayyor") {
+					frappe.show_alert({
+						message: __("Transkript tayyor: {0} so'z ({1})", [m.sozlar, m.model]),
+						indicator: "green",
+					}, 7);
+				} else {
+					frappe.show_alert({
+						message: __("Transkripsiya bo'lmadi: {0}", [m.sabab || m.holat || "?"]),
+						indicator: "orange",
+					}, 10);
+				}
+				frm.reload_doc();
+			},
+		});
+	}, __("AI"));
 }

@@ -51,6 +51,15 @@
   "fayl_hash",
   "fayl_yoli",
   "yozuv_html",
+  "section_transkript",
+  "transkript",
+  "section_transkript_meta",
+  "stt_model",
+  "transkript_tili",
+  "column_break_transkript",
+  "transkripsiya_vaqti",
+  "transkript_sozlar",
+  "yozuv_davomiyligi",
   "xato_matni"
  ],
  "fields": [
@@ -331,6 +340,60 @@
    "label": "Pleer"
   },
   {
+   "fieldname": "section_transkript",
+   "fieldtype": "Section Break",
+   "label": "Transkripsiya (nutq → matn)",
+   "collapsible": 1,
+   "depends_on": "eval:doc.yozuv_bor || doc.transkript"
+  },
+  {
+   "fieldname": "transkript",
+   "fieldtype": "Long Text",
+   "label": "Transkript",
+   "read_only": 1,
+   "description": "AI tomonidan audiodan olingan matn"
+  },
+  {
+   "fieldname": "section_transkript_meta",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "stt_model",
+   "fieldtype": "Data",
+   "label": "STT model",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transkript_tili",
+   "fieldtype": "Data",
+   "label": "Til",
+   "read_only": 1,
+   "length": 16
+  },
+  {
+   "fieldname": "column_break_transkript",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "transkripsiya_vaqti",
+   "fieldtype": "Datetime",
+   "label": "Transkripsiya vaqti",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transkript_sozlar",
+   "fieldtype": "Int",
+   "label": "So'z soni",
+   "read_only": 1
+  },
+  {
+   "fieldname": "yozuv_davomiyligi",
+   "fieldtype": "Int",
+   "label": "Audio davomiyligi (sek)",
+   "read_only": 1,
+   "description": "Fayldan o'lchangan (metadatadan emas)"
+  },
+  {
    "fieldname": "xato_matni",
    "fieldtype": "Small Text",
    "label": "Xato",
@@ -369,7 +432,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-10 10:00:00.000000",
+ "modified": "2026-10-19 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Telefon Qongirogi",

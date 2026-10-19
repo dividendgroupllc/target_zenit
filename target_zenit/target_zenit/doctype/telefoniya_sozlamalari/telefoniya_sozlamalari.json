@@ -17,7 +17,13 @@
   "sim_pauza_maks",
   "section_ai",
   "ai_yoqilgan",
-  "stt_provayder"
+  "stt_provayder",
+  "gemini_model",
+  "gemini_api_kalit",
+  "column_break_ai",
+  "stt_til",
+  "stt_min_sekund",
+  "stt_maks_daqiqa"
  ],
  "fields": [
   {
@@ -103,12 +109,54 @@
    "fieldname": "stt_provayder",
    "fieldtype": "Select",
    "label": "Nutq->matn provayderi",
-   "options": "yoq\nfaster_whisper\nmohir"
+   "options": "yoq\ngemini\nfaster_whisper\nmohir",
+   "description": "gemini = eng aniq (o'zbekcha), pullik API kalit kerak"
+  },
+  {
+   "fieldname": "gemini_model",
+   "fieldtype": "Data",
+   "label": "Gemini model",
+   "default": "gemini-3.8-flash",
+   "depends_on": "eval:doc.stt_provayder=='gemini'",
+   "description": "gemini-3.8-flash (aniqroq) yoki gemini-3.8-flash-lite (2x arzon)"
+  },
+  {
+   "fieldname": "gemini_api_kalit",
+   "fieldtype": "Password",
+   "label": "Gemini API kalit",
+   "depends_on": "eval:doc.stt_provayder=='gemini'",
+   "description": "aistudio.google.com dan olinadi. Bo'sh bo'lsa site_config.json'dagi gemini_api_key ishlatiladi"
+  },
+  {
+   "fieldname": "column_break_ai",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stt_til",
+   "fieldtype": "Data",
+   "label": "Nutq tili",
+   "default": "uz",
+   "length": 16,
+   "description": "uz / ru / en — aralash nutq uchun asosiy til"
+  },
+  {
+   "fieldname": "stt_min_sekund",
+   "fieldtype": "Int",
+   "label": "Minimal davomiylik (sek)",
+   "default": "5",
+   "description": "Bundan qisqa yozuvlar transkripsiya qilinmaydi (pul tejash)"
+  },
+  {
+   "fieldname": "stt_maks_daqiqa",
+   "fieldtype": "Int",
+   "label": "Maksimal davomiylik (daq)",
+   "default": "30",
+   "description": "Bundan uzun yozuvlar o'tkazib yuboriladi"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-10 10:00:00.000000",
+ "modified": "2026-10-19 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Telefoniya Sozlamalari",

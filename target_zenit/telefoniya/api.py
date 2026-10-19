@@ -27,7 +27,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, get_datetime
 
-from target_zenit.telefoniya import matcher, storage
+from target_zenit.telefoniya import matcher, storage, stt
 from target_zenit.telefoniya.utils import normalize_phone
 
 DOCTYPE = "Telefon Qongirogi"
@@ -274,6 +274,16 @@ def _yozuvni_biriktir(qongiroq, yuklangan, kutilgan_hash: str | None):
 		notify=True,
 	)
 	frappe.db.commit()
+
+	# Yozuv keldi — nutqni matnga aylantirishni fon vazifasiga qo'yamiz.
+	# Ingest so'rovi ichida qilib bo'lmaydi: transkripsiya 5-60 sekund oladi va
+	# Android ilovasining yuklash so'rovi timeout bo'lib ketardi.
+	try:
+		stt.navbatga(qongiroq.name)
+	except Exception:
+		# Transkripsiya ikkinchi darajali — u yiqilsa yozuv qabul qilinishi
+		# buzilmasligi kerak. Soatlik `qolganlarni_qil` keyin yig'ib oladi.
+		frappe.log_error(frappe.get_traceback(), f"STT navbatga qo'yilmadi: {qongiroq.name}")
 
 
 @frappe.whitelist()

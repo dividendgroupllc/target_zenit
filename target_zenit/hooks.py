@@ -300,7 +300,9 @@ after_migrate = [
 
 scheduler_events = {
 	"hourly": [
-		"target_zenit.integrations.eduvisit.hourly_attendance"
+		"target_zenit.integrations.eduvisit.hourly_attendance",
+		# Telefoniya: transkript qilinmay qolgan qo'ng'iroq yozuvlarini yig'ib olish
+		"target_zenit.telefoniya.stt.qolganlarni_qil",
 	],
 	"daily": [
 		"target_zenit.integrations.eduvisit.daily_sync",
