@@ -185,6 +185,15 @@ def transkripsiya_qil(qongiroq: str, majburiy: bool = False, qayta: bool = False
 		"xato_matni": None,
 	}, notify=True)
 	frappe.db.commit()
+
+	# Transkript tayyor — endi qisqa tahlilni navbatga qo'yamiz (2-bosqich).
+	# Alohida vazifa: tahlil yiqilsa transkript saqlanib qolishi kerak.
+	try:
+		from target_zenit.telefoniya import analiz
+		analiz.navbatga(qongiroq, majburiy=majburiy)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"Tahlil navbatga qo'yilmadi: {qongiroq}")
+
 	return {
 		"holat": "tayyor", "sozlar": len(matn.split()),
 		"model": model, "davomiylik": davomiylik,
@@ -336,8 +345,78 @@ def _mohir(yol: str, s: dict) -> tuple[str, str]:
 	frappe.throw(_("Mohir/Muxlisa provayderi hali ulanmagan — 'gemini' tanlang."))
 
 
+# ---------------------------------------------------------------- avto ulanish
+def qongiroq_on_update(doc, method=None) -> None:
+	"""`Telefon Qongirogi` saqlanganda — yozuv bor-u transkript yo'q bo'lsa navbatga.
+
+	Asosiy avto yo'l `api._yozuvni_biriktir` ichida (yozuv kelgan zahoti). Bu esa
+	zaxira: hujjat qo'lda tahrirlansa, boshqa koddan saqlansa yoki kelgusida
+	yangi yuklash yo'li paydo bo'lsa ham transkripsiya o'tkazib yuborilmaydi.
+	`db_set` doc event'larni chaqirmaydi, shuning uchun ikkisi takrorlanmaydi.
+	"""
+	if not doc.get("yozuv_bor") or doc.get("yozuv_ochirildi"):
+		return
+	if doc.get("transkript") or not doc.get("fayl_yoli"):
+		return
+	if doc.get("holat") == "Xato":
+		# Doimiy xato — qayta urinish foyda bermaydi (kalit/fayl muammosi).
+		# Vaqtinchalik xatoda holat "Yozuv bor"da qoladi, demak bu yerga tushadi.
+		return
+	try:
+		navbatga(doc.name)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"STT navbatga qo'yilmadi: {doc.name}")
+
+
+@frappe.whitelist()
+def avto_holat() -> dict:
+	"""Avto transkripsiya ishlayaptimi — va ishlamasa NEGA.
+
+	Sozlamada ikkita o'chirgich bor (`ai_yoqilgan` va `stt_provayder`), shuning
+	uchun "yoqdim, lekin ishlamaydi" holati juda oson yuzaga keladi. Bu funksiya
+	aniq sababni aytadi.
+	"""
+	s = _sozlamalar()
+	sabablar = []
+	if not s["yoqilgan"]:
+		sabablar.append("«AI yoqilgan» belgilanmagan")
+	if s["provayder"] == "yoq":
+		sabablar.append("«Nutq→matn provayderi» = yoq")
+	if s["provayder"] == "gemini" and not s["kalit"]:
+		sabablar.append("Gemini API kalit kiritilmagan")
+
+	bor = {"yozuv_bor": 1, "yozuv_ochirildi": 0}
+	jami = frappe.db.count("Telefon Qongirogi", bor)
+	tayyor = frappe.db.count("Telefon Qongirogi", {**bor, "transkript": ["is", "set"]})
+	xato = frappe.db.count("Telefon Qongirogi", {**bor, "holat": "Xato"})
+	tahlil = frappe.db.count("Telefon Qongirogi", {"ai_xulosa": ["is", "set"]})
+	return {
+		"ishlayapti": not sabablar,
+		"sabablar": sabablar,
+		"tahlil_bor": tahlil,
+		"provayder": s["provayder"],
+		"model": s["model"],
+		"zaxira": s["zaxira"] or None,
+		"jami_yozuv": jami,
+		"transkript_bor": tayyor,
+		"navbatda": max(0, jami - tayyor - xato),
+		"xato": xato,
+	}
+
+
+@frappe.whitelist()
+def hammasini_qil(limit: int = 500) -> dict:
+	"""Mavjud (eski) yozuvlarni bir martalik navbatga qo'yish — backfill.
+
+	`qolganlarni_qil` har 15 daqiqada kichik partiya oladi (kutilmagan xarajatni
+	cheklash uchun). Eski arxivni bir yo'la o'tkazish esa ataylab qo'lda qaror.
+	"""
+	frappe.only_for(("System Manager", "Sales Manager"))
+	return qolganlarni_qil(limit=cint(limit), majburiy=True)
+
+
 # ---------------------------------------------------------------- qolganlar
-def qolganlarni_qil(limit: int = 20) -> dict:
+def qolganlarni_qil(limit: int = 20, majburiy: bool = False) -> dict:
 	"""Soatlik vazifa: yozuvi bor, lekin transkript qilinmagan qo'ng'iroqlar.
 
 	Nega kerak: `navbatga()` ingest paytida chaqiriladi, lekin worker o'chgan,
@@ -345,8 +424,10 @@ def qolganlarni_qil(limit: int = 20) -> dict:
 	o'tkazib yuborilganlarni yig'ib oladi.
 	"""
 	s = _sozlamalar()
-	if not s["yoqilgan"] or s["provayder"] == "yoq":
+	if not majburiy and (not s["yoqilgan"] or s["provayder"] == "yoq"):
 		return {"o'tkazildi": "AI o'chirilgan"}
+	if s["provayder"] == "yoq":
+		return {"o'tkazildi": "provayder tanlanmagan"}
 
 	nomlar = frappe.get_all(
 		"Telefon Qongirogi",
@@ -355,5 +436,5 @@ def qolganlarni_qil(limit: int = 20) -> dict:
 		pluck="name", order_by="boshlandi desc", limit_page_length=cint(limit),
 	)
 	for nom in nomlar:
-		navbatga(nom)
+		navbatga(nom, majburiy=majburiy)
 	return {"navbatga_qoyildi": len(nomlar)}

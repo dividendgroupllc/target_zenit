@@ -180,6 +180,13 @@ doc_events = {
 	"Supplier": {
 		"on_update": "target_zenit.ism_sync.supplier_on_update",
 	},
+	# Telefoniya: yozuvi bor-u transkripti yo'q qo'ng'iroq saqlansa — avto navbatga.
+	# Asosiy yo'l api._yozuvni_biriktir ichida (yozuv kelgan zahoti); bu zaxira —
+	# qo'lda tahrir yoki kelgusida paydo bo'ladigan boshqa yuklash yo'li uchun.
+	"Telefon Qongirogi": {
+		"after_insert": "target_zenit.telefoniya.stt.qongiroq_on_update",
+		"on_update": "target_zenit.telefoniya.stt.qongiroq_on_update",
+	},
 	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish;
 	# ketgan o'quvchining to'lov rejasida kelgusi oylar bekor qilinadi
 	# Telefoniya: raqamlarni kanonik ko'rinishda saqlab turamiz —
@@ -299,10 +306,7 @@ after_migrate = [
 # ---------------
 
 scheduler_events = {
-	"hourly": [
-		# Telefoniya: transkript qilinmay qolgan qo'ng'iroq yozuvlarini yig'ib olish
-		"target_zenit.telefoniya.stt.qolganlarni_qil",
-	],
+	"hourly": [],
 	"daily": [
 		# Qarzdorlik: rejalarni qayta hisoblash, ish ochish/yopish, PTP/SLA tekshiruvi
 		"target_zenit.qarzdorlik.engine.nightly",
@@ -310,6 +314,19 @@ scheduler_events = {
 		"target_zenit.telefoniya.api.eski_yozuvlarni_ochir",
 	],
 	"cron": {
+		# Telefoniya: transkript qilinmay qolgan qo'ng'iroq yozuvlarini yig'ib olish.
+		# Asosiy yo'l — yozuv kelgan zahoti (api._yozuvni_biriktir -> stt.navbatga).
+		# Bu zaxira: worker o'chgan, Gemini band bo'lgan yoki sozlama keyin
+		# yoqilgan hollarda o'tkazib yuborilganlarni oladi.
+		"*/15 * * * *": [
+			"target_zenit.telefoniya.stt.qolganlarni_qil",
+			# Transkripti bor-u qisqa tahlili yo'qlar (2-bosqich zaxirasi)
+			"target_zenit.telefoniya.analiz.qolganlarni_qil",
+		],
+		# Har kuni 07:00 — Moodle'ga o'quvchi/o'qituvchi sinxroni (Frappe -> Moodle)
+		"0 7 * * *": [
+			"target_zenit.integrations.moodle.daily_sync"
+		],
 		# Har yili 1-sentabr 06:00 — hamma faol o'quvchi bir sinf yuqoriga (G4A -> G5A)
 		"0 6 1 9 *": [
 			"target_zenit.student_group_sync.yearly_promotion"

@@ -1,0 +1,66 @@
+// Copyright (c) 2026, Target Zenit
+
+frappe.ui.form.on("Moodle Settings", {
+	refresh(frm) {
+		frm.add_custom_button(__("Ulanishni tekshirish"), () => {
+			frappe.call({
+				method: "target_zenit.integrations.moodle.test_connection",
+				freeze: true,
+				freeze_message: __("Moodle bilan bog'lanilmoqda..."),
+				callback: (r) => {
+					if (!r.message) return;
+					const m = r.message;
+					const missing = m.yetishmayotgan_funksiyalar || [];
+					let html = `<b>${frappe.utils.escape_html(m.sitename || "")}</b><br>
+						Moodle: ${frappe.utils.escape_html(m.release || "")}<br>
+						Token egasi: ${frappe.utils.escape_html(m.username || "")} (id ${m.userid})`;
+					if (missing.length) {
+						html += `<hr><div class="text-danger"><b>Web service'ga qo'shilmagan funksiyalar:</b><br>
+							${missing.join("<br>")}</div>
+							<small>Moodle: Server → Web services → External services → Frappe Sync → Functions</small>`;
+					} else {
+						html += `<hr><span class="text-success">Kerakli funksiyalar bor — sinxronga tayyor.</span>`;
+					}
+					frappe.msgprint({ title: __("Moodle ulanishi"), message: html, indicator: missing.length ? "orange" : "green" });
+				},
+			});
+		});
+
+		frm.add_custom_button(__("Hozir sinxronlash"), () => {
+			frappe.confirm(
+				frm.doc.dry_run
+					? __("Test rejimi yoqilgan — Moodle'ga hech narsa yozilmaydi. Davom etamizmi?")
+					: __("Frappe'dagi o'quvchi va o'qituvchilar Moodle'ga yuboriladi. Davom etamizmi?"),
+				() => {
+					frappe.call({
+						method: "target_zenit.integrations.moodle.sync_now",
+						freeze: true,
+						freeze_message: __("Sinxron ketmoqda, bu bir necha daqiqa olishi mumkin..."),
+						callback: (r) => {
+							frm.reload_doc();
+							if (r.message) {
+								frappe.set_route("Form", "Moodle Sync Log", r.message);
+							}
+						},
+					});
+				}
+			);
+		}).addClass("btn-primary");
+
+		frm.add_custom_button(__("Foydalanuvchi ro'yxati"), () => {
+			frappe.set_route("List", "Moodle User Link");
+		}, __("Ko'rish"));
+
+		frm.add_custom_button(__("Sinxron tarixi"), () => {
+			frappe.set_route("List", "Moodle Sync Log");
+		}, __("Ko'rish"));
+
+		if (!frm.doc.enabled) {
+			frm.dashboard.add_comment(
+				__("Integratsiya o'chirilgan — na avto (07:00), na qo'lda sinxron ishlamaydi."),
+				"orange",
+				true
+			);
+		}
+	},
+});

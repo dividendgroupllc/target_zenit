@@ -462,6 +462,9 @@ class TZQarzPanel {
 					· <a href="/app/tolov-rejasi/${encodeURIComponent(d.hisob.reja)}" target="_blank">reja ↗</a></div>
 			</div>` : ""}
 			<div class="d-actions">
+				${qlar.length ? `<button class="btn-suhbat">🎧 Suhbatlar (${qlar.length})${
+					qlar.filter((q) => q.ai_xulosa).length
+						? ` · ${qlar.filter((q) => q.ai_xulosa).length} tahlil` : ""}</button>` : ""}
 				<button class="btn-call">📞 Qo'ng'iroq natijasi</button>
 				<button class="btn-recalc">↻ Qayta hisoblash</button>
 				<a class="btn-doc" href="/app/qarz-ishi/${encodeURIComponent(c.name)}">Ishni ochish ↗</a>
@@ -474,6 +477,7 @@ class TZQarzPanel {
 			${sibs}${xulosa}${months}${pays}${calls}${tl}
 		`);
 
+		this.body.find(".btn-suhbat").on("click", () => this.suhbat_dialog());
 		this.body.find(".btn-call").on("click", () => this.call_dialog());
 		this.body.find(".btn-recalc").on("click", () => {
 			frappe.call({
@@ -549,6 +553,116 @@ class TZQarzPanel {
 			this.fQueue = $(e.currentTarget).data("queue");
 			this.render();
 		});
+	}
+
+	// Suhbatlar oynasi: har yozuv uchun OVOZ + MATN + QISQA TAHLIL bir joyda.
+	// Panel pastidagi ro'yxat qoladi, lekin bu oyna tepadan bir bosishda ochiladi —
+	// menejer/rahbar audioni eshitib, matnini va AI xulosasini solishtiradi.
+	suhbat_dialog() {
+		const d = this.detail;
+		if (!d) return;
+		const qlar = (d.qongiroqlar || []).filter((q) => q.audio || q.transkript);
+		if (!qlar.length) {
+			frappe.msgprint(__("Bu to'lovchida ovoz yozuvi yoki transkript yo'q."));
+			return;
+		}
+
+		const dlg = new frappe.ui.Dialog({
+			title: __("Suhbatlar — {0}", [d.case.student_name]),
+			size: "large",
+			fields: [{ fieldtype: "HTML", fieldname: "ro'yxat" }],
+		});
+
+		dlg.fields_dict["ro'yxat"].$wrapper.html(
+			`<div class="tz-suhbatlar">${qlar.map((q, i) => this.suhbat_karta(q, i)).join("")}</div>`
+		);
+
+		// Tahlil yo'q bo'lsa — shu oynadan buyurtma qilish mumkin
+        dlg.$wrapper.on("click", ".sb-tahlil-btn", (e) => {
+			const nom = $(e.currentTarget).data("q");
+			$(e.currentTarget).prop("disabled", true).text(__("Tahlil qilinmoqda…"));
+			frappe.call({
+				method: "target_zenit.telefoniya.analiz.qolda",
+				args: { qongiroq: nom },
+				callback: (r) => {
+					const m = r.message || {};
+					if (m.holat === "tayyor") {
+						dlg.hide();
+						this.load_detail(d.case.name, true);
+						frappe.show_alert({ message: __("Tahlil tayyor"), indicator: "green" });
+					} else {
+						frappe.show_alert({
+							message: __("Tahlil bo'lmadi: {0}", [m.sabab || m.holat || "?"]),
+							indicator: "orange",
+						}, 8);
+						$(e.currentTarget).prop("disabled", false).text(__("🤖 Tahlil qilish"));
+					}
+				},
+			});
+		});
+
+		// Matnni yig'ish/ochish
+		dlg.$wrapper.on("click", ".sb-matn-tgl", (e) => {
+			const $b = $(e.currentTarget);
+			const $m = $b.closest(".sb-card").find(".sb-matn");
+			$m.toggleClass("yopiq");
+			$b.text($m.hasClass("yopiq") ? __("matnni ko'rsatish") : __("matnni yashirish"));
+		});
+
+		dlg.show();
+	}
+
+	suhbat_karta(q, i) {
+		const url = `/api/method/target_zenit.telefoniya.api.stream_recording?qongiroq=${encodeURIComponent(q.name)}`;
+		const natija = q.tugash_sababi || "";
+		const pill = natija === "Javob berildi" ? "st-ok" : "st-mut";
+
+		// AI xulosasi qat'iy formatda keladi ("MAVZU: …") — qatorlarga ajratib chiqaramiz
+		const xulosa = (q.ai_xulosa || "").trim();
+		const qatorlar = xulosa ? xulosa.split(/\r?\n/).map((x) => x.trim()).filter(Boolean) : [];
+		const tahlil = qatorlar.length
+			? `<div class="sb-tahlil">${qatorlar.map((qt) => {
+					const m = qt.match(/^([A-ZА-ЯЎҚҒҲ' ]{3,20}):\s*(.*)$/);
+					if (!m) return `<div class="sb-t-row"><span class="sb-t-v">${this.esc(qt)}</span></div>`;
+					const bosh = m[1].trim(), qiymat = (m[2] || "").trim();
+					const yoq = /^(yo'q|yoq|—|-)$/i.test(qiymat);
+					if (yoq) return "";
+					const holat = bosh === "MIJOZ HOLATI"
+						? ` sb-h-${/ijobiy/i.test(qiymat) ? "ok" : /qarshi/i.test(qiymat) ? "bad" : "mut"}` : "";
+					const diqqat = bosh === "DIQQAT" ? " sb-diqqat" : "";
+					return `<div class="sb-t-row${diqqat}">
+						<span class="sb-t-k">${this.esc(bosh)}</span>
+						<span class="sb-t-v${holat}">${this.esc(qiymat)}</span></div>`;
+				}).join("")}</div>`
+			: `<div class="sb-yoq">Qisqa tahlil yo'q
+				${q.transkript ? `<button class="btn-mini sb-tahlil-btn" data-q="${this.esc(q.name)}">🤖 Tahlil qilish</button>` : ""}</div>`;
+
+		return `<div class="sb-card">
+			<div class="sb-head">
+				<b>${this.dtm(q.boshlandi)}</b>
+				<span class="call-dir ${q.yonalish === "Kiruvchi" ? "in" : "out"}">${q.yonalish === "Kiruvchi" ? "📥" : "📤"}</span>
+				${q.suhbat_vaqti ? `<span class="mini">${this.dur(q.suhbat_vaqti)}</span>` : ""}
+				${natija ? `<span class="pill ${pill}">${this.esc(natija)}</span>` : ""}
+				<span class="spacer"></span>
+				<span class="mini">${this.esc(q.menejer)}</span>
+				<a class="mini" href="/app/telefon-qongirogi/${encodeURIComponent(q.name)}" target="_blank">↗</a>
+			</div>
+			<div class="sb-grid">
+				<div class="sb-chap">
+					${q.audio
+						? `<audio class="sb-audio" controls preload="none" src="${url}"></audio>`
+						: `<div class="mini">${q.yozuv_ochirildi ? "yozuv o'chirilgan" : "yozuv yo'q"}</div>`}
+					${q.transkript
+						? `<div class="sb-matn-bar">
+								<span class="mini">${q.transkript_sozlar || 0} so'z</span>
+								<button class="btn-mini ghost sb-matn-tgl">matnni ko'rsatish</button>
+							</div>
+							<div class="sb-matn yopiq">${this.esc(q.transkript)}</div>`
+						: `<div class="mini">Transkript yo'q</div>`}
+				</div>
+				<div class="sb-ong">${tahlil}</div>
+			</div>
+		</div>`;
 	}
 
 	call_dialog() {

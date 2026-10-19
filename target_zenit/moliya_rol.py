@@ -19,6 +19,7 @@ faqat rolning o'zi va doctype ruxsatlari ta'minlanadi.
 """
 
 import frappe
+from frappe.utils import cint
 
 ROL = "Nigora_Moliya"
 
@@ -44,6 +45,9 @@ PERMS = {
 	# Kassa yozuvlari va kunlik kurs — kiritadi/tahrirlaydi (o'chirish yo'q)
 	"Kassa": (1, 1, 1, 0),
 	"Currency Exchange": (1, 1, 1, 0),
+	# Kassa'da "To'lov usuli" MAJBURIY maydon — o'qish ruxsati bo'lmasa
+	# yozuvni saqlab ham bo'lmaydi
+	"Mode of Payment": (1, 0, 0, 0),
 	# Kontragentlar
 	"Customer": (1, 1, 1, 0),
 	"Supplier": (1, 1, 1, 0),
@@ -97,25 +101,65 @@ def rol_yarat():
 
 
 def ruxsatlar():
-	"""Doctype ruxsatlarini o'rnatish (idempotent)."""
-	from frappe.permissions import add_permission, update_permission_property
+	"""Doctype ruxsatlarini o'rnatish (idempotent).
+
+	Ruxsat faqat OSHIRILADI — UI'dan qo'lda berilgan qo'shimcha huquq
+	(masalan Employee write) deploy'da o'chib ketmaydi.
+
+	MUHIM TUZOQ: `frappe.permissions.update_permission_property()` qatorni
+	`if_owner=0` bo'yicha qidiradi. Agar UI'da "faqat o'zi yaratgan hujjatlar"
+	belgisi yoqilgan bo'lsa (if_owner=1), u qator TOPILMAYDI va funksiya
+	JIMGINA hech narsa qilmaydi — ruxsat berilgandek ko'rinadi, lekin
+	ro'yxatlar bo'sh chiqadi (xodim o'zi yaratmagan yozuvlarni ko'rmaydi).
+	Shuning uchun qatorlar bu yerda to'g'ridan-to'g'ri yangilanadi.
+	"""
+	from frappe.permissions import add_permission
 
 	if not frappe.db.exists("Role", ROL):
 		return
-	n = 0
+	n, tuzatilgan = 0, []
 	for dt, (r, w, c, d) in PERMS.items():
 		if not frappe.db.exists("DocType", dt):
 			continue
-		bor = frappe.db.exists("Custom DocPerm", {"parent": dt, "role": ROL, "permlevel": 0}) \
-			or frappe.db.exists("DocPerm", {"parent": dt, "role": ROL, "permlevel": 0})
-		if not bor:
+		qatorlar = frappe.get_all(
+			"Custom DocPerm", filters={"parent": dt, "role": ROL, "permlevel": 0},
+			fields=["name", "read", "write", "create", "delete", "submit", "if_owner"],
+			order_by="if_owner asc")
+		if not qatorlar:
 			add_permission(dt, ROL, 0)
+			qatorlar = frappe.get_all(
+				"Custom DocPerm", filters={"parent": dt, "role": ROL, "permlevel": 0},
+				fields=["name", "read", "write", "create", "delete", "submit", "if_owner"],
+				order_by="if_owner asc")
+		if not qatorlar:
+			continue
+
+		asosiy = qatorlar[0]
+		if cint(asosiy.if_owner):
+			# "faqat o'zi yaratgani" cheklovini olib tashlaymiz — aks holda
+			# ro'yxatlar bo'sh ko'rinadi
+			frappe.db.set_value("Custom DocPerm", asosiy.name, "if_owner", 0)
+			tuzatilgan.append(dt)
+		# ortib qolgan if_owner qatorlari (faqat SHU rol uchun) keraksiz
+		for q in qatorlar[1:]:
+			if cint(q.if_owner):
+				frappe.db.delete("Custom DocPerm", {"name": q.name})
+
+		yangi = {}
 		for prop, val in (("read", r), ("write", w), ("create", c), ("delete", d),
 						  ("submit", 1 if dt in SUBMIT_HUQUQI else 0),
 						  ("report", 1), ("export", 1), ("print", 1), ("share", 1)):
-			update_permission_property(dt, ROL, 0, prop, val, validate=False)
+			# faqat oshirish: qo'lda berilgan huquqni pasaytirmaymiz
+			if cint(asosiy.get(prop)) and not val:
+				continue
+			yangi[prop] = val
+		if yangi:
+			frappe.db.set_value("Custom DocPerm", asosiy.name, yangi)
 		n += 1
-	print(f"{ROL} ruxsatlari: {n} doctype")
+
+	frappe.clear_cache()
+	print(f"{ROL} ruxsatlari: {n} doctype"
+		  + (f" | 'faqat o'zi yaratgani' cheklovi olindi: {', '.join(tuzatilgan)}" if tuzatilgan else ""))
 
 
 def hisobot_rollari():
@@ -154,3 +198,81 @@ def after_migrate():
 		hisobot_rollari()
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "moliya_rol after_migrate")
+
+
+# ---------------------------------------------------------------- diagnostika
+
+# Kassa'dan xodimga to'lov qilish uchun minimal kerakli ruxsatlar
+TEKSHIRILADIGAN = ("Employee", "Kassa", "Mode of Payment", "Account", "Company",
+				   "Journal Entry", "Payment Entry", "Currency Exchange")
+
+
+def tekshir(email=None):
+	"""PROD'da muammoni aniqlash uchun: rol, ruxsatlar va to'lov yo'li tekshiruvi.
+
+	Ishlatish:
+	  bench --site <sayt> execute target_zenit.moliya_rol.tekshir \\
+	        --kwargs "{'email': 'nigora@...'}"
+
+	Nimalarni ko'rsatadi:
+	  1) foydalanuvchi rollari va ROL bor-yo'qligi
+	  2) UNING ZIMMASIDAGI "User Permission" cheklovlari — Employee bo'yicha
+	     cheklov bo'lsa u FAQAT O'Z yozuvini ko'radi (ro'yxat "bo'sh" bo'lib
+	     ko'rinadi va Kassa'da boshqa xodimni party sifatida tanlay olmaydi)
+	  3) har doctype uchun read/write/create + "faqat o'zi yaratgani" (if_owner)
+	  4) o'sha foydalanuvchi nomidan Employee ro'yxati necha yozuv qaytaradi
+	"""
+	if not email:
+		print("email kerak: --kwargs \"{'email': 'nigora@...'}\"")
+		return
+	if not frappe.db.exists("User", email):
+		print(f"TOPILMADI: {email} degan foydalanuvchi yo'q")
+		return
+
+	rollar = frappe.get_all("Has Role", filters={"parent": email, "parenttype": "User"}, pluck="role")
+	print(f"Foydalanuvchi: {email} | enabled: {frappe.db.get_value('User', email, 'enabled')}")
+	print(f"  rollari: {rollar}")
+	print(f"  '{ROL}' roli: {'BOR' if ROL in rollar else 'YO`Q  <-- rolni tayinlash kerak'}")
+
+	up = frappe.get_all("User Permission", filters={"user": email},
+						fields=["allow", "for_value", "applicable_for"])
+	if up:
+		print("  User Permission cheklovlari:")
+		for r in up:
+			belgi = "  <-- SHU SABABLI XODIMLAR KO'RINMAYDI" if r.allow == "Employee" else ""
+			print(f"    {r.allow} = {r.for_value} (applicable_for: {r.applicable_for or '-'}){belgi}")
+	else:
+		print("  User Permission cheklovi yo'q (yaxshi)")
+
+	print("  Ruxsatlar (rol bo'yicha yozuv):")
+	for dt in TEKSHIRILADIGAN:
+		if not frappe.db.exists("DocType", dt):
+			continue
+		p = None
+		for jadval in ("Custom DocPerm", "DocPerm"):
+			qatorlar = frappe.get_all(
+				jadval, filters={"parent": dt, "role": ROL, "permlevel": 0},
+				fields=["read", "write", "create", "submit", "if_owner"],
+				order_by="if_owner asc")
+			if qatorlar:
+				p = qatorlar[0]
+				break
+		if not p:
+			print(f"    {dt:18} — rol uchun ruxsat yozuvi YO'Q")
+			continue
+		ogoh = "  <-- 'faqat o'zi yaratgani' yoqilgan, ro'yxat bo'sh ko'rinadi" if cint(p.if_owner) else ""
+		print(f"    {dt:18} read={cint(p.read)} write={cint(p.write)} create={cint(p.create)} "
+			  f"submit={cint(p.submit)}{ogoh}")
+
+	# Foydalanuvchi nomidan haqiqiy ro'yxat
+	avvalgi = frappe.session.user
+	try:
+		frappe.set_user(email)
+		for dt in ("Employee", "Kassa"):
+			try:
+				n = len(frappe.get_list(dt, limit=20))
+				print(f"  {email} ko'radigan {dt}: {n} yozuv (20 tagacha tekshirildi)")
+			except Exception as e:
+				print(f"  {dt} ro'yxati XATO: {type(e).__name__} {str(e)[:120]}")
+	finally:
+		frappe.set_user(avvalgi)

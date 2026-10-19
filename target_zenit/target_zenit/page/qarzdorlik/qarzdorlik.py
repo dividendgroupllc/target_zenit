@@ -131,6 +131,8 @@ def _qongiroqlar(student: str, payer_phone=None, payer_name=None, limit: int = 6
 			"suhbat_vaqti", "kutish_vaqti", "yozuv_bor", "yozuv_ochirildi",
 			"izoh", "kontakt_ism", "aloqador_ism", "maqsad", "manba",
 			"xodim", "foydalanuvchi", "normal_telefon", "tashqi_raqam",
+			# AI: nutq->matn va qisqa tahlil (telefoniya/stt.py, telefoniya/analiz.py)
+			"transkript", "transkript_sozlar", "ai_xulosa", "yozuv_davomiyligi",
 		],
 		order_by="boshlandi desc",
 		limit_page_length=limit,

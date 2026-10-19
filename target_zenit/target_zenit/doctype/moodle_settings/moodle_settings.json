@@ -1,0 +1,172 @@
+{
+ "actions": [],
+ "creation": "2026-10-19 09:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "base_url",
+  "token",
+  "column_break_1",
+  "last_sync",
+  "last_status",
+  "section_qamrov",
+  "sync_students",
+  "sync_teachers",
+  "column_break_2",
+  "suspend_on_leave",
+  "dry_run",
+  "section_qoida",
+  "email_domain",
+  "auth_method",
+  "column_break_3",
+  "student_role",
+  "teacher_role",
+  "section_help",
+  "help_html"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "description": "O'chirilgan bo'lsa na avto (07:00), na qo'lda sinxron ishlamaydi.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Yoqilgan"
+  },
+  {
+   "description": "Moodle manzili, oxirida / belgisi bo'lmasin. Masalan: http://localhost:8080",
+   "fieldname": "base_url",
+   "fieldtype": "Data",
+   "label": "Moodle manzili (base URL)"
+  },
+  {
+   "description": "Moodle: Server -> Web services -> Manage tokens da olingan token (frappe.sync foydalanuvchisi).",
+   "fieldname": "token",
+   "fieldtype": "Password",
+   "label": "Web service token"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_sync",
+   "fieldtype": "Datetime",
+   "label": "Oxirgi sinxron",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_status",
+   "fieldtype": "Small Text",
+   "label": "Oxirgi natija",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_qamrov",
+   "fieldtype": "Section Break",
+   "label": "Sinxron qamrovi"
+  },
+  {
+   "default": "1",
+   "description": "Student (faol) -> Moodle student foydalanuvchisi",
+   "fieldname": "sync_students",
+   "fieldtype": "Check",
+   "label": "O'quvchilarni yuborish"
+  },
+  {
+   "default": "1",
+   "description": "Instructor (Active, vakant bo'lmagan) -> Moodle o'qituvchi foydalanuvchisi",
+   "fieldname": "sync_teachers",
+   "fieldtype": "Check",
+   "label": "O'qituvchilarni yuborish"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Frappe'da o'chirilgan / ketgan bo'lsa, Moodle'da O'CHIRILMAYDI — faqat suspend qilinadi (baho va tarix saqlanadi).",
+   "fieldname": "suspend_on_leave",
+   "fieldtype": "Check",
+   "label": "Ketganlarni suspend qilish"
+  },
+  {
+   "default": "0",
+   "description": "Yoqilgan bo'lsa Moodle'ga HECH NARSA yozilmaydi — faqat nima qilinishi kerakligi logga yoziladi. Test uchun.",
+   "fieldname": "dry_run",
+   "fieldtype": "Check",
+   "label": "Test rejimi (yozmasin)"
+  },
+  {
+   "fieldname": "section_qoida",
+   "fieldtype": "Section Break",
+   "label": "Foydalanuvchi yaratish qoidalari"
+  },
+  {
+   "default": "target.local",
+   "description": "Frappe'da email yo'q (hozir 0 ta), Moodle esa talab qiladi. Shu domen bilan yasaladi: foydalanuvchi_nomi@domen",
+   "fieldname": "email_domain",
+   "fieldtype": "Data",
+   "label": "Email domeni"
+  },
+  {
+   "default": "manual",
+   "fieldname": "auth_method",
+   "fieldtype": "Select",
+   "label": "Moodle autentifikatsiyasi",
+   "options": "manual\nnologin"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "5",
+   "description": "Moodle rol ID. Standart Moodle: 5 = Student, 3 = Teacher (editingteacher), 4 = Non-editing teacher. Hozir faqat ma'lumot uchun saqlanadi — kursga yozish keyingi bosqich.",
+   "fieldname": "student_role",
+   "fieldtype": "Int",
+   "label": "O'quvchi rol ID"
+  },
+  {
+   "default": "3",
+   "fieldname": "teacher_role",
+   "fieldtype": "Int",
+   "label": "O'qituvchi rol ID"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_help",
+   "fieldtype": "Section Break",
+   "label": "Qo'llanma"
+  },
+  {
+   "fieldname": "help_html",
+   "fieldtype": "HTML",
+   "label": "",
+   "options": "<p><b>Moodle tomonida kerak bo'ladigan web service funksiyalari:</b></p><ul><li><code>core_webservice_get_site_info</code></li><li><code>core_user_get_users_by_field</code></li><li><code>core_user_create_users</code></li><li><code>core_user_update_users</code></li></ul><p>Sinxron kaliti: Frappe ID -> Moodle <code>idnumber</code> (o'quvchi: Student ID, o'qituvchi: Employee ID). Har bir yuborilgan odam <b>Moodle User Link</b> ro'yxatida ko'rinadi — login va boshlang'ich parol shu yerda.</p><p>Avto sinxron har kuni <b>07:00</b> da ishlaydi (scheduler yoqilgan bo'lishi kerak).</p>"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-19 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Moodle Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,171 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:idnumber",
+ "creation": "2026-10-19 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "person_type",
+  "reference_name",
+  "full_name",
+  "column_break_1",
+  "idnumber",
+  "status",
+  "last_synced",
+  "section_moodle",
+  "moodle_user_id",
+  "moodle_username",
+  "column_break_2",
+  "moodle_email",
+  "initial_password",
+  "section_xato",
+  "error",
+  "sync_hash"
+ ],
+ "fields": [
+  {
+   "fieldname": "person_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kim",
+   "options": "Student\nInstructor",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Frappe hujjati",
+   "options": "person_type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "full_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "F.I.Sh.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Sinxron kaliti — Moodle'dagi idnumber maydoniga shu yoziladi. O'quvchi: Student ID, o'qituvchi: Employee ID.",
+   "fieldname": "idnumber",
+   "fieldtype": "Data",
+   "label": "Sinxron kaliti (idnumber)",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "Faol",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Holat",
+   "options": "Faol\nTo'xtatilgan\nXato",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_synced",
+   "fieldtype": "Datetime",
+   "label": "Oxirgi sinxron",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_moodle",
+   "fieldtype": "Section Break",
+   "label": "Moodle tomoni"
+  },
+  {
+   "fieldname": "moodle_user_id",
+   "fieldtype": "Int",
+   "label": "Moodle user ID",
+   "read_only": 1
+  },
+  {
+   "description": "Moodle'ga kirish uchun login. Bir marta yasaladi va keyin o'zgarmaydi.",
+   "fieldname": "moodle_username",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Login (username)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "moodle_email",
+   "fieldtype": "Data",
+   "label": "Email (yasalgan)",
+   "read_only": 1
+  },
+  {
+   "description": "Faqat birinchi kirish uchun. Foydalanuvchi o'zi almashtirgandan keyin bu qiymat eskiradi.",
+   "fieldname": "initial_password",
+   "fieldtype": "Password",
+   "label": "Boshlang'ich parol"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_xato",
+   "fieldtype": "Section Break",
+   "label": "Texnik"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Oxirgi xato",
+   "read_only": 1
+  },
+  {
+   "description": "Ism/holat o'zgarmasa Moodle'ga bekorga so'rov yubormaslik uchun.",
+   "fieldname": "sync_hash",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Sync hash",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-19 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Moodle User Link",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Academics User",
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "full_name",
+ "track_changes": 1
+}

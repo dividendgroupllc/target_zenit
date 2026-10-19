@@ -1,0 +1,142 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:MDL-SYNC-{YY}{MM}{DD}-{###}",
+ "creation": "2026-10-19 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "trigger_type",
+  "status",
+  "column_break_1",
+  "started",
+  "finished",
+  "section_natija",
+  "created_count",
+  "updated_count",
+  "column_break_2",
+  "suspended_count",
+  "skipped_count",
+  "column_break_3",
+  "error_count",
+  "section_tafsilot",
+  "details"
+ ],
+ "fields": [
+  {
+   "fieldname": "trigger_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Ishga tushirish",
+   "options": "Avto (07:00)\nQo'lda",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Holat",
+   "options": "Ishlayapti\nTugadi\nXato",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "started",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Boshlandi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finished",
+   "fieldtype": "Datetime",
+   "label": "Tugadi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_natija",
+   "fieldtype": "Section Break",
+   "label": "Natija"
+  },
+  {
+   "fieldname": "created_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Yaratildi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "updated_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Yangilandi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "suspended_count",
+   "fieldtype": "Int",
+   "label": "To'xtatildi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "skipped_count",
+   "fieldtype": "Int",
+   "label": "O'zgarmagan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "error_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Xato",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_tafsilot",
+   "fieldtype": "Section Break",
+   "label": "Tafsilot"
+  },
+  {
+   "fieldname": "details",
+   "fieldtype": "Long Text",
+   "label": "Qadamlar",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-19 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Moodle Sync Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

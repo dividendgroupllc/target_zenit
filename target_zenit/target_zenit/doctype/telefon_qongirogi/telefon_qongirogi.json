@@ -60,6 +60,12 @@
   "transkripsiya_vaqti",
   "transkript_sozlar",
   "yozuv_davomiyligi",
+  "section_ai",
+  "ai_xulosa",
+  "section_ai_meta",
+  "ai_model",
+  "column_break_ai",
+  "ai_tahlil_vaqti",
   "xato_matni"
  ],
  "fields": [
@@ -394,6 +400,40 @@
    "description": "Fayldan o'lchangan (metadatadan emas)"
   },
   {
+   "fieldname": "section_ai",
+   "fieldtype": "Section Break",
+   "label": "AI qisqa tahlil",
+   "collapsible": 1,
+   "depends_on": "eval:doc.transkript || doc.ai_xulosa"
+  },
+  {
+   "fieldname": "ai_xulosa",
+   "fieldtype": "Long Text",
+   "label": "Qisqa tahlil",
+   "read_only": 1,
+   "description": "Suhbatning eng muhim joylari — AI tomonidan"
+  },
+  {
+   "fieldname": "section_ai_meta",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "ai_model",
+   "fieldtype": "Data",
+   "label": "Tahlil modeli",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ai",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ai_tahlil_vaqti",
+   "fieldtype": "Datetime",
+   "label": "Tahlil vaqti",
+   "read_only": 1
+  },
+  {
    "fieldname": "xato_matni",
    "fieldtype": "Small Text",
    "label": "Xato",
@@ -432,7 +472,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-19 12:00:00.000000",
+ "modified": "2026-10-19 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Telefon Qongirogi",
