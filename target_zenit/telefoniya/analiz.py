@@ -59,6 +59,8 @@ def navbatga(qongiroq: str, majburiy: bool = False) -> bool:
 	s = stt._sozlamalar()
 	if not majburiy and (not s["yoqilgan"] or s["provayder"] != "gemini"):
 		return False
+	if stt.pauza_holati()["bor"]:
+		return False
 	frappe.enqueue(
 		"target_zenit.telefoniya.analiz.tahlil_qil",
 		queue="long", timeout=900, job_name=f"analiz:{qongiroq}",
@@ -70,8 +72,11 @@ def navbatga(qongiroq: str, majburiy: bool = False) -> bool:
 
 @frappe.whitelist()
 def qolda(qongiroq: str) -> dict:
-	"""Formadagi/paneldagi «Tahlil qilish» tugmasi."""
+	"""Formadagi/paneldagi «Tahlil qilish» tugmasi (kvota pauzasini hurmat qiladi)."""
 	frappe.has_permission("Telefon Qongirogi", "write", doc=qongiroq, throw=True)
+	p = stt.pauza_holati()
+	if p["bor"]:
+		return {"holat": "kvota", "sabab": stt._kvota_xabari(p), "kutish_sek": p["qolgan_sek"]}
 	return tahlil_qil(qongiroq, majburiy=True, qayta=True)
 
 
@@ -100,6 +105,10 @@ def tahlil_qil(qongiroq: str, majburiy: bool = False, qayta: bool = False) -> di
 
 	try:
 		xulosa, model = _gemini_matn_tahlil(matn[:MAKS_BELGI], s)
+	except stt.KvotaXato as e:
+		doc.db_set("xato_matni", f"Kvota tugagan: {e}"[:500], notify=True)
+		frappe.db.commit()
+		return {"holat": "kvota", "sabab": str(e)[:300], "kutish_sek": e.kutish_sek}
 	except stt.VaqtinchalikXato as e:
 		doc.db_set("xato_matni", f"Tahlil vaqtinchalik: {e}"[:500], notify=True)
 		frappe.db.commit()
@@ -133,6 +142,7 @@ def _gemini_matn_tahlil(matn: str, s: dict) -> tuple[str, str]:
 
 	modellar = [s["model"]] + ([s["zaxira"]] if s.get("zaxira") and s["zaxira"] != s["model"] else [])
 	oxirgi: Exception | None = None
+	kvota_hammasida = True
 
 	for model in modellar:
 		body = {"model": model, "input": [{"type": "text", "text": PROMPT.format(matn=matn)}]}
@@ -148,13 +158,25 @@ def _gemini_matn_tahlil(matn: str, s: dict) -> tuple[str, str]:
 			else:
 				if r.status_code == 200:
 					return stt._gemini_matn(r.json()), model
-				if r.status_code in stt.VAQTINCHALIK_KODLAR:
+				if r.status_code == 429:
+					# Kvota tugagan — qayta urinish befoyda, keyingi modelga o'tamiz
+					kut = stt._kutishni_oqi(r.text)
+					xabar = f"Gemini 429 ({model}): {r.text[:220]}"
+					if kut >= stt.KVOTA_CHEGARA or "per day" in r.text.lower():
+						oxirgi = stt.KvotaXato(xabar, kutish_sek=kut or 3600)
+						break
+					oxirgi = stt.VaqtinchalikXato(xabar)
+				elif r.status_code in stt.VAQTINCHALIK_KODLAR:
 					oxirgi = stt.VaqtinchalikXato(f"Gemini {r.status_code} ({model}): {r.text[:200]}")
+					kvota_hammasida = False
 				else:
 					frappe.throw(_("Gemini {0} ({1}): {2}").format(r.status_code, model, r.text[:400]))
 			if urinish < stt.URINISH - 1:
 				time.sleep(stt.KUTISH[min(urinish, len(stt.KUTISH) - 1)] + random.uniform(0, 2))
 
+	# Hamma model kvotaga urildi — butun quvurni pauzaga qo'yamiz
+	if kvota_hammasida and isinstance(oxirgi, stt.KvotaXato):
+		stt._pauza_qoy(oxirgi.kutish_sek, str(oxirgi))
 	raise oxirgi or stt.VaqtinchalikXato("Gemini javob bermadi")
 
 
@@ -164,6 +186,9 @@ def qolganlarni_qil(limit: int = 20, majburiy: bool = False) -> dict:
 	s = stt._sozlamalar()
 	if not majburiy and (not s["yoqilgan"] or s["provayder"] != "gemini"):
 		return {"o'tkazildi": "AI o'chirilgan"}
+	p = stt.pauza_holati()
+	if p["bor"]:
+		return {"o'tkazildi": f"kvota pauzasi: {p['qolgan_sek'] // 60} daqiqa qoldi"}
 
 	nomlar = frappe.get_all(
 		"Telefon Qongirogi",

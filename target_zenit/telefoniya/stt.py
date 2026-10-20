@@ -38,6 +38,10 @@ KUTISH = (2, 8, 25)          # sekund: urinishlar orasidagi pauza
 VAQTINCHALIK_KODLAR = {408, 429, 500, 502, 503, 504, 529}
 
 
+PAUZA_KALIT = "tz_stt_kvota_pauza"   # cache: kvota tugaganda shu vaqtgacha tegmaymiz
+KVOTA_CHEGARA = 600                  # sek: bundan uzoq kutish talab qilinsa — kunlik kvota
+
+
 class VaqtinchalikXato(Exception):
 	"""Provayder tomonidagi o'tkinchi muammo (band, limit, tarmoq).
 
@@ -45,6 +49,74 @@ class VaqtinchalikXato(Exception):
 	hujjat `holat="Xato"` bo'lib navbatdan chiqadi, vaqtinchalik xatoda esa
 	`holat="Yozuv bor"` qolib, soatlik vazifa uni qayta oladi.
 	"""
+
+
+class KvotaXato(VaqtinchalikXato):
+	"""Kunlik/daqiqalik kvota tugagan (429).
+
+	Oddiy vaqtinchalik xatodan farqi: qayta urinishning MA'NOSI YO'Q — kvota soatlar
+	o'tib tiklanadi. Shuning uchun darhol to'xtaymiz va butun quvurni `kutish_sek`
+	muddatiga pauzaga qo'yamiz. Aks holda `*/15` cron kun bo'yi har 15 daqiqada
+	tugagan kvotaga so'rov yog'dirardi.
+	"""
+
+	def __init__(self, matn: str, kutish_sek: int = 0):
+		super().__init__(matn)
+		self.kutish_sek = kutish_sek
+
+
+def _kutishni_oqi(matn: str) -> int:
+	"""Gemini xabaridan kutish vaqtini sekundda ajratadi.
+
+	Namuna: "Please retry in 17h26m2s" / "retryDelay": "34s"
+	"""
+	import re
+
+	m = re.search(r"retry\s+in\s+(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", matn, re.I)
+	if not m or not any(m.groups()):
+		m = re.search(r"retryDelay\"?:?\s*\"?(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", matn, re.I)
+	if not m or not any(m.groups()):
+		return 0
+	soat, daq, sek = (float(x or 0) for x in m.groups())
+	return int(soat * 3600 + daq * 60 + sek)
+
+
+def _pauza_qoy(sekund: int, sabab: str) -> None:
+	"""Butun STT/tahlil quvurini `sekund` muddatiga pauzaga qo'yadi."""
+	from frappe.utils import add_to_date, now_datetime
+
+	sekund = max(60, min(int(sekund or 0) or 3600, 24 * 3600))
+	qiymat = {"gacha": str(add_to_date(now_datetime(), seconds=sekund)), "sabab": sabab[:300]}
+	frappe.cache().set_value(PAUZA_KALIT, qiymat, expires_in_sec=sekund)
+	frappe.logger("telefoniya").warning(f"STT pauza {sekund}s: {sabab}")
+
+
+def pauza_holati() -> dict:
+	"""Pauza bormi: {"bor": bool, "gacha": str|None, "qolgan_sek": int, "sabab": str|None}"""
+	from frappe.utils import now_datetime, time_diff_in_seconds
+
+	q = frappe.cache().get_value(PAUZA_KALIT)
+	if not isinstance(q, dict) or not q.get("gacha"):
+		return {"bor": False, "gacha": None, "qolgan_sek": 0, "sabab": None}
+	qolgan = int(time_diff_in_seconds(q["gacha"], now_datetime()))
+	if qolgan <= 0:
+		frappe.cache().delete_value(PAUZA_KALIT)
+		return {"bor": False, "gacha": None, "qolgan_sek": 0, "sabab": None}
+	return {"bor": True, "gacha": q["gacha"], "qolgan_sek": qolgan, "sabab": q.get("sabab")}
+
+
+@frappe.whitelist()
+def pauza_holati_api() -> dict:
+	"""Formadagi JS uchun — `pauza_holati()`ning whitelist qobig'i."""
+	return pauza_holati()
+
+
+@frappe.whitelist()
+def pauzani_bekor() -> dict:
+	"""Pauzani qo'lda olib tashlash (tarif ko'tarilgandan keyin kutib o'tirmaslik uchun)."""
+	frappe.only_for(("System Manager", "Sales Manager"))
+	frappe.cache().delete_value(PAUZA_KALIT)
+	return {"ok": 1}
 
 MIME = {
 	"mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg", "opus": "audio/ogg",
@@ -101,6 +173,10 @@ def navbatga(qongiroq: str, majburiy: bool = False) -> bool:
 	s = _sozlamalar()
 	if not majburiy and (not s["yoqilgan"] or s["provayder"] == "yoq"):
 		return False
+	# Kvota tugagan bo'lsa navbatga ham qo'ymaymiz — vazifa darhol yiqilib,
+	# faqat log'ni to'ldirardi. Pauza tugashi bilan cron o'zi yig'ib oladi.
+	if pauza_holati()["bor"]:
+		return False
 	frappe.enqueue(
 		"target_zenit.telefoniya.stt.transkripsiya_qil",
 		queue="long", timeout=1800, job_name=f"stt:{qongiroq}",
@@ -112,9 +188,24 @@ def navbatga(qongiroq: str, majburiy: bool = False) -> bool:
 
 @frappe.whitelist()
 def qolda(qongiroq: str) -> dict:
-	"""Formadagi «Transkripsiya qilish» tugmasi — sozlama o'chiq bo'lsa ham ishlaydi."""
+	"""Formadagi «Transkripsiya qilish» tugmasi — sozlama o'chiq bo'lsa ham ishlaydi.
+
+	Kvota pauzasi bor bo'lsa so'rov YUBORILMAYDI: foydalanuvchiga xom 429 matnini
+	ko'rsatish o'rniga qancha kutish kerakligini aytamiz. Pauzani Sozlamalardagi
+	tugma bilan olib tashlash mumkin (tarif ko'tarilgan bo'lsa).
+	"""
 	frappe.has_permission("Telefon Qongirogi", "write", doc=qongiroq, throw=True)
+	p = pauza_holati()
+	if p["bor"]:
+		return {"holat": "kvota", "sabab": _kvota_xabari(p), "kutish_sek": p["qolgan_sek"]}
 	return transkripsiya_qil(qongiroq, majburiy=True, qayta=True)
+
+
+def _kvota_xabari(p: dict) -> str:
+	soat, daq = p["qolgan_sek"] // 3600, p["qolgan_sek"] % 3600 // 60
+	vaqt = f"{soat} soat {daq} daqiqa" if soat else f"{daq} daqiqa"
+	return (f"Kunlik AI kvotasi tugagan — {vaqt}dan keyin tiklanadi. "
+	        f"Tarifni ko'tarsangiz, Telefoniya Sozlamalaridan «Kvota pauzasini olib tashlash»ni bosing.")
 
 
 # ---------------------------------------------------------------- asosiy ish
@@ -159,6 +250,13 @@ def transkripsiya_qil(qongiroq: str, majburiy: bool = False, qayta: bool = False
 			matn, model = _mohir(toliq, s)
 		else:
 			frappe.throw(_("Noma'lum STT provayder: {0}").format(s["provayder"]))
+	except KvotaXato as e:
+		# Kunlik kvota tugagan — hujjat navbatda qoladi, quvur pauzaga tushadi
+		# (pauza `_gemini` ichida qo'yiladi). Pul va log bekorga sarflanmaydi.
+		doc.db_set("xato_matni", f"Kvota tugagan: {e}"[:500], notify=True)
+		frappe.db.commit()
+		return {"holat": "kvota", "sabab": str(e)[:300],
+		        "kutish_sek": e.kutish_sek, "qayta": "kvota tiklanganda cron uradi"}
 	except VaqtinchalikXato as e:
 		# Provayder band/limit — hujjat navbatda QOLADI (holat "Yozuv bor"), faqat
 		# sabab yoziladi. Soatlik `qolganlarni_qil` keyinroq qayta uradi.
@@ -240,16 +338,28 @@ def _gemini(yol: str, s: dict) -> tuple[str, str]:
 	modellar = [s["model"]] + ([s["zaxira"]] if s.get("zaxira") and s["zaxira"] != s["model"] else [])
 	oxirgi: Exception | None = None
 
+	kvota_hammasida = True
 	for model in modellar:
 		try:
 			return _gemini_soro(model, b64, kengaytma, s["kalit"]), model
-		except VaqtinchalikXato as e:
-			# Bu model band — zaxira model bo'lsa unga o'tamiz
+		except KvotaXato as e:
+			# Bu modelning kvotasi tugagan — zaxira modelning kvotasi ALOHIDA,
+			# shuning uchun unga o'tishning ma'nosi bor.
 			oxirgi = e
+			if model != modellar[-1]:
+				frappe.logger("telefoniya").warning(f"STT: {model} kvotasi tugagan, zaxiraga o'tildi")
+			continue
+		except VaqtinchalikXato as e:
+			# Band (503) — kvota emas, demak keyinroq qayta urinish mantiqiy
+			oxirgi = e
+			kvota_hammasida = False
 			if model != modellar[-1]:
 				frappe.logger("telefoniya").warning(f"STT: {model} band, zaxiraga o'tildi: {e}")
 			continue
 
+	# Hamma model kvotaga urildi — butun quvurni pauzaga qo'yamiz
+	if kvota_hammasida and isinstance(oxirgi, KvotaXato):
+		_pauza_qoy(oxirgi.kutish_sek, str(oxirgi))
 	raise oxirgi or VaqtinchalikXato("Gemini javob bermadi")
 
 
@@ -280,7 +390,15 @@ def _gemini_soro(model: str, b64: str, kengaytma: str, kalit: str) -> str:
 		else:
 			if r.status_code == 200:
 				return _gemini_matn(r.json())
-			if r.status_code in VAQTINCHALIK_KODLAR:
+			if r.status_code == 429:
+				# Kvota: qayta urinish befoyda. Boshqa modelning kvotasi alohida,
+				# shuning uchun bu yerda to'xtaymiz — `_gemini` zaxira modelni sinaydi.
+				kut = _kutishni_oqi(r.text)
+				xabar = f"Gemini 429 ({model}): {r.text[:220]}"
+				if kut >= KVOTA_CHEGARA or "per day" in r.text.lower():
+					raise KvotaXato(xabar, kutish_sek=kut or 3600)
+				sabab = VaqtinchalikXato(xabar)
+			elif r.status_code in VAQTINCHALIK_KODLAR:
 				sabab = VaqtinchalikXato(f"Gemini {r.status_code} ({model}): {r.text[:200]}")
 			else:
 				# 400/401/403 — kalit, model nomi yoki fayl muammosi. Qayta urinish
@@ -389,9 +507,16 @@ def avto_holat() -> dict:
 	jami = frappe.db.count("Telefon Qongirogi", bor)
 	tayyor = frappe.db.count("Telefon Qongirogi", {**bor, "transkript": ["is", "set"]})
 	xato = frappe.db.count("Telefon Qongirogi", {**bor, "holat": "Xato"})
+	p = pauza_holati()
+	if p["bor"]:
+		sabablar.append(
+			f"Kvota tugagan — {p['qolgan_sek'] // 3600} soat {p['qolgan_sek'] % 3600 // 60} daqiqadan keyin tiklanadi"
+		)
+
 	tahlil = frappe.db.count("Telefon Qongirogi", {"ai_xulosa": ["is", "set"]})
 	return {
 		"ishlayapti": not sabablar,
+		"pauza": p,
 		"sabablar": sabablar,
 		"tahlil_bor": tahlil,
 		"provayder": s["provayder"],
@@ -428,6 +553,9 @@ def qolganlarni_qil(limit: int = 20, majburiy: bool = False) -> dict:
 		return {"o'tkazildi": "AI o'chirilgan"}
 	if s["provayder"] == "yoq":
 		return {"o'tkazildi": "provayder tanlanmagan"}
+	p = pauza_holati()
+	if p["bor"]:
+		return {"o'tkazildi": f"kvota pauzasi: {p['qolgan_sek'] // 60} daqiqa qoldi"}
 
 	nomlar = frappe.get_all(
 		"Telefon Qongirogi",

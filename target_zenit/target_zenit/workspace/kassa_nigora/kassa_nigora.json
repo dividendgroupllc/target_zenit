@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"7yDdDIJt6Z\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Kassa</b></span>\",\"col\":12}},{\"id\":\"wMXq6Njvpf\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Kassa\",\"col\":3}},{\"id\":\"cKB6B6Zah1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Kunlik kurs\",\"col\":3}},{\"id\":\"fiBjoFmS5W\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Oylik tabel\",\"col\":3}},{\"id\":\"W7R7YZVgfM\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Xodimlar qarzdorligi\",\"col\":3}},{\"id\":\"_Hyjn75XEf\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'quvchilar qarzdorligi\",\"col\":3}},{\"id\":\"wlKTUXRjl_\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Investor paneli\",\"col\":3}},{\"id\":\"17v2N0X7Ee\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Sotuv paneli\",\"col\":3}},{\"id\":\"3fbOnlM7lf\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"DDS\",\"col\":3}},{\"id\":\"iiesh2JXbY\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"P&L (Foyda va zarar)\",\"col\":3}},{\"id\":\"zKCWBgRcld\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Ombor qoldig'i\",\"col\":3}},{\"id\":\"-Pb8qZUdQu\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Mijozlar\",\"col\":3}},{\"id\":\"eSy-2NJeHp\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Ta'minotchilar\",\"col\":3}},{\"id\":\"hRYbK0mtGn\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"O'quvchilar\",\"col\":3}},{\"id\":\"WMt7VXW4gC\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Ota-onalar (Guardian)\",\"col\":3}},{\"id\":\"MpvgAd1jAH\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Xodimlar\",\"col\":3}}]",
+ "content": "[{\"id\": \"7yDdDIJt6Z\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Kassa</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Kassa\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Kunlik kurs\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"\\u041e\\u043f\\u043b\\u0430\\u0442\\u044b \\u0443\\u0447\\u0435\\u043d\\u0438\\u043a\\u043e\\u0432\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Oylik tabel\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Xodimlar qarzdorligi\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar qarzdorligi\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Investor paneli\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sotuv paneli\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"DDS\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"P&L (Foyda va zarar)\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Ombor qoldig'i\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Mijozlar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Ta'minotchilar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Ota-onalar (Guardian)\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Xodimlar\", \"col\": 3}}]",
  "creation": "2026-10-16 13:00:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -13,7 +13,7 @@
  "is_hidden": 0,
  "label": "Kassa Nigora",
  "links": [],
- "modified": "2026-10-16 17:39:05.431087",
+ "modified": "2026-10-20 10:30:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Kassa Nigora",
@@ -48,6 +48,12 @@
    "label": "Kunlik kurs",
    "link_to": "Currency Exchange",
    "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "label": "Оплаты учеников",
+   "type": "Page",
+   "link_to": "tolov-dashboard"
   },
   {
    "color": "Orange",

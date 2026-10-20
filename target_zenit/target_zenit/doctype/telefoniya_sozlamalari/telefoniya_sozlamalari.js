@@ -24,6 +24,24 @@ frappe.ui.form.on("Telefoniya Sozlamalari", {
 				})
 			);
 		}, __("AI"));
+
+		// Kvota tugaganda quvur pauzaga tushadi. Tarifni ko'targandan keyin
+		// 17 soat kutib o'tirmaslik uchun pauzani qo'lda olib tashlash mumkin.
+		frappe.call({
+			method: "target_zenit.telefoniya.stt.pauza_holati_api",
+			callback: (r) => {
+				if (!(r.message || {}).bor) return;
+				frm.add_custom_button(__("Kvota pauzasini olib tashlash"), () => {
+					frappe.call({
+						method: "target_zenit.telefoniya.stt.pauzani_bekor",
+						callback: () => {
+							frappe.show_alert({ message: __("Pauza olib tashlandi"), indicator: "green" });
+							holat_chiz(frm);
+						},
+					});
+				}, __("AI"));
+			},
+		});
 	},
 	ai_yoqilgan(frm) { frm.save().then(() => holat_chiz(frm)); },
 	stt_provayder(frm) { holat_chiz(frm); },

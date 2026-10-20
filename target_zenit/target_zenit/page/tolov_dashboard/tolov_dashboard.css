@@ -1,0 +1,56 @@
+/* Оплаты учеников — sinf x o'quvchi to'lov jadvali */
+.td-wrap { padding: 4px 0 24px; }
+.td-bosh { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:6px 0 10px; }
+.td-bosh h1 { font-size:18px; font-weight:700; margin:0; }
+.td-sub { font-size:12px; color:var(--text-muted); }
+.td-spacer { margin-left:auto; }
+.td-btn { border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color);
+  border-radius:6px; padding:5px 12px; cursor:pointer; font-size:13px; }
+.td-btn.faol { border-color:var(--primary); color:var(--primary); font-weight:600; }
+.td-qidiruv input { border:1px solid var(--border-color); border-radius:6px; padding:5px 10px;
+  background:var(--card-bg); color:var(--text-color); width:230px; }
+
+/* ko'p tanlovli filtr menyusi */
+.td-f { position:relative; }
+.td-f-menu { position:absolute; top:110%; left:0; z-index:1055; width:280px; max-height:340px; overflow:auto;
+  background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.18); padding:8px; }
+.td-f-menu input.td-f-qidir { width:100%; margin-bottom:6px; border:1px solid var(--border-color);
+  border-radius:6px; padding:4px 8px; background:var(--card-bg); color:var(--text-color); }
+.td-f-menu label { display:flex; gap:8px; align-items:center; padding:3px 5px; border-radius:6px;
+  cursor:pointer; font-size:12.5px; margin:0; color:var(--text-color); }
+.td-f-menu label:hover { background:rgba(128,128,128,.08); }
+.td-f-foot { display:flex; justify-content:space-between; margin-top:6px; border-top:1px solid var(--border-color); padding-top:6px; }
+.td-f-foot button { border:0; background:transparent; color:var(--primary); cursor:pointer; font-size:12px; font-weight:600; }
+
+/* plitkalar */
+.td-plitkalar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.td-plitka { border:1px solid var(--border-color); border-radius:8px; padding:8px 14px; background:var(--card-bg); min-width:150px; }
+.td-plitka .son { font-size:17px; font-weight:700; }
+.td-plitka .son.qizil { color:#c0392b; }
+.td-plitka .nom { font-size:11px; color:var(--text-muted); }
+
+/* jadval */
+.td-orab { overflow:auto; max-height:72vh; border:1px solid var(--border-color); border-radius:8px; background:var(--card-bg); }
+table.td-jadval { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; font-size:12.5px; }
+.td-jadval th, .td-jadval td { border-bottom:1px solid var(--border-color); border-right:1px solid var(--border-color);
+  padding:5px 8px; white-space:nowrap; background:var(--card-bg); text-align:right; }
+.td-jadval thead th { position:sticky; top:0; z-index:3; font-weight:600; text-align:center;
+  background:var(--control-bg, var(--card-bg)); }
+.td-jadval .td-c-sinf { position:sticky; left:0; z-index:2; text-align:left; min-width:110px; }
+.td-jadval .td-c-ism { position:sticky; left:110px; z-index:2; text-align:left; min-width:220px; max-width:260px;
+  overflow:hidden; text-overflow:ellipsis; box-shadow:2px 0 3px rgba(0,0,0,.06); }
+.td-jadval thead .td-c-sinf, .td-jadval thead .td-c-ism { z-index:4; }
+.td-jadval td.ost { color:#c0392b; font-weight:600; }
+.td-jadval td.ost.nol { color:var(--text-muted); font-weight:400; }
+.td-jadval td.tol { color:#1a7f4e; }
+.td-jadval td.tol.nol { color:var(--text-muted); }
+.td-jadval th.oy-bosh { background:#eef4ff; }
+.td-jadval th.ost-bosh { color:#c0392b; }
+.td-jadval tbody tr:hover td { background:rgba(128,128,128,.06); }
+.td-jadval tbody tr:hover td.td-c-sinf, .td-jadval tbody tr:hover td.td-c-ism { background:rgba(128,128,128,.06); }
+.td-jadval tfoot td { position:sticky; bottom:0; z-index:2; font-weight:700;
+  border-top:2px solid var(--border-color); background:var(--control-bg, var(--card-bg)); }
+.td-jadval tfoot td.ost { color:#c0392b; }
+.td-bosh-guruh { font-size:11px; color:var(--text-muted); font-weight:500; }
+.td-empty { padding:20px; text-align:center; color:var(--text-muted); }

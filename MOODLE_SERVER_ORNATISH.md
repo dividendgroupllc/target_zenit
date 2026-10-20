@@ -9,11 +9,15 @@
 
 | | Qiymat |
 |---|---|
-| Server | DigitalOcean droplet, Frappe **production** (supervisor + nginx + gunicorn) |
-| Frappe bench | `/home/frappe/frappe-bench`, OS user `frappe` |
-| Sayt | `targetschool.erpcontrol.uz` (HTTPS) |
+| Server | DigitalOcean droplet, **Ubuntu 24.04.4 LTS**, **2 vCPU / 3.8 GB RAM** (2 GB swap), disk 77 GB (60 GB bo'sh) |
+| Frappe | **production** (supervisor + nginx + gunicorn :8000), `/home/frappe/frappe-bench`, OS user `frappe` |
+| Sayt | `targetschool.erpcontrol.uz` (HTTPS, nginx :80/:443) |
 | Frappe / ERPNext | v15.118 / v15.119 |
-| Frappe bazasi | **MariaDB 10.6** |
+| Frappe bazasi | **MariaDB 10.11.14** |
+| Redis | **:6379 band** (Frappe ishlatmoqda) |
+| PHP | **o'rnatilmagan** |
+| PostgreSQL | o'rnatilmagan (:5432 bo'sh) |
+| Lokal farq | lokalda Ubuntu 22.04 + MariaDB 10.6; serverda 24.04 + 10.11 |
 | Lokal (ishlayotgan) Moodle | 5.3+ (Build 20261013), `/opt/moodle`, web root `/opt/moodle/public`, PHP 8.3.35, Apache :8080 |
 
 ## 1. Eng muhim qaror: Moodle bazasi — PostgreSQL yoki MariaDB?
@@ -32,12 +36,12 @@ PHP: minimal **8.3.0** (8.4 ham mayli), faqat 64-bit. `sodium` kengaytmasi majbu
 
 ### Tahlil
 
-**Tugun shu:** serverdagi MariaDB — **10.6**, Moodle 5.3 esa **11.4+** talab qiladi.
+**Tugun shu:** serverdagi MariaDB — **10.11.14**, Moodle 5.3 esa **11.4+** talab qiladi.
 Ya'ni Frappe'ning bazasiga Moodle'ni "qo'shib qo'yish" imkoni yo'q. Uch yo'l bor:
 
 | Yo'l | Nima bo'ladi | Xulosa |
 |---|---|---|
-| **A. MariaDB'ni 11.4'ga ko'tarish** | Bitta instansda ikkisi yashaydi, lekin **ishlab turgan ERP bazasi** 10.6 → 11.4 ga ko'chadi. Frappe v15 rasman 10.6 bilan sinovdan o'tgan; 11.4 — sinovsiz hudud. Moliya bazasi xatarga qo'yiladi. | **YO'Q** |
+| **A. MariaDB'ni 11.4'ga ko'tarish** | Bitta instansda ikkisi yashaydi, lekin **ishlab turgan ERP bazasi** 10.11 → 11.4 ga ko'chadi. Frappe v15 rasman 10.6-10.11 bilan sinovdan o'tgan; 11.4 — sinovsiz hudud. Moliya bazasi xatarga qo'yiladi. | **YO'Q** |
 | **B. Ikkinchi MariaDB instansi (boshqa port)** | Bitta mashinada bir xil nomdagi ikki instans: `mysqld_multi`, ikki config, ikki data dir, `apt upgrade` ikkisiga ham tegadi. Chalkashlik yuqori, foyda yo'q. | Yo'q |
 | **C. PostgreSQL 17 — alohida dvigatel** | Frappe'ning MariaDB'siga **umuman tegilmaydi**. PG 17 PGDG repodan toza o'rnatiladi, o'z porti (5432), o'z useri, o'z backupi. | **HA** |
 
@@ -55,7 +59,40 @@ Ya'ni Frappe'ning bazasiga Moodle'ni "qo'shib qo'yish" imkoni yo'q. Uch yo'l bor
    `innodb_file_per_table` sozlashlari kerak). PostgreSQL'da bu muammolar yo'q.
 4. **Narxi.** ~200-300 MB RAM va `pg_dump`/`psql` ni o'rganish. Boshqa xarajat yo'q.
 
-### QAROR: **PostgreSQL 17**, Frappe'ning MariaDB 10.6'siga tegmaymiz.
+### QAROR: **PostgreSQL 17**, Frappe'ning MariaDB 10.11'iga tegmaymiz.
+
+## 1b. Resurs hisobi — bu server yetadimi?
+
+Hozirgi holat: **3.8 GB RAM**, 1.6 GB Frappe stacki egallagan, **2.2 GB bo'sh**, 2 GB swap,
+**2 vCPU**.
+
+Moodle qo'shilgandan keyin taxminiy qo'shimcha yuk:
+
+| Komponent | RAM |
+|---|---|
+| PHP-FPM (4 bola x ~100 MB) | ~400 MB |
+| PostgreSQL 17 (shared_buffers 256 MB + ulanishlar) | ~400 MB |
+| **Jami** | **~800 MB** |
+
+Ya'ni 2.2 GB dan ~1.4 GB qoladi — **o'rnatish va API integratsiyasini sinash uchun yetadi.**
+
+**Ammo ochiq aytish kerak:** 326 o'quvchi/o'qituvchi haqiqatan Moodle'da dars qila
+boshlaganda (test topshirish, fayl yuklash, video) **2 vCPU** ikki tizimga yetmaydi —
+PHP-FPM va gunicorn bir xil protsessorni talashadi, PostgreSQL va MariaDB bir xil page
+cache'ni talashadi. Natijada Moodle sekinlashsa — bir vaqtda **moliya tizimi ham**
+sekinlashadi, ya'ni xatar faqat o'quv jarayonida qolmaydi.
+
+Shuning uchun tartib shunday:
+
+1. **Hozir** — shu serverga o'rnatamiz, API sinovini o'tkazamiz, 2-3 kishida tekshiramiz.
+   Yuk deyarli yo'q, muammo chiqmaydi.
+2. **Haqiqiy foydalanishdan oldin** — ikki yo'ldan biri:
+   - droplet'ni **4 vCPU / 8 GB** ga ko'tarish, yoki
+   - Moodle'ni **alohida droplet**ga ko'chirish (afzal).
+
+2-qoidalar to'plami (quyida) shu ko'chirishni arzon qiladi: PG dump ko'chiriladi, DNS
+o'zgartiriladi, Frappe'da bitta maydon yangilanadi — kod umuman o'zgarmaydi.
+Shuning uchun "keyin ikkita serverda yuritamiz" degan reja bugundan ta'minlanadi.
 
 ## 2. "Bitta serverda, lekin ikkita serverdek" qoidalari
 
@@ -70,7 +107,7 @@ Keyinchalik ajratganda faqat DNS va bitta sozlama o'zgaradi.
 | 4 | **Umumiy OS user yo'q** | Moodle: `www-data` (php-fpm). Frappe: `frappe`. Bir-birining guruhiga qo'shilmaydi. |
 | 5 | **nginx konfigi alohida faylda** | `bench` yaratgan konfig **qo'l bilan tahrirlanmaydi** (`bench setup nginx` uni qayta yozadi). Moodle uchun alohida `/etc/nginx/conf.d/moodle.conf` + alohida sertifikat. |
 | 6 | **Cron alohida** | Moodle cron — tizim croni, `www-data` nomidan, har daqiqa. Frappe scheduler — supervisor ostida, `frappe` nomidan. Biri ikkinchisini chaqirmaydi. |
-| 7 | **Redis alohida** | Frappe 11000/12000/13000 portlarni egallagan. Moodle boshida fayl keshida ishlaydi (Redis'siz); kerak bo'lsa **o'z** instansi beriladi, Frappe'ning Redis'iga ulanmaydi. |
+| 7 | **Redis alohida** | **:6379 ni Frappe egallagan** — Moodle unga ulanmaydi. Moodle standart **fayl keshida** ishlaydi; kerak bo'lsa keyin o'z instansi (:6380) beriladi. |
 | 8 | **Backup alohida** | `pg_dump` + `moodledata` arxivi, o'z jadvali bilan. `bench backup` Moodle'ni bilmaydi va bilmasligi kerak. |
 | 9 | **Autentifikatsiya haqiqiy** | Moodle WS tokeni Frappe'da `Password` maydonida. Token egasi — cheklangan `frappe.sync` useri, admin emas. Bugun ham xuddi tashqi tizim bilan gaplashayotgandek. |
 
@@ -105,18 +142,18 @@ cd /home/frappe/frappe-bench && bench --site targetschool.erpcontrol.uz backup -
 ```
 Va **DigitalOcean snapshot** — PHP/PG o'rnatish tizim paketlariga tegadi, orqaga yo'l kerak.
 
-### 2-qadam. DNS
+### 2-qadam. DNS — **keyinga qoldirildi**
 
-`lms.erpcontrol.uz` → server IP (A yozuv). Tarqalguncha kutiladi (`dig +short lms.erpcontrol.uz`).
-Nomi ahamiyatli: alohida domen = alohida server taqlidi, keyin ko'chirishda faqat DNS o'zgaradi.
+Subdomen hali olinmagan. A bosqichda Moodle `http://SERVER_IP:8081` da ishlaydi;
+subdomen kelganda 7-qadamdagi B bosqich bajariladi.
 
 ### 3-qadam. PHP 8.3 + kengaytmalar
 
-Ubuntu 22.04 da standart PHP — 8.1, Moodle 5.3 esa **8.3+** talab qiladi, shuning uchun
-`ondrej/php` PPA kerak (24.04 bo'lsa 8.3 standart, PPA shart emas):
+Server **Ubuntu 24.04**, uning standart PHP'si **8.3** — Moodle 5.3 talabiga to'g'ri keladi,
+ya'ni `ondrej/php` PPA **kerak emas** (bu lokaldagi 22.04 dan farqi):
 
 ```bash
-sudo add-apt-repository -y ppa:ondrej/php && sudo apt update
+sudo apt update
 sudo apt install -y php8.3-fpm php8.3-cli php8.3-pgsql php8.3-curl php8.3-gd \
   php8.3-intl php8.3-mbstring php8.3-soap php8.3-xml php8.3-zip php8.3-opcache
 ```
@@ -134,9 +171,18 @@ opcache.enable = 1
 opcache.memory_consumption = 128
 ```
 
-**Diqqat:** PHP-FPM pool'ini cheklab qo'yamiz, bo'lmasa Frappe'ning gunicorn'iga RAM
-qolmaydi — `/etc/php/8.3/fpm/pool.d/www.conf` da `pm = dynamic`, `pm.max_children` ni
-RAM'ga qarab (masalan 8) belgilanadi.
+**Diqqat — bu serverda RAM tanqis (3.8 GB, 1.6 GB Frappe egallagan).** PHP-FPM pool'i
+qattiq cheklanadi, bo'lmasa gunicorn/MariaDB OOM'ga uchraydi.
+`/etc/php/8.3/fpm/pool.d/www.conf`:
+
+```ini
+pm = dynamic
+pm.max_children = 4          ; 2 vCPU / 3.8 GB uchun; bola ~100 MB
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 2
+pm.max_requests = 500        ; xotira oqishini kesib tashlaydi
+```
 
 ### 4-qadam. PostgreSQL 17
 
@@ -162,6 +208,18 @@ SQL
 ```
 `moodleuser` boshqa hech qaysi bazaga huquq olmaydi — 2-qoida.
 
+**Diqqat:** Ubuntu 24.04 standart PostgreSQL'i — 16, bizga **17** kerak, shuning uchun
+PGDG repo baribir qo'shiladi.
+
+Kichik RAM uchun sozlash (`/etc/postgresql/17/main/conf.d/99-moodle.conf`):
+```ini
+shared_buffers = 256MB       # MariaDB bilan page cache uchun urishmasin
+work_mem = 8MB
+maintenance_work_mem = 64MB
+effective_cache_size = 1GB
+max_connections = 50         # PHP-FPM 4 bola uchun yetarlidan ortiq
+```
+
 ### 5-qadam. Moodle kodi
 
 ```bash
@@ -181,24 +239,30 @@ sudo chown www-data:www-data /var/moodledata
 sudo chmod 0770 /var/moodledata
 ```
 
-### 7-qadam. nginx — alohida vhost
+### 7-qadam. nginx — alohida vhost (A bosqich: port, B bosqich: subdomen)
+
+Subdomen hali yo'q, shuning uchun **ikki bosqichda** boramiz:
+
+| | A bosqich (hozir) | B bosqich (subdomen kelganda) |
+|---|---|---|
+| Manzil | `http://SERVER_IP:8081` | `https://lms.<domen>` |
+| nginx | `listen 8081` | `listen 443 ssl` qo'shiladi |
+| Sertifikat | yo'q | certbot |
+| Kim kiradi | faqat sen (ufw/DO firewall bilan IP cheklangan) | hamma |
+
+**Port tanlovi: 8081.** Band portlar: 80, 443 (nginx), 3306 (MariaDB), 6379 (Redis),
+8000 (gunicorn), 9000 (frappe socketio). 8081 bo'sh — o'rnatishdan oldin
+`ss -lntp | grep 8081` bilan tasdiqlanadi.
 
 **Moodle 5.1+ dan web root `/opt/moodle/public`** (kod ildizi emas!). Yangi fayl:
 `/etc/nginx/conf.d/moodle.conf`
 
 ```nginx
 server {
-    listen 80;
-    server_name lms.erpcontrol.uz;
-    return 301 https://$host$request_uri;
-}
+    listen 8081;
+    server_name _;                 # bu portda faqat Moodle turadi
 
-server {
-    listen 443 ssl http2;
-    server_name lms.erpcontrol.uz;
-
-    # certbot to'ldiradi
-    root /opt/moodle/public;
+    root /opt/moodle/public;       # DIQQAT: /opt/moodle EMAS
     index index.php;
 
     client_max_body_size 100M;
@@ -216,30 +280,46 @@ server {
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
     }
 
-    # moodledata va .git hech qachon web orqali ochilmaydi
     location ~ /\.(git|ht) { deny all; }
 }
 ```
 
 Tekshirish: `sudo nginx -t` → `sudo systemctl reload nginx`.
-**Frappe'ning konfigiga tegilmaydi.** `nginx -T` da Frappe'da `default_server` yoki
-`server_name _` catch-all bor-yo'qligini ko'rib chiqish kerak — bo'lsa Moodle vhostini
-u ushlab qolmasligiga ishonch hosil qilinadi.
+**Frappe'ning konfigi tahrirlanmaydi** — bu butunlay alohida fayl va alohida port.
 
-Sertifikat:
+**Xavfsizlik (A bosqich uchun majburiy):** 8081 da HTTPS yo'q, ya'ni admin paroli
+ochiq matnda ketadi. Shuning uchun port butun internetga ochilmaydi — faqat o'z IP'ingga:
+
 ```bash
-sudo certbot --nginx -d lms.erpcontrol.uz
+sudo ufw status                                   # ufw faolmi?
+sudo ufw allow from <SENING_IP> to any port 8081 proto tcp
 ```
+
+ufw o'chirilgan bo'lsa, shu qoida DigitalOcean Cloud Firewall'da qo'yiladi.
+Frappe → Moodle chaqiruvlari shu mashinaning o'zida qoladi (tashqariga chiqmaydi),
+ya'ni token tinglanish xatari yo'q.
+
+**B bosqichda nima o'zgaradi** (subdomen kelganda):
+1. `moodle.conf` ga `listen 443 ssl` + `server_name lms.<domen>` bloki qo'shiladi
+2. `sudo certbot --nginx -d lms.<domen>`
+3. `/opt/moodle/config.php` da `$CFG->wwwroot = 'https://lms.<domen>';`
+4. `sudo -u www-data php8.3 /opt/moodle/admin/cli/purge_caches.php`
+5. Frappe'da `Moodle Settings.base_url` → `https://lms.<domen>`
+6. 8081 porti yopiladi
+
+Hozir Moodle'da haqiqiy kontent yo'q, shuning uchun `wwwroot` ni keyin o'zgartirish
+xatarsiz — kontent ichidagi havolalar hali yozilmagan.
 
 ### 8-qadam. Moodle CLI o'rnatish
 
-`--wwwroot` **`/public` bilan tugamaydi** (Moodle buni xato deb hisoblaydi):
+`--wwwroot` **`/public` bilan tugamaydi** (Moodle buni xato deb hisoblaydi).
+A bosqichda u port bilan beriladi — `SERVER_IP` o'rniga haqiqiy IP yoziladi:
 
 ```bash
 cd /opt/moodle
 sudo -u www-data php admin/cli/install.php \
   --lang=en \
-  --wwwroot=https://lms.erpcontrol.uz \
+  --wwwroot=http://SERVER_IP:8081 \
   --dataroot=/var/moodledata \
   --dbtype=pgsql \
   --dbhost=127.0.0.1 \
@@ -293,7 +373,8 @@ Brauzerda, `https://lms.erpcontrol.uz/admin`:
 ### 11-qadam. Frappe tomonini ulash
 
 `Moodle Settings` da:
-- Moodle manzili: `https://lms.erpcontrol.uz` (**localhost emas** — 1-qoida)
+- Moodle manzili: `http://SERVER_IP:8081` (A bosqich). **`localhost` yozilmaydi** —
+  1-qoida: haqiqiy tashqi manzil ishlatiladi, shunda B bosqichda faqat shu maydon o'zgaradi
 - Token: 10-qadamdan
 - ✓ Yoqilgan, ✓ **Test rejimi** (dastlab)
 
@@ -315,7 +396,7 @@ Frappe backupidan **alohida** jadval, alohida joy — 8-qoida.
 
 O'rnatish tugagach shu ro'yxat bo'yicha o'tiladi:
 
-- [ ] `Moodle Settings.base_url` da `localhost` yoki port **yo'q**
+- [ ] `Moodle Settings.base_url` da `localhost` **yo'q** (A bosqichda port bor — vaqtinchalik)
 - [ ] Frappe kodida Moodle bazasiga to'g'ridan-to'g'ri ulanish **yo'q** (faqat `moodle.py` HTTP)
 - [ ] `moodleuser` faqat `moodle` bazasiga huquqli
 - [ ] `frappe` useri `/opt/moodle` va `/var/moodledata` ni o'qiy olmaydi
