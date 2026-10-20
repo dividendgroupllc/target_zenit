@@ -1,5 +1,14 @@
 /* Оплаты учеников — sinf x o'quvchi to'lov jadvali */
-.td-wrap { padding: 4px 0 24px; }
+
+/* Ekranni to'liq egallash: desk konteyneri kengligi cheklovini olib tashlaymiz */
+.td-full .container { max-width: 100% !important; padding-left: 14px; padding-right: 14px; }
+.td-full .layout-main-section-wrapper { margin-bottom: 0; }
+.td-full .page-form { padding-left: 0; padding-right: 0; }
+
+/* Yopishib turadigan ustunlar kengligi — kichik ekranda media query orqali kichrayadi */
+:root { --td-nr: 42px; --td-sinf: 110px; --td-ism: 220px; }
+
+.td-wrap { padding: 4px 0 10px; }
 .td-bosh { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:6px 0 10px; }
 .td-bosh h1 { font-size:18px; font-weight:700; margin:0; }
 .td-sub { font-size:12px; color:var(--text-muted); }
@@ -31,16 +40,22 @@
 .td-plitka .nom { font-size:11px; color:var(--text-muted); }
 
 /* jadval */
-.td-orab { overflow:auto; max-height:72vh; border:1px solid var(--border-color); border-radius:8px; background:var(--card-bg); }
+/* Balandlik JS'da aniq hisoblanadi (oyna o'lchamiga qarab), bu — zaxira qiymat */
+.td-orab { overflow:auto; max-height:calc(100vh - 280px); min-height:260px;
+  border:1px solid var(--border-color); border-radius:8px; background:var(--card-bg);
+  overscroll-behavior:contain; }
 table.td-jadval { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; font-size:12.5px; }
 .td-jadval th, .td-jadval td { border-bottom:1px solid var(--border-color); border-right:1px solid var(--border-color);
   padding:5px 8px; white-space:nowrap; background:var(--card-bg); text-align:right; }
 .td-jadval thead th { position:sticky; top:0; z-index:3; font-weight:600; text-align:center;
   background:var(--control-bg, var(--card-bg)); }
-.td-jadval .td-c-sinf { position:sticky; left:0; z-index:2; text-align:left; min-width:110px; }
-.td-jadval .td-c-ism { position:sticky; left:110px; z-index:2; text-align:left; min-width:220px; max-width:260px;
+.td-jadval .td-c-nr { position:sticky; left:0; z-index:2; min-width:var(--td-nr); text-align:right;
+  color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.td-jadval .td-c-sinf { position:sticky; left:var(--td-nr); z-index:2; text-align:left; min-width:var(--td-sinf); }
+.td-jadval .td-c-ism { position:sticky; left:calc(var(--td-nr) + var(--td-sinf)); z-index:2; text-align:left;
+  min-width:var(--td-ism); max-width:calc(var(--td-ism) + 40px);
   overflow:hidden; text-overflow:ellipsis; box-shadow:2px 0 3px rgba(0,0,0,.06); }
-.td-jadval thead .td-c-sinf, .td-jadval thead .td-c-ism { z-index:4; }
+.td-jadval thead .td-c-nr, .td-jadval thead .td-c-sinf, .td-jadval thead .td-c-ism { z-index:4; }
 .td-jadval td.ost { color:#c0392b; font-weight:600; }
 .td-jadval td.ost.nol { color:var(--text-muted); font-weight:400; }
 .td-jadval td.tol { color:#1a7f4e; }
@@ -48,9 +63,54 @@ table.td-jadval { border-collapse:separate; border-spacing:0; width:max-content;
 .td-jadval th.oy-bosh { background:#eef4ff; }
 .td-jadval th.ost-bosh { color:#c0392b; }
 .td-jadval tbody tr:hover td { background:rgba(128,128,128,.06); }
-.td-jadval tbody tr:hover td.td-c-sinf, .td-jadval tbody tr:hover td.td-c-ism { background:rgba(128,128,128,.06); }
+.td-jadval tbody tr:hover td.td-c-nr, .td-jadval tbody tr:hover td.td-c-sinf,
+.td-jadval tbody tr:hover td.td-c-ism { background:rgba(128,128,128,.06); }
 .td-jadval tfoot td { position:sticky; bottom:0; z-index:2; font-weight:700;
   border-top:2px solid var(--border-color); background:var(--control-bg, var(--card-bg)); }
 .td-jadval tfoot td.ost { color:#c0392b; }
 .td-bosh-guruh { font-size:11px; color:var(--text-muted); font-weight:500; }
 .td-empty { padding:20px; text-align:center; color:var(--text-muted); }
+
+/* ---------------------------------------------- moslashuvchanlik */
+/* Jadval kengligi hech qachon ekrandan chiqmaydi — faqat ichida gorizontal skrol */
+.td-orab { max-width: 100%; }
+table.td-jadval { width: max-content; min-width: 100%; }
+
+/* Noutbuk / kichik monitor */
+@media (max-width: 1200px) {
+  :root { --td-ism: 180px; }
+  .td-plitka { min-width: 128px; padding: 7px 11px; }
+  .td-plitka .son { font-size: 15px; }
+}
+
+/* Planshet */
+@media (max-width: 900px) {
+  :root { --td-nr: 32px; --td-sinf: 76px; --td-ism: 150px; }
+  table.td-jadval { font-size: 11.5px; }
+  .td-jadval th, .td-jadval td { padding: 4px 5px; }
+  .td-bosh h1 { font-size: 16px; }
+  .td-qidiruv input { width: 160px; }
+  .td-plitkalar { gap: 7px; }
+  .td-plitka { min-width: 110px; padding: 6px 9px; }
+  .td-plitka .son { font-size: 14px; }
+  .td-plitka .nom { font-size: 10px; }
+}
+
+/* Telefon: sarlavha va filtrlar ustma-ust, qidiruv to'liq kenglikda */
+@media (max-width: 640px) {
+  :root { --td-nr: 26px; --td-sinf: 64px; --td-ism: 128px; }
+  .td-full .container { padding-left: 8px; padding-right: 8px; }
+  .td-bosh { gap: 7px; }
+  .td-spacer { margin-left: 0; width: 100%; height: 0; }
+  .td-qidiruv { flex: 1 1 100%; }
+  .td-qidiruv input { width: 100%; }
+  .td-f-menu { width: min(280px, calc(100vw - 32px)); }
+  .td-plitkalar { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+  .td-plitka { flex: 0 0 auto; }
+  table.td-jadval { font-size: 11px; }
+}
+
+/* Juda baland ekran (4K / vertikal monitor): jadval bo'shliqni egallasin */
+@media (min-height: 1100px) {
+  .td-orab { min-height: 420px; }
+}

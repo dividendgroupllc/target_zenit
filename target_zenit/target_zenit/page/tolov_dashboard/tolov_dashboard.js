@@ -10,6 +10,9 @@ frappe.pages["tolov-dashboard"].on_page_load = function (wrapper) {
 		single_column: true,
 	});
 
+	// Desk konteyneri kengligini ochib beramiz — jadval ekranni to'liq egallaydi
+	$(wrapper).addClass("td-full");
+
 	const holat = {
 		data: null,
 		sinflar: [],        // tanlangan sinflar (bo'sh = hammasi)
@@ -24,6 +27,18 @@ frappe.pages["tolov-dashboard"].on_page_load = function (wrapper) {
 	const esc = (s) => frappe.utils.escape_html(String(s == null ? "" : s));
 	// 0 bo'lsa chiziqcha — jadval "0" lar bilan to'lib ketmasin
 	const son = (n) => (Math.abs(n || 0) < 0.5 ? "—" : fmt(n));
+
+	// Jadval oynaning qolgan balandligini to'liq egallaydi (har qanday ekranda)
+	function balandlikOlchash() {
+		const $orab = $joy.find(".td-orab");
+		if (!$orab.length) return;
+		const tepa = $orab.offset().top - $(window).scrollTop();
+		// pastdagi izoh va kichik zaxira uchun joy qoldiramiz
+		const izoh = $joy.find(".td-izoh").outerHeight(true) || 0;
+		const h = Math.max(240, window.innerHeight - tepa - izoh - 24);
+		$orab.css("max-height", h + "px");
+	}
+	$(window).off("resize.td").on("resize.td", frappe.utils.debounce(balandlikOlchash, 120));
 
 	function yukla() {
 		frappe.call({
@@ -50,7 +65,11 @@ frappe.pages["tolov-dashboard"].on_page_load = function (wrapper) {
 		$joy.find("tbody tr").each(function () {
 			const mos = !q || String($(this).data("q") || "").includes(q);
 			$(this).toggle(mos);
-			if (mos) korinadi += 1;
+			if (mos) {
+				korinadi += 1;
+				// tartib raqam ko'rinib turgan qatorlar bo'yicha qayta yoziladi
+				$(this).find("td.td-c-nr").text(korinadi);
+			}
 		});
 		$joy.find(".td-soni").text(korinadi);
 	}
@@ -156,7 +175,7 @@ frappe.pages["tolov-dashboard"].on_page_load = function (wrapper) {
 		if (d.yotoqxona) bloklar.push({ kalit: "yotoqxona", nom: "Общежитие" });
 		const oyBloklar = d.oylar.map((o) => ({ kalit: o.kalit, nom: o.label, oy: true }));
 
-		let th = `<tr><th class="td-c-sinf">Группа</th><th class="td-c-ism">Ученик</th>`;
+		let th = `<tr><th class="td-c-nr">№</th><th class="td-c-sinf">Группа</th><th class="td-c-ism">Ученик</th>`;
 		bloklar.concat(oyBloklar).forEach((b) => {
 			th += `<th class="ost-bosh${b.oy ? " oy-bosh" : ""}">${esc(b.nom)} остатка</th>`;
 			th += `<th${b.oy ? ' class="oy-bosh"' : ""}>${esc(b.nom)}</th>`;
@@ -167,8 +186,9 @@ frappe.pages["tolov-dashboard"].on_page_load = function (wrapper) {
 		const katak = (v, tur) =>
 			`<td class="${tur}${Math.abs(v || 0) < 0.5 ? " nol" : ""}">${son(v)}</td>`;
 		let rows = "";
-		d.qatorlar.forEach((q) => {
+		d.qatorlar.forEach((q, i) => {
 			let tr = `<tr data-q="${esc(((q.sinf || "") + " " + (q.ism || "")).toLowerCase())}">
+				<td class="td-c-nr">${i + 1}</td>
 				<td class="td-c-sinf">${esc(q.sinf || "—")}</td>
 				<td class="td-c-ism" title="${esc(q.ism)}">${esc(q.ism)}</td>`;
 			bloklar.forEach((b) => {
@@ -181,12 +201,12 @@ frappe.pages["tolov-dashboard"].on_page_load = function (wrapper) {
 			rows += tr + "</tr>";
 		});
 		if (!rows) {
-			const ustun = 2 + (bloklar.length + d.oylar.length) * 2;
+			const ustun = 3 + (bloklar.length + d.oylar.length) * 2;
 			rows = `<tr><td colspan="${ustun}" class="td-empty">Ничего не найдено</td></tr>`;
 		}
 
 		// ---- jami qatori ----
-		let foot = `<tr><td class="td-c-sinf">ИТОГО</td><td class="td-c-ism">${d.soni} ученик</td>`;
+		let foot = `<tr><td class="td-c-nr"></td><td class="td-c-sinf">ИТОГО</td><td class="td-c-ism">${d.soni} ученик</td>`;
 		bloklar.forEach((b) => {
 			foot += `<td class="ost">${son(d.jami[b.kalit].ostatka)}</td><td>${son(d.jami[b.kalit].tolangan)}</td>`;
 		});
@@ -198,7 +218,7 @@ frappe.pages["tolov-dashboard"].on_page_load = function (wrapper) {
 
 		$joy.append(`<div class="td-orab"><table class="td-jadval">
 			<thead>${th}</thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>`);
-		$joy.append(`<div class="td-sub" style="margin-top:8px">
+		$joy.append(`<div class="td-sub td-izoh" style="margin-top:8px">
 			«Остатка» — начислено минус оплачено (красным). Месяцы берутся из начислений:
 			по умолчанию текущий месяц и следующие; в фильтре можно выбрать любые прошлые месяцы.
 			Форма и книга считаются по позициям счёта (Forma / Kitob) пропорционально.
@@ -207,6 +227,7 @@ frappe.pages["tolov-dashboard"].on_page_load = function (wrapper) {
 
 		page.clear_inner_toolbar();
 		page.add_inner_button("↻ Обновить", () => yukla());
+		balandlikOlchash();
 	}
 
 	yukla();

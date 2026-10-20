@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\": \"7yDdDIJt6Z\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Kassa</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Kassa\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Kunlik kurs\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"\\u041e\\u043f\\u043b\\u0430\\u0442\\u044b \\u0443\\u0447\\u0435\\u043d\\u0438\\u043a\\u043e\\u0432\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Oylik tabel\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Xodimlar qarzdorligi\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar qarzdorligi\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Investor paneli\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sotuv paneli\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"DDS\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"P&L (Foyda va zarar)\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Ombor qoldig'i\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Mijozlar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Ta'minotchilar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Ota-onalar (Guardian)\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Xodimlar\", \"col\": 3}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Panellar</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"\\u041e\\u043f\\u043b\\u0430\\u0442\\u044b \\u0443\\u0447\\u0435\\u043d\\u0438\\u043a\\u043e\\u0432\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Oylik tabel\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Xodimlar qarzdorligi\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar qarzdorligi\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Investor paneli\", \"col\": 4}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Hujjatlar</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Kassa\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Mijozlar\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Ta'minotchilar\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"O'quvchilar\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Ota-onalar (Guardian)\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Xodimlar\", \"col\": 4}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Hisobotlar</b></span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"DDS\", \"col\": 4}}]",
  "creation": "2026-10-16 13:00:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -13,7 +13,7 @@
  "is_hidden": 0,
  "label": "Kassa Nigora",
  "links": [],
- "modified": "2026-10-20 10:30:00.000000",
+ "modified": "2026-10-21 09:30:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Kassa Nigora",
@@ -35,20 +35,6 @@
  ],
  "sequence_id": 99.2,
  "shortcuts": [
-  {
-   "color": "Blue",
-   "doc_view": "List",
-   "label": "Kassa",
-   "link_to": "Kassa",
-   "type": "DocType"
-  },
-  {
-   "color": "Green",
-   "doc_view": "List",
-   "label": "Kunlik kurs",
-   "link_to": "Currency Exchange",
-   "type": "DocType"
-  },
   {
    "color": "Green",
    "label": "Оплаты учеников",
@@ -80,31 +66,11 @@
    "type": "Page"
   },
   {
-   "color": "Pink",
-   "label": "Sotuv paneli",
-   "link_to": "sotuv-dashboard",
-   "type": "Page"
-  },
-  {
-   "color": "Grey",
-   "label": "DDS",
-   "link_to": "DDS",
-   "report_ref_doctype": "GL Entry",
-   "type": "Report"
-  },
-  {
-   "color": "Grey",
-   "label": "P&L (Foyda va zarar)",
-   "link_to": "Profit and Loss Statement",
-   "report_ref_doctype": "GL Entry",
-   "type": "Report"
-  },
-  {
-   "color": "Grey",
-   "label": "Ombor qoldig'i",
-   "link_to": "Stock Balance",
-   "report_ref_doctype": "Stock Ledger Entry",
-   "type": "Report"
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Kassa",
+   "link_to": "Kassa",
+   "type": "DocType"
   },
   {
    "color": "Yellow",
@@ -140,6 +106,13 @@
    "label": "Xodimlar",
    "link_to": "Employee",
    "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "label": "DDS",
+   "link_to": "DDS",
+   "report_ref_doctype": "GL Entry",
+   "type": "Report"
   }
  ],
  "title": "Kassa Nigora"

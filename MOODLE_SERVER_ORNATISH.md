@@ -101,7 +101,7 @@ Keyinchalik ajratganda faqat DNS va bitta sozlama o'zgaradi.
 
 | # | Qoida | Amalda |
 |---|---|---|
-| 1 | **Faqat HTTPS API orqali gaplashadi** | Frappe'dagi `Moodle Settings.base_url` = `https://lms.erpcontrol.uz` — **`localhost` emas, port emas, unix socket emas**. Ajratganda shu bitta maydon o'zgaradi, kod o'zgarmaydi. |
+| 1 | **Faqat HTTPS API orqali gaplashadi** | Frappe'dagi `Moodle Settings.base_url` = `https://moodle.erpcontrol.uz` — **`localhost` emas, port emas, unix socket emas**. Ajratganda shu bitta maydon o'zgaradi, kod o'zgarmaydi. |
 | 2 | **Umumiy baza yo'q** | Moodle — PostgreSQL (`moodle` DB, `moodleuser`), Frappe — MariaDB. Hech qachon biridan ikkinchisiga to'g'ridan-to'g'ri SQL yozilmaydi. `moodleuser` faqat `moodle` bazasiga huquqli. |
 | 3 | **Umumiy fayl tizimi yo'q** | `moodledata` → `/var/moodledata` (bench daraxtidan tashqarida). `frappe` useri Moodle fayllarini o'qiy olmaydi, `www-data` Frappe saytlarini o'qiy olmaydi. Fayl almashinuvi faqat HTTP orqali. |
 | 4 | **Umumiy OS user yo'q** | Moodle: `www-data` (php-fpm). Frappe: `frappe`. Bir-birining guruhiga qo'shilmaydi. |
@@ -116,6 +116,19 @@ Apache'ni ko'tarmaymiz — u nginx bilan :80/:443 uchun urishib qoladi. Serverda
 **nginx + PHP-FPM** da ishlaydi.
 
 ## 3. O'rnatish ketma-ketligi
+
+> **QAROR (2026-10-20): subdomen tayyor — `moodle.erpcontrol.uz` → `159.89.151.163`**
+> (`targetschool.erpcontrol.uz` bilan **bitta IP**, nginx `server_name` bo'yicha ajratadi).
+> Moodle birinchi marta to'g'ri nom bilan o'rnatiladi: vaqtinchalik 8081 porti va
+> keyinchalik `wwwroot` ni almashtirish **bo'lmaydi**. 7-qadamdagi port varianti faqat
+> zaxira reja sifatida hujjatda qoldirildi.
+>
+> Tekshirilgan (2026-10-20): DNS tarqalgan, :80 ochiq va noma'lum nomga 404 qaytaradi
+> (certbot HTTP-01 o'tadi), :443 da hozir faqat `targetschool` sertifikati bor.
+>
+> **2-qadam (DNS) bajarilgan.** Qolgan tartib: 0, 1, 3, 4, 5, 6, 7, 8, 9-13 —
+> ketma-ket, har birining oxiridagi tekshiruv o'tmasa keyingisiga o'tilmaydi.
+
 
 ### 0-qadam. Inventarizatsiya (serverda, faqat o'qish)
 
@@ -142,10 +155,12 @@ cd /home/frappe/frappe-bench && bench --site targetschool.erpcontrol.uz backup -
 ```
 Va **DigitalOcean snapshot** — PHP/PG o'rnatish tizim paketlariga tegadi, orqaga yo'l kerak.
 
-### 2-qadam. DNS — **keyinga qoldirildi**
+### 2-qadam. DNS — **bajarilgan**
 
-Subdomen hali olinmagan. A bosqichda Moodle `http://SERVER_IP:8081` da ishlaydi;
-subdomen kelganda 7-qadamdagi B bosqich bajariladi.
+`moodle.erpcontrol.uz` → `159.89.151.163` (A yozuv), `targetschool.erpcontrol.uz` bilan
+bitta IP. Tasdiq: `getent ahostsv4 moodle.erpcontrol.uz`.
+**Yangi IP sotib olish kerak bo'lmadi** — bitta IP cheksiz domenga xizmat qiladi, nginx
+ularni `Host:` sarlavhasi (`server_name`) bo'yicha ajratadi, HTTPS'da SNI orqali.
 
 ### 3-qadam. PHP 8.3 + kengaytmalar
 
@@ -239,13 +254,36 @@ sudo chown www-data:www-data /var/moodledata
 sudo chmod 0770 /var/moodledata
 ```
 
-### 7-qadam. nginx — alohida vhost (A bosqich: port, B bosqich: subdomen)
+### 7-qadam. nginx — alohida vhost
 
-Subdomen hali yo'q, shuning uchun **ikki bosqichda** boramiz:
+**1-yo'l (tanlangan):** subdomen tayyor bo'ladi, shuning uchun to'g'ridan-to'g'ri
+`listen 443 ssl` + `server_name moodle.erpcontrol.uz` bilan quriladi — quyidagi nginx bloki
+`listen 8081; server_name _;` o'rniga shunday bo'ladi:
+
+```nginx
+server {
+    listen 80;
+    server_name moodle.erpcontrol.uz;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name moodle.erpcontrol.uz;
+    # ... qolgan hammasi (root, location bloklari) pastdagidek
+}
+```
+So'ng `sudo certbot --nginx -d moodle.erpcontrol.uz` sertifikatni qo'yadi.
+**Yangi IP kerak emas** — Frappe bilan bitta IP va bitta 443 portida yashaydi, nginx
+ularni `server_name` (ya'ni `Host:` sarlavhasi) bo'yicha ajratadi.
+
+---
+
+**Zaxira reja (subdomen kechikib qolsa) — port bilan ikki bosqich:**
 
 | | A bosqich (hozir) | B bosqich (subdomen kelganda) |
 |---|---|---|
-| Manzil | `http://SERVER_IP:8081` | `https://lms.<domen>` |
+| Manzil | `http://SERVER_IP:8081` | `https://moodle.erpcontrol.uz` |
 | nginx | `listen 8081` | `listen 443 ssl` qo'shiladi |
 | Sertifikat | yo'q | certbot |
 | Kim kiradi | faqat sen (ufw/DO firewall bilan IP cheklangan) | hamma |
@@ -300,11 +338,11 @@ Frappe → Moodle chaqiruvlari shu mashinaning o'zida qoladi (tashqariga chiqmay
 ya'ni token tinglanish xatari yo'q.
 
 **B bosqichda nima o'zgaradi** (subdomen kelganda):
-1. `moodle.conf` ga `listen 443 ssl` + `server_name lms.<domen>` bloki qo'shiladi
-2. `sudo certbot --nginx -d lms.<domen>`
-3. `/opt/moodle/config.php` da `$CFG->wwwroot = 'https://lms.<domen>';`
+1. `moodle.conf` ga `listen 443 ssl` + `server_name moodle.erpcontrol.uz` bloki qo'shiladi
+2. `sudo certbot --nginx -d moodle.erpcontrol.uz`
+3. `/opt/moodle/config.php` da `$CFG->wwwroot = 'https://moodle.erpcontrol.uz';`
 4. `sudo -u www-data php8.3 /opt/moodle/admin/cli/purge_caches.php`
-5. Frappe'da `Moodle Settings.base_url` → `https://lms.<domen>`
+5. Frappe'da `Moodle Settings.base_url` → `https://moodle.erpcontrol.uz`
 6. 8081 porti yopiladi
 
 Hozir Moodle'da haqiqiy kontent yo'q, shuning uchun `wwwroot` ni keyin o'zgartirish
@@ -319,7 +357,7 @@ A bosqichda u port bilan beriladi — `SERVER_IP` o'rniga haqiqiy IP yoziladi:
 cd /opt/moodle
 sudo -u www-data php admin/cli/install.php \
   --lang=en \
-  --wwwroot=http://SERVER_IP:8081 \
+  --wwwroot=https://moodle.erpcontrol.uz \
   --dataroot=/var/moodledata \
   --dbtype=pgsql \
   --dbhost=127.0.0.1 \
@@ -353,7 +391,7 @@ Bu Frappe'ning 07:00 cronidan butunlay boshqa narsa.
 
 ### 10-qadam. Web service (API) sozlash
 
-Brauzerda, `https://lms.erpcontrol.uz/admin`:
+Brauzerda, `https://moodle.erpcontrol.uz/admin`:
 
 1. `Advanced features` → ✓ **Enable web services**
 2. `Server → Web services → Manage protocols` → **REST protocol** yoqiladi
@@ -373,8 +411,8 @@ Brauzerda, `https://lms.erpcontrol.uz/admin`:
 ### 11-qadam. Frappe tomonini ulash
 
 `Moodle Settings` da:
-- Moodle manzili: `http://SERVER_IP:8081` (A bosqich). **`localhost` yozilmaydi** —
-  1-qoida: haqiqiy tashqi manzil ishlatiladi, shunda B bosqichda faqat shu maydon o'zgaradi
+- Moodle manzili: `https://moodle.erpcontrol.uz` — **`localhost` yozilmaydi** (1-qoida:
+  bir mashinada bo'lsa ham tashqi manzil orqali gaplashadi, ajratganda kod o'zgarmaydi)
 - Token: 10-qadamdan
 - ✓ Yoqilgan, ✓ **Test rejimi** (dastlab)
 
@@ -396,7 +434,7 @@ Frappe backupidan **alohida** jadval, alohida joy — 8-qoida.
 
 O'rnatish tugagach shu ro'yxat bo'yicha o'tiladi:
 
-- [ ] `Moodle Settings.base_url` da `localhost` **yo'q** (A bosqichda port bor — vaqtinchalik)
+- [ ] `Moodle Settings.base_url` = `https://moodle.erpcontrol.uz` (`localhost` yoki port **yo'q**)
 - [ ] Frappe kodida Moodle bazasiga to'g'ridan-to'g'ri ulanish **yo'q** (faqat `moodle.py` HTTP)
 - [ ] `moodleuser` faqat `moodle` bazasiga huquqli
 - [ ] `frappe` useri `/opt/moodle` va `/var/moodledata` ni o'qiy olmaydi
