@@ -179,7 +179,9 @@ def get_data(sinflar=None, oylar=None, yotoqxona=0):
 	si_itemlar = _item_ulushlari(si_nomlari)
 
 	# ---- qatorlarni yig'ish ----
-	bosh = lambda: {"nachislangan": 0.0, "tolangan": 0.0, "ostatka": 0.0}
+	def bosh():
+		return {"nachislangan": 0.0, "tolangan": 0.0, "ostatka": 0.0}
+
 	natija = {}
 	for nom, r in reja_map.items():
 		natija[nom] = {
