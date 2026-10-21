@@ -382,26 +382,47 @@ def get_data(ketganlar: int = 0):
 			tanlangan.append(c)
 	cases = tanlangan
 
-	# Har ish bo'yicha aloqa yozuvlari soni — "gaplashilgan" (kamida bir marta
-	# aloqaga chiqilgan) ishlarni ajratish uchun.
-	case_names = [c.name for c in cases]
-	aloqa_map = {}
-	if case_names:
+	# Aloqa yozuvlari — O'QUVCHI bo'yicha (ish emas!). Qarz to'langanda ish
+	# yopiladi, keyingi oy YANGI ish ochiladi; aloqa yozuvlari esa eski ishda
+	# qoladi. Agar faqat shu ish bo'yicha sanasak, kecha gaplashilgan o'quvchi
+	# panelda "umuman gaplashilmagan" bo'lib ko'rinadi — investor panelidagi
+	# "Sotuv nazorati" (u AY'ni ish holatiga qaramay ko'rsatadi) bilan ziddiyat
+	# shundan kelib chiqqan edi. Manba bitta: `Aloqa Yozuvi`.
+	student_ids = [c.student for c in cases if c.student]
+	aloqa_map, ish_soni = {}, {}
+	if student_ids:
 		for r in frappe.db.sql(
-			"""SELECT qarz_ishi, COUNT(*) soni,
-			          SUM(CASE WHEN aloqa_natijasi='Gaplashildi' THEN 1 ELSE 0 END) gaplashildi
-			   FROM `tabAloqa Yozuvi`
-			   WHERE qarz_ishi IN ({}) GROUP BY qarz_ishi""".format(
-				", ".join(["%s"] * len(case_names))
-			),
-			tuple(case_names),
+			"""SELECT COALESCE(NULLIF(ay.student, ''), qi.student) student,
+			          COUNT(*) soni,
+			          SUM(CASE WHEN ay.aloqa_natijasi='Gaplashildi' THEN 1 ELSE 0 END) gaplashildi,
+			          MAX(ay.vaqt) oxirgi
+			   FROM `tabAloqa Yozuvi` ay
+			   LEFT JOIN `tabQarz Ishi` qi ON qi.name = ay.qarz_ishi
+			   WHERE COALESCE(NULLIF(ay.student, ''), qi.student) IN ({})
+			   GROUP BY 1""".format(", ".join(["%s"] * len(student_ids))),
+			tuple(student_ids),
 			as_dict=True,
 		):
-			aloqa_map[r.qarz_ishi] = r
+			aloqa_map[r.student] = r
+		# Shu ishning o'zidagi yozuvlar soni (kartada "shu ishda" deb ko'rsatiladi)
+		for r in frappe.db.sql(
+			"""SELECT qarz_ishi, COUNT(*) soni FROM `tabAloqa Yozuvi`
+			   WHERE qarz_ishi IN ({}) GROUP BY qarz_ishi""".format(
+				", ".join(["%s"] * len(cases))),
+			tuple(c.name for c in cases),
+			as_dict=True,
+		):
+			ish_soni[r.qarz_ishi] = int(r.soni)
 	for c in cases:
-		m = aloqa_map.get(c.name)
+		m = aloqa_map.get(c.student)
 		c["aloqa_soni"] = int(m.soni) if m else 0
 		c["gaplashildi_soni"] = int(m.gaplashildi or 0) if m else 0
+		c["shu_ishda"] = ish_soni.get(c.name, 0)
+		# "Oxirgi aloqa": ish maydoni bo'sh bo'lsa o'quvchining haqiqiy oxirgi
+		# aloqasi ko'rsatiladi (ish maydoni faqat shu ishdagi yozuvdan to'ladi)
+		c["oxirgi_aloqa_ish"] = c.get("oxirgi_aloqa")
+		if not c.get("oxirgi_aloqa") and m and m.oxirgi:
+			c["oxirgi_aloqa"] = m.oxirgi
 
 	_qongiroq_statistikasi(cases)
 
@@ -517,16 +538,22 @@ def get_case(name: str):
 		# Batafsil xulosa: o'quv to'lovi / kitob-forma / oyma-oy nachisleniya
 		xulosa = engine.plan_xulosa(tr)
 
-	# Timeline: aloqa yozuvlari + va'dalar, xronologik (yangi tepada)
-	ays = frappe.get_all(
-		"Aloqa Yozuvi",
-		filters={"qarz_ishi": name},
-		fields=[
-			"name", "vaqt", "masul", "kanal", "aloqa_natijasi", "hisob_natijasi",
-			"komment", "keyingi_harakat", "keyingi_sana", "vada_summa", "vada_sana",
-		],
-		order_by="vaqt desc",
-		limit_page_length=50,
+	# Timeline: aloqa yozuvlari + va'dalar, xronologik (yangi tepada).
+	# Yozuvlar O'QUVCHI bo'yicha olinadi — oldingi (yopilgan) ishlarda qolgan
+	# suhbatlar ham ko'rinadi, aks holda yangi ishda tarix yo'qoladi.
+	# Boshqa ishga tegishli qatorlar `boshqa_ish` belgisi bilan keladi.
+	ays = frappe.db.sql(
+		"""SELECT ay.name, ay.vaqt, ay.masul, ay.kanal, ay.aloqa_natijasi,
+		          ay.hisob_natijasi, ay.komment, ay.keyingi_harakat, ay.keyingi_sana,
+		          ay.vada_summa, ay.vada_sana, ay.qarz_ishi,
+		          CASE WHEN ay.qarz_ishi = %(ish)s THEN 0 ELSE 1 END boshqa_ish
+		   FROM `tabAloqa Yozuvi` ay
+		   LEFT JOIN `tabQarz Ishi` qi ON qi.name = ay.qarz_ishi
+		   WHERE COALESCE(NULLIF(ay.student, ''), qi.student) = %(student)s
+		   ORDER BY ay.vaqt DESC
+		   LIMIT 50""",
+		{"ish": name, "student": qi.student},
+		as_dict=True,
 	)
 	ptps = frappe.get_all(
 		"Tolov Vadasi",

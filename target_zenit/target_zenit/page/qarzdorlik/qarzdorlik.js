@@ -257,7 +257,7 @@ class TZQarzPanel {
 				${rows.map((c) => `
 					<tr data-case="${this.esc(c.name)}" class="${this.selected === c.name ? "sel" : ""} ${c.keyingi_aloqa && c.keyingi_aloqa < today ? "late" : ""}">
 						<td><div class="nm">${this.esc(c.student_name)}${c.qongiroq_soni > 0
-							? ` <span class="pill st-blue" title="${c.qongiroq_soni} ta qo'ng'iroq${c.yozuv_soni ? `, ${c.yozuv_soni} ta ovoz yozuvi` : ""}${c.oxirgi_qongiroq ? `, oxirgisi ${this.dtm(c.oxirgi_qongiroq)}` : ""}">🎧 ${c.qongiroq_soni}</span>` : ""}${c.aloqa_soni > 0 ? ` <span class="pill st-ok" title="${c.aloqa_soni} ta aloqa yozuvi${c.gaplashildi_soni > 0 ? `, ${c.gaplashildi_soni} marta gaplashildi` : ""}">✓ ${c.aloqa_soni} aloqa</span>` : ""}</div>
+							? ` <span class="pill st-blue" title="${c.qongiroq_soni} ta qo'ng'iroq${c.yozuv_soni ? `, ${c.yozuv_soni} ta ovoz yozuvi` : ""}${c.oxirgi_qongiroq ? `, oxirgisi ${this.dtm(c.oxirgi_qongiroq)}` : ""}">🎧 ${c.qongiroq_soni}</span>` : ""}${c.aloqa_soni > 0 ? ` <span class="pill st-ok" title="O'quvchi bo'yicha ${c.aloqa_soni} ta aloqa yozuvi${c.gaplashildi_soni > 0 ? `, ${c.gaplashildi_soni} marta gaplashildi` : ""}${c.shu_ishda !== c.aloqa_soni ? `; shu ishda ${c.shu_ishda} ta` : ""}">✓ ${c.aloqa_soni} aloqa</span>` : ""}</div>
 							<div class="mini">${this.esc(c.payer_name || "")} ${this.tel(c.payer_phone)}</div></td>
 						<td>${this.esc(c.sinf || "—")}</td>
 						<td class="r money">${this.fmt(c.qarz_summa)}</td>
@@ -412,11 +412,13 @@ class TZQarzPanel {
 			}).join("") : `<div class="mini">Bu to'lovchi raqamlari bo'yicha qo'ng'iroq topilmadi</div>`}
 		</div>`;
 
-		const tl = `<div class="box"><div class="box-t">Timeline</div>
+		const tl = `<div class="box"><div class="box-t">Timeline${(d.ays || []).some((a) => a.boshqa_ish)
+			? ` <span class="mini">(o'quvchining butun aloqa tarixi)</span>` : ""}</div>
 			${(d.ays || []).length ? d.ays.map((a) => `
 				<div class="tl-item">
 					<div class="tl-head"><b>${this.esc(a.kanal)}</b> · ${this.esc(a.aloqa_natijasi)}${a.hisob_natijasi ? " → " + this.esc(a.hisob_natijasi) : ""}
-						<span class="mini">${this.esc(frappe.datetime.str_to_user(a.vaqt))} · ${this.esc(a.masul)}</span></div>
+						<span class="mini">${this.esc(frappe.datetime.str_to_user(a.vaqt))} · ${this.esc(a.masul)}</span>${a.boshqa_ish
+							? ` <span class="pill st-mut" title="Bu suhbat o'quvchining oldingi (yopilgan) ishida yozilgan: ${this.esc(a.qarz_ishi)}">oldingi ish</span>` : ""}</div>
 					${a.komment ? `<div class="tl-body">${this.esc(a.komment)}</div>` : ""}
 					${a.vada_summa ? `<div class="tl-ptp">Va'da: ${this.fmt(a.vada_summa)} so'm — ${this.dmy(a.vada_sana)}</div>` : ""}
 					<div class="mini">Keyingi: ${this.esc(a.keyingi_harakat)} · ${this.dmy(a.keyingi_sana)}</div>
