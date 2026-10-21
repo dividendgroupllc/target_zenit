@@ -65,6 +65,10 @@ class AloqaYozuvi(Document):
 		qi = frappe.get_doc("Qarz Ishi", self.qarz_ishi)
 		qi.urinishlar_soni = (qi.urinishlar_soni or 0) + 1
 		qi.oxirgi_aloqa = self.vaqt
+		# Izoh ishning o'zida ham ko'rinib tursin (forma "Oxirgi izoh" maydoni);
+		# to'liq tarix esa formadagi "Aloqa tarixi" bo'limida
+		if qi.meta.has_field("oxirgi_komment"):
+			qi.oxirgi_komment = self.komment
 		qi.keyingi_aloqa = self.keyingi_sana
 
 		yangi_status = None

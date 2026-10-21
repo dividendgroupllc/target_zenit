@@ -67,3 +67,30 @@ class QarzIshi(Document):
 				)
 		else:
 			self.yopilgan_sana = None
+
+@frappe.whitelist()
+def aloqa_tarixi(qarz_ishi: str):
+	"""Formadagi "Aloqa tarixi" bo'limi uchun izohlar ro'yxati.
+
+	Yozuvlar O'QUVCHI bo'yicha olinadi (faqat shu ish emas): qarz to'langanda
+	ish yopilib, keyingi oy yangi ish ochiladi — suhbatlar esa eski ishda
+	qoladi. Boshqa ishga tegishli qatorlar `boshqa_ish` belgisi bilan keladi
+	(qarzdorlik paneli timeline'i bilan bir xil mantiq — manba bitta:
+	`Aloqa Yozuvi`)."""
+	frappe.has_permission("Qarz Ishi", "read", doc=qarz_ishi, throw=True)
+	student = frappe.db.get_value("Qarz Ishi", qarz_ishi, "student")
+	if not student:
+		return []
+	return frappe.db.sql(
+		"""SELECT ay.name, ay.vaqt, ay.masul, ay.kanal, ay.aloqa_natijasi,
+		          ay.hisob_natijasi, ay.komment, ay.keyingi_harakat, ay.keyingi_sana,
+		          ay.vada_summa, ay.vada_sana, ay.qarz_ishi,
+		          CASE WHEN ay.qarz_ishi = %(ish)s THEN 0 ELSE 1 END boshqa_ish
+		   FROM `tabAloqa Yozuvi` ay
+		   LEFT JOIN `tabQarz Ishi` qi ON qi.name = ay.qarz_ishi
+		   WHERE COALESCE(NULLIF(ay.student, ''), qi.student) = %(student)s
+		   ORDER BY ay.vaqt DESC
+		   LIMIT 50""",
+		{"ish": qarz_ishi, "student": student},
+		as_dict=True,
+	)

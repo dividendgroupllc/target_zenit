@@ -28,13 +28,16 @@
   "column_break_4",
   "urinishlar_soni",
   "oxirgi_aloqa",
+  "oxirgi_komment",
   "buzilgan_vadalar",
   "column_break_5",
   "aloqa_cheklovi",
   "nizo_sababi",
   "section_yopilish",
   "yopilish_sababi",
-  "yopilgan_sana"
+  "yopilgan_sana",
+  "section_aloqa_tarixi",
+  "aloqa_tarixi"
  ],
  "fields": [
   {
@@ -190,6 +193,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "oxirgi_komment",
+   "fieldtype": "Small Text",
+   "label": "Oxirgi izoh (suhbat natijasi)",
+   "read_only": 1,
+   "description": "Oxirgi aloqa yozuvidagi izoh — to'liq tarix pastda"
+  },
+  {
    "default": "0",
    "fieldname": "buzilgan_vadalar",
    "fieldtype": "Int",
@@ -230,10 +240,20 @@
    "fieldtype": "Date",
    "label": "Yopilgan sana",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_aloqa_tarixi",
+   "fieldtype": "Section Break",
+   "label": "Aloqa tarixi (izohlar)"
+  },
+  {
+   "fieldname": "aloqa_tarixi",
+   "fieldtype": "HTML",
+   "label": "Aloqa tarixi"
   }
  ],
  "links": [],
- "modified": "2026-10-06 12:00:00.000000",
+ "modified": "2026-10-21 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Qarz Ishi",

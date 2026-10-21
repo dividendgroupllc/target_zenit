@@ -239,15 +239,21 @@ def _yozuvni_biriktir(qongiroq, yuklangan, kutilgan_hash: str | None):
 	if len(content) > maks_mb * 1024 * 1024:
 		frappe.throw(_("Fayl juda katta: {0} MB chegara").format(maks_mb), frappe.ValidationError)
 
-	# Butunlikni tekshirish: hash'ni o'zimiz qayta hisoblaymiz. Yarim yuklangan
-	# yoki buzilgan fayl shu yerda ushlanadi, aks holda "yozuv bor" deb
-	# belgilangan buzuq fayl bilan qolib ketardik.
+	# Hash'ni o'zimiz qayta hisoblaymiz va SHUNI saqlaymiz.
+	#
+	# Mijoz yuborgan hash BUTUNLIK CHEKI EMAS — u Android ilovasida fayl SKANER
+	# qilingan paytda olinadi va yozuvning KIMLIGI (dedup kaliti) sifatida ishlatiladi.
+	# MIUI qo'ng'iroq davomida faylni asta yozib boradi: skaner yarim faylni hash
+	# qiladi, yuklash esa to'liq faylni yuboradi — natijada hash hech qachon mos
+	# kelmaydi. Ilgari bu yerda `frappe.throw` bor edi va u HTTP 417 qaytarardi;
+	# ilova esa 4xx ni "butunlay xato" deb belgilab, yozuvni BUTUNLAY tashlab
+	# yuborardi (2026-10-21 da 37 ta yozuv shu sababdan yo'qolgan edi).
+	#
+	# Transport butunligi HTTPS + Content-Length bilan ta'minlanadi. Shuning uchun
+	# mos kelmaslik — xato emas, QAYD. Faylni qabul qilamiz, nomuvofiqlikni esa
+	# hujjatda ko'rinadigan qilib yozib qo'yamiz.
 	haqiqiy_hash = hashlib.sha256(content).hexdigest()
-	if kutilgan_hash and kutilgan_hash.strip().lower() != haqiqiy_hash:
-		frappe.throw(
-			_("Fayl hash mos kelmadi — yuklash buzilgan. Qayta yuboring."),
-			frappe.ValidationError,
-		)
+	hash_nomuvofiq = bool(kutilgan_hash) and kutilgan_hash.strip().lower() != haqiqiy_hash
 
 	# Android telefonlari OEM'ga qarab turli formatda yozadi: Xiaomi/Samsung —
 	# .m4a yoki .mp3, Honor — .amr. Kengaytmani saqlab qolamiz, aks holda
@@ -259,8 +265,7 @@ def _yozuvni_biriktir(qongiroq, yuklangan, kutilgan_hash: str | None):
 	nisbiy = storage.nisbiy_yol(qongiroq.asterisk_uniqueid, qongiroq.boshlandi, kengaytma)
 	storage.saqla(nisbiy, content)
 
-	qongiroq.db_set(
-		{
+	qiymatlar = {
 			"fayl_yoli": nisbiy,
 			"fayl_hash": haqiqiy_hash,
 			"fayl_hajmi": len(content),
@@ -270,9 +275,17 @@ def _yozuvni_biriktir(qongiroq, yuklangan, kutilgan_hash: str | None):
 			# `xato_matni` ataylab tozalanmaydi: unda xodim bog'lanmagani kabi
 			# yozuvga aloqasi yo'q ogohlantirishlar bo'lishi mumkin, va fayl
 			# kelishi bilan ularni o'chirib yuborish muammoni yashirardi.
-		},
-		notify=True,
-	)
+	}
+	if hash_nomuvofiq:
+		eski = (qongiroq.xato_matni or "").strip()
+		qayd = (
+			f"Ogohlantirish: mijoz hash'i mos kelmadi (kutilgan {kutilgan_hash.strip()[:16]}…, "
+			f"haqiqiy {haqiqiy_hash[:16]}…). Odatda MIUI faylni yozib tugatmasdan skaner "
+			f"qilinganini bildiradi — fayl qabul qilindi."
+		)
+		qiymatlar["xato_matni"] = f"{eski}\n{qayd}".strip() if eski else qayd
+
+	qongiroq.db_set(qiymatlar, notify=True)
 	frappe.db.commit()
 
 	# Yozuv keldi — nutqni matnga aylantirishni fon vazifasiga qo'yamiz.
