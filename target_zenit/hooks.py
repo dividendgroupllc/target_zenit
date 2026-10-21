@@ -480,7 +480,10 @@ fixtures = [
                 "Student-student_email_id-reqd",
                 # Guardian: kartada keraksiz standart fieldlar yashirildi
                 "Guardian-email_address-hidden",
+                # Ikkinchi telefon raqami: standart "Alternate Number" maydoni
+                # ko'rinadigan qilindi (hidden=0) va o'zbekcha nomlandi
                 "Guardian-alternate_number-hidden",
+                "Guardian-alternate_number-label",
                 "Guardian-date_of_birth-hidden",
                 "Guardian-user-hidden",
                 "Guardian-column_break_3-hidden",

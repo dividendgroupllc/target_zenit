@@ -283,8 +283,13 @@ class TZQarzPanel {
 		const c = d.case;
 		const phones = [];
 		if (c.payer_phone) phones.push(`${this.esc(c.payer_name || "To'lovchi")}: ${this.tel(c.payer_phone)}`);
-		for (const g of d.guardians || [])
-			if (g.mobile_number) phones.push(`${this.esc(g.guardian_name)}${g.relation ? " (" + this.esc(g.relation) + ")" : ""}: ${this.tel(g.mobile_number)}`);
+		for (const g of d.guardians || []) {
+			// Ota-onada ikkita raqam bo'lishi mumkin (asosiy + qo'shimcha)
+			const nom = `${this.esc(g.guardian_name)}${g.relation ? " (" + this.esc(g.relation) + ")" : ""}`;
+			if (g.mobile_number) phones.push(`${nom}: ${this.tel(g.mobile_number)}`);
+			if (g.alternate_number && g.alternate_number !== g.mobile_number)
+				phones.push(`${nom} · 2: ${this.tel(g.alternate_number)}`);
+		}
 		if (d.student_phone) phones.push(`O'quvchi: ${this.tel(d.student_phone)}`);
 
 		const cheklov = c.aloqa_cheklovi

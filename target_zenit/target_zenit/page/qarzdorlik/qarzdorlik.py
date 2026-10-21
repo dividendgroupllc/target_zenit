@@ -565,7 +565,7 @@ def get_case(name: str):
 
 	guardians = frappe.db.sql(
 		"""SELECT COALESCE(g.guardian_name, sg.guardian_name) guardian_name,
-		          sg.relation, g.mobile_number
+		          sg.relation, g.mobile_number, g.alternate_number
 		   FROM `tabStudent Guardian` sg
 		   LEFT JOIN `tabGuardian` g ON g.name = sg.guardian
 		   WHERE sg.parent = %s AND sg.parenttype = 'Student'
