@@ -7,6 +7,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "sync_type",
   "trigger_type",
   "status",
   "column_break_1",
@@ -24,6 +25,16 @@
   "details"
  ],
  "fields": [
+  {
+   "default": "Foydalanuvchi",
+   "fieldname": "sync_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Sinxron turi",
+   "options": "Foydalanuvchi\nKurs",
+   "read_only": 1
+  },
   {
    "fieldname": "trigger_type",
    "fieldtype": "Select",

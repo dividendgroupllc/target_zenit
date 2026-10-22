@@ -84,6 +84,64 @@ frappe.ui.form.on("Moodle Settings", {
 			);
 		});
 
+		// --- Kurs va yozilish (2-bosqich) ---
+		frm.add_custom_button(__("Kurslarni sinxronlash"), () => {
+			frappe.confirm(
+				frm.doc.dry_run
+					? __("Test rejimi yoqilgan — Moodle'ga hech narsa yozilmaydi. Davom etamizmi?")
+					: __("Dars jadvalidagi har (guruh x fan) uchun Moodle'da kurs yaratiladi va o'quvchi/o'qituvchi unga yoziladi. Davom etamizmi?"),
+				() => {
+					frappe.call({
+						method: "target_zenit.integrations.moodle_kurs.kurs_sync_now",
+						freeze: true,
+						freeze_message: __("Fon vazifasi qo'yilmoqda..."),
+						callback: (r) => {
+							frm.reload_doc();
+							frappe.msgprint({
+								title: __("Kurs sinxroni boshlandi"),
+								message: __("Sinxron FONDA ketmoqda. Jarayonni 'Moodle Sync Log' dagi eng yangi 'Kurs' yozuvidan kuzatasan."),
+								indicator: "blue",
+							});
+							frappe.set_route("List", "Moodle Sync Log");
+						},
+					});
+				}
+			);
+		}, __("Kurslar"));
+
+		frm.add_custom_button(__("Sinov: bir nechta kurs"), () => {
+			frappe.prompt(
+				{
+					fieldname: "limit",
+					label: __("Nechta kurs bilan sinaymiz?"),
+					fieldtype: "Int",
+					default: 3,
+					reqd: 1,
+					description: __("Faqat shu sondagi kurs yaratiladi va unga yozilish qilinadi."),
+				},
+				(v) => {
+					frappe.call({
+						method: "target_zenit.integrations.moodle_kurs.kurs_sync_now",
+						args: { limit: v.limit },
+						freeze: true,
+						freeze_message: __("Sinov kurs sinxroni ketmoqda..."),
+						callback: (r) => {
+							frm.reload_doc();
+							if (r.message && r.message.log) {
+								frappe.set_route("Form", "Moodle Sync Log", r.message.log);
+							}
+						},
+					});
+				},
+				__("Sinov kurs sinxroni"),
+				__("Boshlash")
+			);
+		}, __("Kurslar"));
+
+		frm.add_custom_button(__("Kurs ro'yxati"), () => {
+			frappe.set_route("List", "Moodle Course Link");
+		}, __("Ko'rish"));
+
 		frm.add_custom_button(__("Foydalanuvchi ro'yxati"), () => {
 			frappe.set_route("List", "Moodle User Link");
 		}, __("Ko'rish"));

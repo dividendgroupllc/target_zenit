@@ -1,0 +1,190 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:idnumber",
+ "creation": "2026-10-22 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "guruh",
+  "fan",
+  "oqituvchi",
+  "column_break_1",
+  "idnumber",
+  "status",
+  "last_synced",
+  "section_moodle",
+  "moodle_course_id",
+  "shortname",
+  "fullname",
+  "column_break_2",
+  "category_id",
+  "student_count",
+  "section_texnik",
+  "error",
+  "sync_hash",
+  "enrolled_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "guruh",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Guruh (sinf)",
+   "options": "Student Group",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fan",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Fan",
+   "options": "Course",
+   "read_only": 1
+  },
+  {
+   "fieldname": "oqituvchi",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "O'qituvchi",
+   "options": "Instructor",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Sinxron kaliti — Moodle kursining idnumber maydoniga shu yoziladi: <guruh>::<fan>",
+   "fieldname": "idnumber",
+   "fieldtype": "Data",
+   "label": "Sinxron kaliti (idnumber)",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "Faol",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Holat",
+   "options": "Faol\nYashirilgan\nXato",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_synced",
+   "fieldtype": "Datetime",
+   "label": "Oxirgi sinxron",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_moodle",
+   "fieldtype": "Section Break",
+   "label": "Moodle tomoni"
+  },
+  {
+   "fieldname": "moodle_course_id",
+   "fieldtype": "Int",
+   "label": "Moodle kurs ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shortname",
+   "fieldtype": "Data",
+   "label": "Qisqa nom (shortname)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fullname",
+   "fieldtype": "Data",
+   "label": "To'liq nom",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Moodle kategoriyasi (har sinfga bittadan)",
+   "fieldname": "category_id",
+   "fieldtype": "Int",
+   "label": "Kategoriya ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "student_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "O'quvchi",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_texnik",
+   "fieldtype": "Section Break",
+   "label": "Texnik"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Oxirgi xato",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sync_hash",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Sync hash",
+   "read_only": 1
+  },
+  {
+   "description": "Kursga yozilganlar ro'yxati (JSON) — kim qo'shilgani va kim chiqqanini aniqlash uchun.",
+   "fieldname": "enrolled_json",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Yozilganlar (JSON)",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-22 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Moodle Course Link",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Academics User",
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "fullname",
+ "track_changes": 1
+}
