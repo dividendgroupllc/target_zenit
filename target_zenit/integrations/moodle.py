@@ -617,6 +617,25 @@ def _save_links(new_links, dry):
 # ---------------------------------------------------------------- Kirish nuqtalari
 
 @frappe.whitelist()
+def parolni_korsat(link_name):
+	"""Moodle User Link'dagi boshlang'ich parolni ochib beradi.
+
+	Frappe `Password` maydonining qiymatini brauzerga yubormaydi (formada ****),
+	shuning uchun uni ko'rsatishning yagona yo'li — shu usul. Faqat System Manager.
+	"""
+	frappe.only_for("System Manager")
+	doc = frappe.get_doc("Moodle User Link", link_name)
+	parol = doc.get_password("initial_password", raise_exception=False)
+	return {
+		"login": doc.moodle_username,
+		"parol": parol or "",
+		"email": doc.moodle_email,
+		"full_name": doc.full_name,
+		"holat": doc.status,
+	}
+
+
+@frappe.whitelist()
 def preview(limit=10):
 	"""Moodle'ga MUROJAAT QILMASDAN nima yuborilishini ko'rsatadi.
 
