@@ -133,6 +133,14 @@ def _user_map():
 	return {r.name: r.moodle_user_id for r in rows}
 
 
+def _json_oqi(matn):
+	"""Buzilgan JSON butun sinxronni yiqitmasin."""
+	try:
+		return json.loads(matn) if matn else {}
+	except ValueError:
+		return {}
+
+
 def _hash(payload):
 	return hashlib.md5(
 		json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
@@ -230,16 +238,21 @@ def _kurs_yangila(kurslar):
 
 
 def _yozilishlar(enrolments, lines):
-	"""enrol_manual_enrol_users — yozish ham, suspend qilish ham shu orqali."""
-	xato = 0
+	"""enrol_manual_enrol_users — yozish ham, suspend qilish ham shu orqali.
+
+	Qaytaradi: yiqilgan kurs id'lari. Shu kurslarning yozilish holati MAHALLIY
+	SAQLANMAYDI — aks holda keyingi yurish "hammasi joyida" deb o'ylab, qayta
+	urinmay qo'yadi (2026-10-22 da aynan shunday bo'ldi).
+	"""
+	xato_kurslar = set()
 	for i in range(0, len(enrolments), ENROL_BATCH):
 		chunk = enrolments[i : i + ENROL_BATCH]
 		try:
 			_call("enrol_manual_enrol_users", {"enrolments": chunk})
 		except MoodleError as e:
-			xato += len(chunk)
-			lines.append(f"XATO yozilishda ({len(chunk)} ta): {e}")
-	return xato
+			xato_kurslar |= {c["courseid"] for c in chunk}
+			lines.append(f"XATO yozilishda ({len(chunk)} ta, {len(set(c['courseid'] for c in chunk))} kurs): {e}")
+	return xato_kurslar
 
 
 # ---------------------------------------------------------------- Sinxron yadrosi
@@ -395,13 +408,8 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 			if o_kalit and users.get(o_kalit):
 				kerak[o_kalit] = (users[o_kalit], teacher_role)
 
-			eski = {}
 			link = links.get(key)
-			if link and link.enrolled_json:
-				try:
-					eski = json.loads(link.enrolled_json)
-				except ValueError:
-					eski = {}
+			eski = _json_oqi(link.enrolled_json) if link else {}
 
 			for kalit, (uid, rid) in kerak.items():
 				if eski.get(kalit) != rid:
@@ -421,7 +429,15 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 		if dry:
 			lines.append("  [test] yozilishlar yuborilmadi.")
 		elif enrolments:
-			stat["errors"] += _yozilishlar(enrolments, lines)
+			xato_kurslar = _yozilishlar(enrolments, lines)
+			if xato_kurslar:
+				stat["errors"] += len(xato_kurslar)
+				# Yiqilgan kurslarda ESKI holatni qoldiramiz, shunda keyingi
+				# yurish yozilishni qaytadan urinadi.
+				for key, v in yangi_links.items():
+					if v.get("moodle_course_id") in xato_kurslar:
+						eski_link = links.get(key)
+						enrol_holat[key] = _json_oqi(eski_link.enrolled_json) if eski_link else {}
 
 		# --- Jadvaldan chiqib ketgan kurslarni yashirish
 		yoq_boldi = [

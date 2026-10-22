@@ -132,10 +132,12 @@ def _call(wsfunction, payload=None):
 		raise MoodleError(f"JSON emas javob keldi: {r.text[:300]}") from None
 
 	if isinstance(res, dict) and res.get("exception"):
-		raise MoodleError(
-			f"{res.get('errorcode')}: {res.get('message')}"
-			+ (f" ({res['debuginfo']})" if res.get("debuginfo") else "")
-		)
+		xabar = f"{res.get('errorcode')}: {res.get('message')}"
+		# debuginfo ba'zan message ichida allaqachon bor — ikki marta yozmaymiz
+		debug = (res.get("debuginfo") or "").strip()
+		if debug and debug not in xabar:
+			xabar += f" ({debug[:500]})"
+		raise MoodleError(xabar)
 	return res
 
 
