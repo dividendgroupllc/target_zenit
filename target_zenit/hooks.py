@@ -332,6 +332,10 @@ scheduler_events = {
 		"10 7 * * *": [
 			"target_zenit.integrations.moodle_kurs.daily_sync"
 		],
+		# 07:20 — dars jadvali va o'quv kalendarini Moodle plaginiga uzatish
+		"20 7 * * *": [
+			"target_zenit.integrations.moodle_jadval.daily_sync"
+		],
 		# Har yili 1-sentabr 06:00 — hamma faol o'quvchi bir sinf yuqoriga (G4A -> G5A)
 		"0 6 1 9 *": [
 			"target_zenit.student_group_sync.yearly_promotion"

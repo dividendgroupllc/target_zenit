@@ -22,6 +22,7 @@
   "column_break_3",
   "student_role",
   "teacher_role",
+  "holiday_list",
   "section_help",
   "help_html"
  ],
@@ -133,6 +134,13 @@
    "fieldname": "teacher_role",
    "fieldtype": "Int",
    "label": "O'qituvchi rol ID"
+  },
+  {
+   "description": "Dars jadvalidagi sanalarni hisoblashda bayram kunlari shu ro'yxatdan olinadi. Bo'sh bo'lsa faqat chorak oraliqlari ishlatiladi.",
+   "fieldname": "holiday_list",
+   "fieldtype": "Link",
+   "label": "Bayram kunlari ro'yxati",
+   "options": "Holiday List"
   },
   {
    "collapsible": 1,

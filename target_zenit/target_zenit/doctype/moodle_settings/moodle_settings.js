@@ -138,6 +138,20 @@ frappe.ui.form.on("Moodle Settings", {
 			);
 		}, __("Kurslar"));
 
+		frm.add_custom_button(__("Dars jadvalini yuborish"), () => {
+			frappe.call({
+				method: "target_zenit.integrations.moodle_jadval.push_now",
+				freeze: true,
+				freeze_message: __("Jadval Moodle'ga yuborilmoqda..."),
+				callback: (r) => {
+					frm.reload_doc();
+					if (r.message) {
+						frappe.set_route("Form", "Moodle Sync Log", r.message);
+					}
+				},
+			});
+		}, __("Kurslar"));
+
 		frm.add_custom_button(__("Kurs ro'yxati"), () => {
 			frappe.set_route("List", "Moodle Course Link");
 		}, __("Ko'rish"));
