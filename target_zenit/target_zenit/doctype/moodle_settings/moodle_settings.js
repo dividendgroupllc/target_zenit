@@ -35,12 +35,20 @@ frappe.ui.form.on("Moodle Settings", {
 					frappe.call({
 						method: "target_zenit.integrations.moodle.sync_now",
 						freeze: true,
-						freeze_message: __("Sinxron ketmoqda, bu bir necha daqiqa olishi mumkin..."),
+						freeze_message: __("Fon vazifasi qo'yilmoqda..."),
 						callback: (r) => {
 							frm.reload_doc();
-							if (r.message) {
-								frappe.set_route("Form", "Moodle Sync Log", r.message);
-							}
+							frappe.msgprint({
+								title: __("To'liq sinxron boshlandi"),
+								message: __(
+									"Sinxron FONDA ketmoqda — bu bir necha daqiqa oladi. " +
+									"Jarayonni 'Moodle Sync Log' dagi eng yangi yozuvdan kuzatasan: " +
+									"holati 'Ishlayapti' dan 'Tugadi' ga o'tadi, raqamlar esa " +
+									"har partiyadan keyin yangilanib boradi (sahifani yangilab tur)."
+								),
+								indicator: "blue",
+							});
+							frappe.set_route("List", "Moodle Sync Log");
 						},
 					});
 				}
@@ -65,8 +73,8 @@ frappe.ui.form.on("Moodle Settings", {
 						freeze_message: __("Sinov sinxroni ketmoqda..."),
 						callback: (r) => {
 							frm.reload_doc();
-							if (r.message) {
-								frappe.set_route("Form", "Moodle Sync Log", r.message);
+							if (r.message && r.message.log) {
+								frappe.set_route("Form", "Moodle Sync Log", r.message.log);
 							}
 						},
 					});

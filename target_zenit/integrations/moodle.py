@@ -393,6 +393,7 @@ def sync(trigger="Qo'lda", limit=0):
 		taken = {l.moodle_username for l in links.values() if l.moodle_username}
 
 		to_create, to_update, new_links, to_rename = [], [], {}, []
+		saqlangan = set()  # allaqachon saqlanib commit qilingan kalitlar
 
 		for p in people:
 			key = p["idnumber"]
@@ -505,6 +506,9 @@ def sync(trigger="Qo'lda", limit=0):
 			stat["updated"] = len(to_update)
 		else:
 			# --- Yaratish
+			# HAR PARTIYADAN KEYIN DARHOL SAQLAYMIZ va commit qilamiz: ish yarmida
+			# uzilib qolsa, Moodle'da akkaunt bor-u Frappe'da parol yo'q holat
+			# yuzaga kelmasin (parol faqat yaratilganda bir marta ma'lum bo'ladi).
 			for i in range(0, len(to_create), BATCH):
 				chunk = to_create[i : i + BATCH]
 				created, errors = _create_users(chunk)
@@ -518,6 +522,16 @@ def sync(trigger="Qo'lda", limit=0):
 						new_links[key]["error"] = err
 					stat["errors"] += 1
 					lines.append(f"XATO yaratishda {username}: {err}")
+
+				chunk_keys = {u["idnumber"] for u in chunk}
+				_save_links({k: v for k, v in new_links.items() if k in chunk_keys}, dry)
+				saqlangan |= chunk_keys
+				log.db_set({
+					"created_count": stat["created"],
+					"error_count": stat["errors"],
+					"details": "\n".join(lines)[:140000],
+				}, update_modified=False)
+				frappe.db.commit()
 
 			# --- Yangilash
 			for i in range(0, len(to_update), BATCH):
@@ -541,7 +555,7 @@ def sync(trigger="Qo'lda", limit=0):
 					stat["errors"] += 1
 					lines.append(f"XATO nom o'zgartirishda {eski_nom} -> {yangi_nom}: {e}")
 
-		_save_links(new_links, dry)
+		_save_links({k: v for k, v in new_links.items() if k not in saqlangan}, dry)
 
 		frappe.db.set_single_value("Moodle Settings", "last_sync", now_datetime())
 		frappe.db.set_single_value(
@@ -700,9 +714,29 @@ def test_connection():
 
 @frappe.whitelist()
 def sync_now(limit=0):
-	"""Moodle Settings'dagi "Hozir sinxronlash" / "Sinov sinxroni" tugmasi."""
+	"""Moodle Settings'dagi "Hozir sinxronlash" / "Sinov sinxroni" tugmasi.
+
+	Sinov (limit > 0) — darhol bajariladi, natija shu yerda ko'rinadi.
+	To'liq sinxron — FONDA bajariladi: 300+ odam uchun har bir yangi loginda
+	Moodle'dan bandlik so'raladi, bu bir necha daqiqa oladi va gunicorn'ning
+	120 soniyalik chegarasidan oshib ketadi. Uzilsa Moodle'da akkaunt qolib,
+	Frappe'da parol yo'qolardi — shuning uchun fonda.
+	"""
 	frappe.only_for("System Manager")
-	return sync(trigger="Qo'lda", limit=limit)
+	limit = int(limit or 0)
+
+	if limit > 0:
+		return {"rejim": "darhol", "log": sync(trigger="Qo'lda", limit=limit)}
+
+	frappe.enqueue(
+		"target_zenit.integrations.moodle.sync",
+		queue="long",
+		timeout=3600,
+		job_name="moodle_full_sync",
+		trigger="Qo'lda",
+		limit=0,
+	)
+	return {"rejim": "fonda"}
 
 
 def daily_sync():
