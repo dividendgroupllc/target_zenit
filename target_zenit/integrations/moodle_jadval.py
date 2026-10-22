@@ -22,6 +22,13 @@ from frappe.utils import now_datetime
 from target_zenit.integrations.moodle import _call, _settings
 from target_zenit.integrations.moodle_kurs import _oquv_yili
 
+# Bitta so'rovda nechta dars yuboriladi.
+# SABAB: Moodle REST so'rovni oddiy forma maydonlari ko'rinishida oladi, ya'ni
+# har bir dars ~13 ta maydonga yoyiladi. PHP'ning `max_input_vars` chegarasi 5000
+# bo'lgani uchun 934 darsni birdan yuborib bo'lmaydi — PHP ortig'ini jimgina
+# kesib tashlaydi va Moodle "Invalid parameter" deydi. 300 x 13 = 3900 — xavfsiz.
+JADVAL_BATCH = 300
+
 
 def _vaqt(qiymat):
 	"""MariaDB `time` qiymati "9:00:00" ko'rinishida keladi -> "09:00"."""
@@ -162,14 +169,29 @@ def push(trigger="Qo'lda"):
 			lines.append("TEST REJIMI: Moodle'ga yuborilmadi.")
 			natija = {"lessons": 0, "calendar": 0}
 		else:
-			natija = _call("local_targetzenit_push_timetable", {
-				"academicyear": yil,
-				"lessons": darslar,
-				"calendar": kalendar,
-			})
+			# Birinchi bo'lak eski jadvalni o'chiradi, qolganlari ustiga qo'shadi.
+			# Kalendar ham birinchi bo'lak bilan ketadi.
+			bolaklar = [
+				darslar[i : i + JADVAL_BATCH]
+				for i in range(0, len(darslar), JADVAL_BATCH)
+			] or [[]]
+			jami = 0
+			kal_jami = 0
+			for n, bolak in enumerate(bolaklar):
+				res = _call("local_targetzenit_push_timetable", {
+					"academicyear": yil,
+					"lessons": bolak,
+					"mode": "replace" if n == 0 else "append",
+					"calendar": kalendar if n == 0 else [],
+				})
+				jami += res.get("lessons") or 0
+				kal_jami += res.get("calendar") or 0
+				lines.append(
+					f"  bo'lak {n + 1}/{len(bolaklar)}: {res.get('lessons')} dars yuborildi"
+				)
+			natija = {"lessons": jami, "calendar": kal_jami}
 			lines.append(
-				f"Moodle qabul qildi: {natija.get('lessons')} dars, "
-				f"{natija.get('calendar')} kalendar yozuvi"
+				f"Moodle qabul qildi: {jami} dars, {kal_jami} kalendar yozuvi"
 			)
 
 		log.db_set({
