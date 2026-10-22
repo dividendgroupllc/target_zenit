@@ -395,9 +395,15 @@ Brauzerda, `https://moodle.erpcontrol.uz/admin`:
 
 1. `Advanced features` → ✓ **Enable web services**
 2. `Server → Web services → Manage protocols` → **REST protocol** yoqiladi
-3. `Define roles → Add a new role` — arxetipsiz, context: **System**, nomi `Frappe Sync`:
+3. `Define roles → Add a new role` — arxetipsiz (No role), **Short name** `frappesync`,
+   context: **System**, nomi `Frappe Sync`. Ruxsatlar (jami 7 ta, hammasi **Allow**):
    `webservice/rest:use`, `moodle/user:create`, `moodle/user:update`,
-   `moodle/user:viewalldetails`, `moodle/user:viewdetails`
+   `moodle/user:viewdetails`, `moodle/user:viewalldetails`,
+   `moodle/user:viewhiddendetails`, `moodle/course:useremail`
+
+   > Oxirgi ikkitasi `core_user_get_users_by_field` ning "Required capabilities"
+   > ustunidan aniqlandi (2026-10-21) — ularsiz javobda **email bo'sh kelishi** mumkin.
+   > `moodle/user:viewalldetails` esa `idnumber` ni ko'rish uchun — u sinxron kaliti.
 4. Yangi user `frappe.sync` (Manual accounts) + shu rolni system darajada berish
 5. `External services → Add`: `Frappe Sync` / `frappe_sync`, ✓ Enabled,
    ✓ **Authorised users only**. Funksiyalar:

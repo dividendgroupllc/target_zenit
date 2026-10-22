@@ -323,8 +323,13 @@ def _update_users(users):
 
 # ---------------------------------------------------------------- Sinxron yadrosi
 
-def sync(trigger="Qo'lda"):
-	"""Asosiy sinxron. Moodle Sync Log yozuvini qaytaradi."""
+def sync(trigger="Qo'lda", limit=0):
+	"""Asosiy sinxron. Moodle Sync Log yozuvini qaytaradi.
+
+	`limit` > 0 bo'lsa — SINOV rejimi: faqat shuncha faol odam bilan ishlanadi.
+	Bu qiymat hech qayerda saqlanmaydi (faqat qo'lda chaqirilganda beriladi),
+	ya'ni 07:00 dagi avto sinxron hech qachon cheklanib qolmaydi.
+	"""
 	s, _base, _token = _conf()
 	if not s.enabled:
 		frappe.throw("Moodle Settings: integratsiya yoqilmagan (Yoqilgan belgisini qo'ying).")
@@ -352,14 +357,30 @@ def sync(trigger="Qo'lda"):
 		if not people:
 			lines.append("Sinxron qamrovi bo'sh — o'quvchi ham, o'qituvchi ham belgilanmagan.")
 
+		limit = int(limit or 0)
+		if limit > 0:
+			people = [p for p in people if p["active"]][:limit]
+			lines.append(
+				f"SINOV REJIMI: faqat {len(people)} faol odam bilan ishlanadi (limit={limit}). "
+				"Qolganlar bu yurishda butunlay chetlab o'tiladi."
+			)
+
 		links = {
 			d.name: d
 			for d in frappe.get_all(
 				"Moodle User Link",
 				fields=["name", "moodle_user_id", "moodle_username", "moodle_email",
-						"sync_hash", "status", "full_name"],
+						"sync_hash", "status", "full_name", "person_type", "reference_name"],
 				limit_page_length=0,
 			)
+		}
+		# Kalit o'zgarganini aniqlash uchun ikkinchi indeks: kim -> bog'lanish.
+		# Masalan Instructor'ga keyin Employee bog'lansa, kalit INSTR-<ism> dan
+		# HR-EMP-xxxxx ga o'zgaradi — bunda YANGI akkaunt ochmaymiz.
+		by_ref = {
+			(d.person_type, d.reference_name): d
+			for d in links.values()
+			if d.reference_name
 		}
 		existing = _moodle_by_idnumber([p["idnumber"] for p in people])
 		lines.append(
@@ -371,7 +392,7 @@ def sync(trigger="Qo'lda"):
 		auth = s.auth_method or "manual"
 		taken = {l.moodle_username for l in links.values() if l.moodle_username}
 
-		to_create, to_update, new_links = [], [], {}
+		to_create, to_update, new_links, to_rename = [], [], {}, []
 
 		for p in people:
 			key = p["idnumber"]
@@ -417,6 +438,34 @@ def sync(trigger="Qo'lda"):
 					"op": "update",
 				}
 			else:
+				eski = by_ref.get((p["person_type"], p["reference_name"]))
+				if eski and eski.name != key and eski.moodle_user_id:
+					# Shu odam uchun akkaunt BOR, lekin boshqa kalit bilan ochilgan
+					# (masalan Instructor'ga keyinroq Employee bog'landi).
+					# Ikkinchi akkaunt ochmaymiz — borining idnumber'ini yangilaymiz.
+					lines.append(
+						f"KALIT O'ZGARDI: {eski.name} -> {key} ({p['full_name']}) — "
+						"mavjud Moodle akkaunti yangilanadi, yangisi ochilmaydi."
+					)
+					to_update.append({
+						"id": eski.moodle_user_id,
+						"idnumber": key,
+						"firstname": firstname,
+						"lastname": lastname,
+						"suspended": suspended,
+					})
+					to_rename.append((eski.name, key))
+					new_links[key] = {
+						**p,
+						"moodle_user_id": eski.moodle_user_id,
+						"moodle_username": eski.moodle_username,
+						"moodle_email": eski.moodle_email,
+						"sync_hash": shape,
+						"suspended": suspended,
+						"op": "rekey",
+					}
+					continue
+
 				if suspended:
 					# Moodle'da yo'q va faol emas — yaratmaymiz
 					stat["skipped"] += 1
@@ -481,6 +530,17 @@ def sync(trigger="Qo'lda"):
 					lines.append(f"XATO yangilashda (moodle id {mid}): {err}")
 
 		stat["suspended"] = sum(1 for v in new_links.values() if v.get("suspended"))
+
+		# Kalit o'zgarganlar: mahalliy yozuvni yangi nomga ko'chiramiz (tarix saqlanadi)
+		if not dry:
+			for eski_nom, yangi_nom in to_rename:
+				try:
+					frappe.rename_doc("Moodle User Link", eski_nom, yangi_nom,
+									  force=True, ignore_permissions=True)
+				except Exception as e:
+					stat["errors"] += 1
+					lines.append(f"XATO nom o'zgartirishda {eski_nom} -> {yangi_nom}: {e}")
+
 		_save_links(new_links, dry)
 
 		frappe.db.set_single_value("Moodle Settings", "last_sync", now_datetime())
@@ -525,6 +585,8 @@ def _save_links(new_links, dry):
 		return
 	for key, v in new_links.items():
 		values = {
+			# autoname "field:idnumber" — nom o'zgarganda maydon ham yangilanib tursin
+			"idnumber": key,
 			"person_type": v["person_type"],
 			"reference_name": v["reference_name"],
 			"full_name": v["full_name"],
@@ -618,10 +680,10 @@ def test_connection():
 
 
 @frappe.whitelist()
-def sync_now():
-	"""Moodle Settings'dagi "Hozir sinxronlash" tugmasi."""
+def sync_now(limit=0):
+	"""Moodle Settings'dagi "Hozir sinxronlash" / "Sinov sinxroni" tugmasi."""
 	frappe.only_for("System Manager")
-	return sync(trigger="Qo'lda")
+	return sync(trigger="Qo'lda", limit=limit)
 
 
 def daily_sync():

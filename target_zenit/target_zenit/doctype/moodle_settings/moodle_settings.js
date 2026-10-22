@@ -47,6 +47,35 @@ frappe.ui.form.on("Moodle Settings", {
 			);
 		}).addClass("btn-primary");
 
+		frm.add_custom_button(__("Sinov sinxroni (bir nechta kishi)"), () => {
+			frappe.prompt(
+				{
+					fieldname: "limit",
+					label: __("Nechta faol odam bilan sinaymiz?"),
+					fieldtype: "Int",
+					default: 3,
+					reqd: 1,
+					description: __("Faqat shu sondagi faol odam Moodle'ga yuboriladi. 07:00 dagi avto sinxron bundan ta'sirlanmaydi."),
+				},
+				(v) => {
+					frappe.call({
+						method: "target_zenit.integrations.moodle.sync_now",
+						args: { limit: v.limit },
+						freeze: true,
+						freeze_message: __("Sinov sinxroni ketmoqda..."),
+						callback: (r) => {
+							frm.reload_doc();
+							if (r.message) {
+								frappe.set_route("Form", "Moodle Sync Log", r.message);
+							}
+						},
+					});
+				},
+				__("Sinov sinxroni"),
+				__("Boshlash")
+			);
+		});
+
 		frm.add_custom_button(__("Foydalanuvchi ro'yxati"), () => {
 			frappe.set_route("List", "Moodle User Link");
 		}, __("Ko'rish"));
