@@ -937,6 +937,228 @@ def plan_xulosa(tr) -> dict:
 	}
 
 
+# ------------------------------------------------------- mas'ul (oxirgi ishlagan)
+# Qoida (2026-10-23): qarz ishining mas'uli — u bilan OXIRGI MARTA ISHLAGAN
+# xodim. Uch manba hisobga olinadi:
+#   * javob berilgan telefon qo'ng'irog'i (Telefon Qongirogi, suhbat > 0);
+#   * panelda yozilgan qo'ng'iroq natijasi — Aloqa Yozuvi (natijasidan qat'i
+#     nazar: "Javob yo'q" ham ish qilingani, menejer shu ish ustida ishlayapti);
+#   * Qarz Ishi'ga qo'lda yozilgan komment.
+# Eng YANGISI g'olib. Shu bilan ota-ona bilan aloqani boshlagan odam uni
+# oxirigacha olib boradi va ish egasiz qolmaydi.
+MASUL_ROLLAR = {"sales manager", "sales user", "sotuv meneger"}
+
+
+def case_raqamlar(student: str, payer_phone=None) -> list[str]:
+	"""Shu o'quvchiga tegishli normal raqamlar: to'lovchi + ota-onalar + o'quvchi.
+
+	Telefon Qongirogi `normal_telefon` ("998XXXXXXXXX") bo'yicha saqlanadi,
+	shuning uchun qidiruv ham shu ko'rinishda ketadi."""
+	from target_zenit.telefoniya.utils import normalize_phone
+
+	xom = [payer_phone]
+	st = frappe.db.get_value(
+		"Student", student,
+		["student_mobile_number", "custom_payer_phone"], as_dict=True
+	) or frappe._dict()
+	xom += [st.custom_payer_phone, st.student_mobile_number]
+	xom += frappe.db.sql_list(
+		"""SELECT g.mobile_number FROM `tabStudent Guardian` sg
+		   JOIN `tabGuardian` g ON g.name = sg.guardian
+		   WHERE sg.parenttype = 'Student' AND sg.parent = %s
+		     AND g.mobile_number IS NOT NULL AND g.mobile_number != ''""",
+		(student,),
+	)
+	out = []
+	for x in xom:
+		n = normalize_phone(x)
+		if n and n not in out:
+			out.append(n)
+	return out
+
+
+def _masul_bola_oladi(user: str | None) -> bool:
+	"""Bu foydalanuvchini mas'ul qilib qo'yish mumkinmi.
+
+	Xizmat hisoblari (Administrator, telefoniya integratsiyasi) va o'chirilgan
+	foydalanuvchilarga ish biriktirilmaydi — aks holda ish ko'rinmas bo'lib
+	qolardi. Rol nomi boshqacha bo'lishi mumkin, shuning uchun allaqachon
+	mas'ul bo'lib ishlayotgan foydalanuvchi ham qabul qilinadi."""
+	if not user or user in ("Administrator", "Guest"):
+		return False
+	if not frappe.db.get_value("User", user, "enabled"):
+		return False
+	if MASUL_ROLLAR & {r.lower() for r in frappe.get_roles(user)}:
+		return True
+	return bool(frappe.db.exists("Qarz Ishi", {"masul": user}))
+
+
+def oxirgi_ishlagan(qarz_ishi: str, student: str | None = None, payer_phone: str | None = None):
+	"""(user, vaqt, manba) — bu ish ustida oxirgi marta ishlagan xodim.
+
+	Solishtiriladigan manbalar (eng yangisi olinadi):
+	  * `Aloqa Yozuvi` — panelda yozilgan qo'ng'iroq natijasi/komment
+	    (natijasi "Gaplashildi" bo'lishi SHART EMAS: javob bo'lmagani ham
+	    qilingan ish, menejer shu mijoz bilan shug'ullanyapti);
+	  * `Comment` — Qarz Ishi'ga qo'lda yozilgan izoh (tizim yozgan "Info"
+	    izohlari hisobga olinmaydi);
+	  * javob berilgan telefon qo'ng'irog'i (suhbat vaqti > 0) — raqam bo'yicha
+	    shu o'quvchiga bog'langan.
+	"""
+	nomzodlar = []
+
+	ay = frappe.get_all(
+		"Aloqa Yozuvi",
+		filters={"qarz_ishi": qarz_ishi},
+		fields=["masul", "vaqt"],
+		order_by="vaqt desc",
+		limit_page_length=5,
+	)
+	for r in ay:
+		if r.masul and r.vaqt:
+			nomzodlar.append((r.vaqt, r.masul, "Aloqa Yozuvi"))
+			break
+
+	for r in frappe.get_all(
+		"Comment",
+		filters={
+			"reference_doctype": "Qarz Ishi",
+			"reference_name": qarz_ishi,
+			"comment_type": "Comment",
+		},
+		fields=["owner", "creation"],
+		order_by="creation desc",
+		limit_page_length=5,
+	):
+		if r.owner and r.owner != "Administrator":
+			nomzodlar.append((r.creation, r.owner, "Komment"))
+			break
+
+	raqamlar = case_raqamlar(student, payer_phone) if student else []
+	if raqamlar:
+		for r in frappe.get_all(
+			"Telefon Qongirogi",
+			filters={
+				"normal_telefon": ["in", raqamlar],
+				"tugash_sababi": "Javob berildi",
+				"suhbat_vaqti": [">", 0],
+			},
+			fields=["foydalanuvchi", "xodim", "boshlandi"],
+			order_by="boshlandi desc",
+			limit_page_length=10,
+		):
+			user = r.foydalanuvchi or (
+				frappe.db.get_value("Employee", r.xodim, "user_id") if r.xodim else None
+			)
+			if user and r.boshlandi:
+				nomzodlar.append((r.boshlandi, user, "Telefon Qongirogi"))
+				break
+
+	if not nomzodlar:
+		return None, None, None
+	vaqt, user, manba = max(nomzodlar, key=lambda x: str(x[0]))
+	return user, vaqt, manba
+
+
+def masul_yangila(qarz_ishi: str, izoh: bool = True) -> str | None:
+	"""Ishni oxirgi gaplashgan xodimga biriktiradi. Qaytaradi: yangi mas'ul yoki None."""
+	qi = frappe.db.get_value(
+		"Qarz Ishi", qarz_ishi,
+		["name", "student", "payer_phone", "masul", "ishlov_status"], as_dict=True,
+	)
+	if not qi or qi.ishlov_status in YOPIQ_STATUSLAR:
+		return None
+
+	user, vaqt, manba = oxirgi_ishlagan(qi.name, qi.student, qi.payer_phone)
+	if not user or user == qi.masul or not _masul_bola_oladi(user):
+		return None
+
+	frappe.db.set_value("Qarz Ishi", qi.name, "masul", user, update_modified=False)
+	if izoh:
+		frappe.get_doc(
+			{
+				"doctype": "Comment",
+				"comment_type": "Info",
+				"reference_doctype": "Qarz Ishi",
+				"reference_name": qi.name,
+				"content": (
+					f"Mas'ul avtomatik o'zgardi: {qi.masul or '—'} -> {user} "
+					f"(oxirgi ishlagan — {manba}, {str(vaqt)[:16]})"
+				),
+			}
+		).insert(ignore_permissions=True)
+	return user
+
+
+def masullarni_yangila() -> dict:
+	"""Hamma ochiq ish bo'yicha mas'ulni oxirgi gaplashganga moslash (kechasi).
+
+	Kun davomida hook'lar darhol yangilaydi; bu — xavfsizlik to'ri (hook
+	ishlamay qolgan, qo'lda kiritilgan yoki eski qo'ng'iroq keyin yuklangan
+	holatlar uchun)."""
+	ozgardi = 0
+	ishlar = frappe.get_all(
+		"Qarz Ishi",
+		filters={"ishlov_status": ["not in", list(YOPIQ_STATUSLAR)]},
+		pluck="name",
+	)
+	for name in ishlar:
+		try:
+			if masul_yangila(name):
+				ozgardi += 1
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"qarzdorlik masul_yangila: {name}")
+	return {"tekshirildi": len(ishlar), "ozgardi": ozgardi}
+
+
+def qongiroq_masul(doc, method=None):
+	"""Telefon Qongirogi hook: gaplashilgan qo'ng'iroqdan keyin shu raqamga
+	tegishli ochiq qarz ishlari o'sha menejerga o'tadi."""
+	try:
+		if doc.tugash_sababi != "Javob berildi" or not (doc.suhbat_vaqti or 0):
+			return
+		if not doc.normal_telefon:
+			return
+		user = doc.foydalanuvchi or (
+			frappe.db.get_value("Employee", doc.xodim, "user_id") if doc.xodim else None
+		)
+		if not _masul_bola_oladi(user):
+			return
+		for name in _raqam_boyicha_ishlar(doc.normal_telefon):
+			masul_yangila(name)
+	except Exception:
+		# Qo'ng'iroq yozuvini qabul qilishni hech qachon bloklamaymiz
+		frappe.log_error(frappe.get_traceback(), f"qarzdorlik qongiroq_masul: {doc.name}")
+
+
+def _raqam_boyicha_ishlar(normal: str) -> list[str]:
+	"""Shu raqam tegishli bo'lgan ochiq qarz ishlari (to'lovchi/ota-ona/o'quvchi).
+
+	Bitta so'rovda: raqamlar bazada erkin formatda yozilgan ("+998 90 123 45 67",
+	"901234567"), shuning uchun ajratuvchilar tashlanib OXIRGI 9 RAQAM bo'yicha
+	solishtiriladi — milliy raqamning o'zi, u yetarlicha noyob."""
+	suffix = (normal or "")[-9:]
+	if len(suffix) < 9:
+		return []
+	tozala = (
+		"REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({0}, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '')"
+	)
+	p = "%" + suffix
+	return frappe.db.sql_list(
+		f"""SELECT qi.name FROM `tabQarz Ishi` qi
+		    LEFT JOIN `tabStudent` s ON s.name = qi.student
+		    WHERE qi.ishlov_status NOT IN %(yopiq)s AND (
+		          {tozala.format('qi.payer_phone')} LIKE %(p)s
+		       OR {tozala.format('s.custom_payer_phone')} LIKE %(p)s
+		       OR {tozala.format('s.student_mobile_number')} LIKE %(p)s
+		       OR EXISTS (SELECT 1 FROM `tabStudent Guardian` sg
+		                  JOIN `tabGuardian` g ON g.name = sg.guardian
+		                  WHERE sg.parenttype = 'Student' AND sg.parent = qi.student
+		                    AND {tozala.format('g.mobile_number')} LIKE %(p)s))""",
+		{"yopiq": tuple(YOPIQ_STATUSLAR), "p": p},
+	)
+
+
 # ---------------------------------------------------------------- case sync
 def _bucket(eng_eski, left_school: bool) -> str:
 	if left_school:
@@ -1337,6 +1559,10 @@ def nightly():
 		check_sla()
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "qarzdorlik nightly: check_sla")
+	try:
+		masullarni_yangila()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "qarzdorlik nightly: masullarni_yangila")
 	frappe.db.commit()
 
 

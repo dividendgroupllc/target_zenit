@@ -84,4 +84,18 @@ class AloqaYozuvi(Document):
 			if yangi_status == "Gaplashildi - Nizo" and not qi.nizo_sababi:
 				qi.nizo_sababi = self.komment or self.hisob_natijasi
 
+		# Mas'ul — ish ustida OXIRGI MARTA ISHLAGAN xodim (2026-10-23 qoidasi).
+		# Yozuv natijasi muhim emas: "Javob yo'q" ham qilingan ish — menejer shu
+		# mijoz bilan shug'ullanyapti. Telefon qo'ng'iroqlari hook orqali keladi.
+		from target_zenit.qarzdorlik.engine import _masul_bola_oladi
+
+		if self.masul != qi.masul and _masul_bola_oladi(self.masul):
+			eski = qi.masul
+			qi.masul = self.masul
+			qi.add_comment(
+				"Info",
+				f"Mas'ul avtomatik o'zgardi: {eski or '—'} -> {self.masul} "
+				f"(oxirgi ishlagan — Aloqa Yozuvi {self.name})",
+			)
+
 		qi.save(ignore_permissions=True)

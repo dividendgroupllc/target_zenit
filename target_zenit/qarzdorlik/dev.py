@@ -1180,3 +1180,105 @@ def qaytimli_royxat():
 	print(f"\njami qaytim: {sum(r.jami_qaytim for r in rows):,.0f} | "
 	      f"jadvalga yozilgan: {sum(r.jadvalda for r in rows):,.0f} | "
 	      f"avans borida oydan yechilgani: {muammo} ta")
+
+
+def test_masul_avto(case="QI-2026-145130", user=None):
+	"""Mas'ul oxirgi gaplashgan xodimga avtomatik o'tyaptimi.
+
+	1) javobsiz qo'ng'iroq -> mas'ul o'zgarmaydi;
+	2) gaplashilgan qo'ng'iroq (Telefon Qongirogi) -> mas'ul o'zgaradi;
+	3) panelda yozilgan natija (Aloqa Yozuvi, «Javob yo'q» ham) -> o'sha xodimga;
+	4) Qarz Ishi'ga qo'lda komment -> o'sha xodimga.
+	Oxirida hamma o'zgarish qaytariladi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_masul_avto
+	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.qarzdorlik import engine
+
+	frappe.set_user("Administrator")
+	qi = frappe.db.get_value(
+		"Qarz Ishi", case, ["student", "student_name", "payer_phone", "masul"], as_dict=True)
+	eski_masul = qi.masul
+	# Hozirgi mas'uldan BOSHQA, mas'ul bo'la oladigan foydalanuvchi
+	user = user or next(
+		u for u in frappe.get_all("Qarz Ishi", pluck="masul", limit_page_length=0)
+		if u and u != eski_masul and engine._masul_bola_oladi(u))
+	raqamlar = engine.case_raqamlar(qi.student, qi.payer_phone)
+	print(f"{case} ({qi.student_name}): mas'ul '{eski_masul}', raqamlar {raqamlar}")
+	assert raqamlar, "o'quvchida raqam yo'q"
+
+	yaratilgan, ay = [], None
+	try:
+		# 1) Javobsiz qo'ng'iroq — mas'ul o'zgarmasligi kerak
+		d = frappe.get_doc({
+			"doctype": "Telefon Qongirogi", "manba": "Android",
+			"asterisk_uniqueid": f"dev-masul-0-{frappe.generate_hash(length=6)}",
+			"yonalish": "Chiquvchi", "boshlandi": add_to_date(now_datetime(), hours=-2),
+			"tashqi_raqam": raqamlar[0], "tugash_sababi": "Javob yo'q",
+			"suhbat_vaqti": 0, "foydalanuvchi": user,
+		}).insert(ignore_permissions=True)
+		yaratilgan.append(d.name)
+		frappe.db.commit()
+		keyin = frappe.db.get_value("Qarz Ishi", case, "masul")
+		print(f"  javobsiz qo'ng'iroqdan keyin: '{keyin}'")
+		assert keyin == eski_masul, "javobsiz qo'ng'iroq mas'ulni o'zgartirdi"
+
+		# 2) Gaplashilgan qo'ng'iroq — mas'ul o'sha xodimga o'tadi
+		d = frappe.get_doc({
+			"doctype": "Telefon Qongirogi", "manba": "Android",
+			"asterisk_uniqueid": f"dev-masul-1-{frappe.generate_hash(length=6)}",
+			"yonalish": "Chiquvchi", "boshlandi": add_to_date(now_datetime(), minutes=-30),
+			"tashqi_raqam": raqamlar[0], "tugash_sababi": "Javob berildi",
+			"suhbat_vaqti": 95, "foydalanuvchi": user,
+		}).insert(ignore_permissions=True)
+		yaratilgan.append(d.name)
+		frappe.db.commit()
+		keyin = frappe.db.get_value("Qarz Ishi", case, "masul")
+		print(f"  gaplashilgan qo'ng'iroqdan keyin: '{keyin}' (kutilgan '{user}')")
+		assert keyin == user, "qo'ng'iroqdan keyin mas'ul o'zgarmadi"
+
+		# 3) Panelda boshqa menejer «Javob yo'q» deb yozdi — bu ham qilingan ish
+		boshqa = eski_masul
+		frappe.set_user(boshqa)
+		ay = frappe.get_doc({
+			"doctype": "Aloqa Yozuvi", "qarz_ishi": case, "kanal": "Qo'ng'iroq",
+			"aloqa_natijasi": "Javob yo'q",
+			"komment": "Sinov: javob bermadi", "keyingi_harakat": "Qayta qo'ng'iroq",
+			"keyingi_sana": frappe.utils.nowdate(),
+		}).insert(ignore_permissions=True)
+		frappe.db.commit()
+		frappe.set_user("Administrator")
+		keyin = frappe.db.get_value("Qarz Ishi", case, "masul")
+		print(f"  «Javob yo'q» yozuvidan keyin: '{keyin}' (kutilgan '{boshqa}')")
+		assert keyin == boshqa, "panel yozuvidan keyin mas'ul o'zgarmadi"
+
+		# 4) Qarz Ishi'ga qo'lda komment — u ham ish qilingani hisoblanadi
+		frappe.set_user(user)
+		frappe.get_doc("Qarz Ishi", case).add_comment("Comment", "Sinov komment")
+		frappe.db.commit()
+		frappe.set_user("Administrator")
+		engine.masul_yangila(case)
+		frappe.db.commit()
+		keyin = frappe.db.get_value("Qarz Ishi", case, "masul")
+		print(f"  kommentdan keyin: '{keyin}' (kutilgan '{user}')")
+		assert keyin == user, "komment mas'ulni o'zgartirmadi"
+		print("OK — mas'ul oxirgi ishlagan xodimga avtomatik biriktirilyapti")
+	finally:
+		frappe.set_user("Administrator")
+		for c in frappe.get_all(
+			"Comment",
+			filters={"reference_doctype": "Qarz Ishi", "reference_name": case,
+			         "content": ["like", "%Sinov%"]},
+			pluck="name",
+		):
+			frappe.delete_doc("Comment", c, force=True, ignore_permissions=True)
+		for n in yaratilgan:
+			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
+		if ay:
+			for v in frappe.get_all("Tolov Vadasi", filters={"aloqa_yozuvi": ay.name}, pluck="name"):
+				frappe.delete_doc("Tolov Vadasi", v, force=True, ignore_permissions=True)
+			frappe.delete_doc("Aloqa Yozuvi", ay.name, force=True, ignore_permissions=True)
+		frappe.db.set_value("Qarz Ishi", case, "masul", eski_masul, update_modified=False)
+		frappe.db.commit()
+		print(f"(tozalandi, mas'ul tiklandi: {eski_masul})")
