@@ -938,43 +938,15 @@ def plan_xulosa(tr) -> dict:
 
 
 # ------------------------------------------------------- mas'ul (oxirgi ishlagan)
-# Qoida (2026-10-23): qarz ishining mas'uli — u bilan OXIRGI MARTA ISHLAGAN
-# xodim. Uch manba hisobga olinadi:
-#   * javob berilgan telefon qo'ng'irog'i (Telefon Qongirogi, suhbat > 0);
+# Qoida (2026-10-23): qarz ishining mas'uli — PANELDA u ustida OXIRGI MARTA
+# ISHLAGAN xodim, ya'ni yozuvni KIM YOZGAN bo'lsa o'sha:
 #   * panelda yozilgan qo'ng'iroq natijasi — Aloqa Yozuvi (natijasidan qat'i
-#     nazar: "Javob yo'q" ham ish qilingani, menejer shu ish ustida ishlayapti);
+#     nazar: "Javob yo'q" ham ish qilingani);
 #   * Qarz Ishi'ga qo'lda yozilgan komment.
-# Eng YANGISI g'olib. Shu bilan ota-ona bilan aloqani boshlagan odam uni
-# oxirigacha olib boradi va ish egasiz qolmaydi.
+# Eng YANGISI g'olib. Telefon qo'ng'iroqlarining o'zi (Telefon Qongirogi)
+# mas'ulni O'ZGARTIRMAYDI — ular kartada ko'rinadi, lekin biriktirish faqat
+# menejer yozib qoldirgan ish bo'yicha ketadi (foydalanuvchi qarori).
 MASUL_ROLLAR = {"sales manager", "sales user", "sotuv meneger"}
-
-
-def case_raqamlar(student: str, payer_phone=None) -> list[str]:
-	"""Shu o'quvchiga tegishli normal raqamlar: to'lovchi + ota-onalar + o'quvchi.
-
-	Telefon Qongirogi `normal_telefon` ("998XXXXXXXXX") bo'yicha saqlanadi,
-	shuning uchun qidiruv ham shu ko'rinishda ketadi."""
-	from target_zenit.telefoniya.utils import normalize_phone
-
-	xom = [payer_phone]
-	st = frappe.db.get_value(
-		"Student", student,
-		["student_mobile_number", "custom_payer_phone"], as_dict=True
-	) or frappe._dict()
-	xom += [st.custom_payer_phone, st.student_mobile_number]
-	xom += frappe.db.sql_list(
-		"""SELECT g.mobile_number FROM `tabStudent Guardian` sg
-		   JOIN `tabGuardian` g ON g.name = sg.guardian
-		   WHERE sg.parenttype = 'Student' AND sg.parent = %s
-		     AND g.mobile_number IS NOT NULL AND g.mobile_number != ''""",
-		(student,),
-	)
-	out = []
-	for x in xom:
-		n = normalize_phone(x)
-		if n and n not in out:
-			out.append(n)
-	return out
 
 
 def _masul_bola_oladi(user: str | None) -> bool:
@@ -993,17 +965,18 @@ def _masul_bola_oladi(user: str | None) -> bool:
 	return bool(frappe.db.exists("Qarz Ishi", {"masul": user}))
 
 
-def oxirgi_ishlagan(qarz_ishi: str, student: str | None = None, payer_phone: str | None = None):
-	"""(user, vaqt, manba) — bu ish ustida oxirgi marta ishlagan xodim.
+def oxirgi_ishlagan(qarz_ishi: str):
+	"""(user, vaqt, manba) — PANELDA bu ish ustida oxirgi marta ishlagan xodim.
 
 	Solishtiriladigan manbalar (eng yangisi olinadi):
 	  * `Aloqa Yozuvi` — panelda yozilgan qo'ng'iroq natijasi/komment
 	    (natijasi "Gaplashildi" bo'lishi SHART EMAS: javob bo'lmagani ham
 	    qilingan ish, menejer shu mijoz bilan shug'ullanyapti);
 	  * `Comment` — Qarz Ishi'ga qo'lda yozilgan izoh (tizim yozgan "Info"
-	    izohlari hisobga olinmaydi);
-	  * javob berilgan telefon qo'ng'irog'i (suhbat vaqti > 0) — raqam bo'yicha
-	    shu o'quvchiga bog'langan.
+	    izohlari va Administrator hisobga olinmaydi).
+
+	Telefon qo'ng'iroqlari ATAYLAB hisobga olinmaydi: suhbat bo'lgani bilan
+	ish kimda qolgani menejerning o'z yozuvi bilan belgilanadi.
 	"""
 	nomzodlar = []
 
@@ -1034,26 +1007,6 @@ def oxirgi_ishlagan(qarz_ishi: str, student: str | None = None, payer_phone: str
 			nomzodlar.append((r.creation, r.owner, "Komment"))
 			break
 
-	raqamlar = case_raqamlar(student, payer_phone) if student else []
-	if raqamlar:
-		for r in frappe.get_all(
-			"Telefon Qongirogi",
-			filters={
-				"normal_telefon": ["in", raqamlar],
-				"tugash_sababi": "Javob berildi",
-				"suhbat_vaqti": [">", 0],
-			},
-			fields=["foydalanuvchi", "xodim", "boshlandi"],
-			order_by="boshlandi desc",
-			limit_page_length=10,
-		):
-			user = r.foydalanuvchi or (
-				frappe.db.get_value("Employee", r.xodim, "user_id") if r.xodim else None
-			)
-			if user and r.boshlandi:
-				nomzodlar.append((r.boshlandi, user, "Telefon Qongirogi"))
-				break
-
 	if not nomzodlar:
 		return None, None, None
 	vaqt, user, manba = max(nomzodlar, key=lambda x: str(x[0]))
@@ -1069,7 +1022,7 @@ def masul_yangila(qarz_ishi: str, izoh: bool = True) -> str | None:
 	if not qi or qi.ishlov_status in YOPIQ_STATUSLAR:
 		return None
 
-	user, vaqt, manba = oxirgi_ishlagan(qi.name, qi.student, qi.payer_phone)
+	user, vaqt, manba = oxirgi_ishlagan(qi.name)
 	if not user or user == qi.masul or not _masul_bola_oladi(user):
 		return None
 
@@ -1109,54 +1062,6 @@ def masullarni_yangila() -> dict:
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"qarzdorlik masul_yangila: {name}")
 	return {"tekshirildi": len(ishlar), "ozgardi": ozgardi}
-
-
-def qongiroq_masul(doc, method=None):
-	"""Telefon Qongirogi hook: gaplashilgan qo'ng'iroqdan keyin shu raqamga
-	tegishli ochiq qarz ishlari o'sha menejerga o'tadi."""
-	try:
-		if doc.tugash_sababi != "Javob berildi" or not (doc.suhbat_vaqti or 0):
-			return
-		if not doc.normal_telefon:
-			return
-		user = doc.foydalanuvchi or (
-			frappe.db.get_value("Employee", doc.xodim, "user_id") if doc.xodim else None
-		)
-		if not _masul_bola_oladi(user):
-			return
-		for name in _raqam_boyicha_ishlar(doc.normal_telefon):
-			masul_yangila(name)
-	except Exception:
-		# Qo'ng'iroq yozuvini qabul qilishni hech qachon bloklamaymiz
-		frappe.log_error(frappe.get_traceback(), f"qarzdorlik qongiroq_masul: {doc.name}")
-
-
-def _raqam_boyicha_ishlar(normal: str) -> list[str]:
-	"""Shu raqam tegishli bo'lgan ochiq qarz ishlari (to'lovchi/ota-ona/o'quvchi).
-
-	Bitta so'rovda: raqamlar bazada erkin formatda yozilgan ("+998 90 123 45 67",
-	"901234567"), shuning uchun ajratuvchilar tashlanib OXIRGI 9 RAQAM bo'yicha
-	solishtiriladi — milliy raqamning o'zi, u yetarlicha noyob."""
-	suffix = (normal or "")[-9:]
-	if len(suffix) < 9:
-		return []
-	tozala = (
-		"REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({0}, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '')"
-	)
-	p = "%" + suffix
-	return frappe.db.sql_list(
-		f"""SELECT qi.name FROM `tabQarz Ishi` qi
-		    LEFT JOIN `tabStudent` s ON s.name = qi.student
-		    WHERE qi.ishlov_status NOT IN %(yopiq)s AND (
-		          {tozala.format('qi.payer_phone')} LIKE %(p)s
-		       OR {tozala.format('s.custom_payer_phone')} LIKE %(p)s
-		       OR {tozala.format('s.student_mobile_number')} LIKE %(p)s
-		       OR EXISTS (SELECT 1 FROM `tabStudent Guardian` sg
-		                  JOIN `tabGuardian` g ON g.name = sg.guardian
-		                  WHERE sg.parenttype = 'Student' AND sg.parent = qi.student
-		                    AND {tozala.format('g.mobile_number')} LIKE %(p)s))""",
-		{"yopiq": tuple(YOPIQ_STATUSLAR), "p": p},
-	)
 
 
 # ---------------------------------------------------------------- case sync

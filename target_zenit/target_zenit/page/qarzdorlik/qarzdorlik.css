@@ -249,3 +249,12 @@
 [data-theme="dark"] .tz-suhbatlar .sb-diqqat { background: #2c2410; }
 .tz-suhbatlar .sb-yoq { font-size: 11.5px; color: var(--text-muted); display: flex; align-items: center;
 	gap: 8px; flex-wrap: wrap; }
+
+/* Jadval tepasidagi yakun — filtrlangan ro'yxat bo'yicha */
+.tz-qarz .list-head { display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; background:var(--card-2); }
+.tz-qarz .list-head b { font-variant-numeric:tabular-nums; }
+.tz-qarz .list-head .money { color:var(--bad-ink); }
+.tz-qarz .list-head .tur-jami { padding:1px 8px; border-radius:20px;
+  background:var(--warn-wash); color:var(--warn-ink); border:1px solid var(--warn); }
+.tz-qarz .tur-mini { font-weight:400; color:var(--muted); white-space:normal; }

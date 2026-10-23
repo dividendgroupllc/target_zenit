@@ -181,7 +181,7 @@ def _gemini_matn_tahlil(matn: str, s: dict) -> tuple[str, str]:
 
 
 # ---------------------------------------------------------------- qolganlar
-def qolganlarni_qil(limit: int = 20, majburiy: bool = False) -> dict:
+def qolganlarni_qil(limit: int = 60, majburiy: bool = False) -> dict:
 	"""Transkripti bor, lekin tahlili yo'q qo'ng'iroqlar (cron zaxirasi)."""
 	s = stt._sozlamalar()
 	if not majburiy and (not s["yoqilgan"] or s["provayder"] != "gemini"):

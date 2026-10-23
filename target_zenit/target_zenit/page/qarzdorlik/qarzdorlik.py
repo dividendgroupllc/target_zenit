@@ -16,6 +16,10 @@ ALLOWED_ROLES = [
 ]
 YOPIQ = ("Yopildi - To'landi", "Yopildi - Boshqa")
 
+# Qarz turi: oylik qatorlar (o'quv to'lovi) uchun yorliq; qolganlari — Sales
+# Invoice itemlarining nomi (Kitob, Forma, Yotoqxona to'lovi, ...)
+OQUV_TURI = "O'quv to'lovi"
+
 
 def _guard():
 	allowed = {r.lower() for r in ALLOWED_ROLES}
@@ -223,6 +227,72 @@ def _student_live(studentlar) -> dict:
 	return out
 
 
+def _qarz_turlari(cases) -> dict:
+	"""Har ishning qarzini TURI bo'yicha bo'ladi: o'quv to'lovi / Kitob / Forma /
+	Yotoqxona… va umumiy statistikani qaytaradi.
+
+	Nima uchun: "faqat kitobdan qarzi borlar" yoki "forma va yotoqxona"
+	ro'yxatini ochish kerak bo'ladi — ular alohida nachisleniya va ularni
+	alohida undiriladi. Turlar ro'yxati QOTIB YOZILMAYDI: Sales Invoice
+	itemlaridan kelib chiqadi, yangi xizmat qo'shilsa o'zi paydo bo'ladi.
+
+	Qo'shimcha nachisleniya qatorida bir nechta item bo'lishi mumkin (Kitob +
+	Forma bitta hujjatda) — qoldiq item ulushiga proportsional bo'linadi.
+	"""
+	cfg_tolerance = 1000.0
+	for c in cases:
+		c["qarz_turlari"] = {}
+	if not cases:
+		return {}
+	ishlar = {c.name: c for c in cases}
+
+	bugun = nowdate()
+	# 1) Qo'shimcha nachisleniyalar (SI qatorlari) — item bo'yicha
+	for r in frappe.db.sql(
+		"""SELECT qi.name ish, sii.item_code tur,
+		          SUM(o.outstanding * sii.net_amount / NULLIF(si.net_total, 0)) qoldiq
+		   FROM `tabQarz Ishi` qi
+		   JOIN `tabTolov Rejasi Oyi` o ON o.parent = qi.tolov_rejasi
+		        AND o.parenttype = 'Tolov Rejasi'
+		   JOIN `tabSales Invoice` si ON si.name = o.manba_hujjat
+		   JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+		   WHERE qi.name IN %(ishlar)s AND o.holat <> 'Bekor'
+		     AND o.outstanding > 0 AND o.due_date <= %(bugun)s
+		   GROUP BY qi.name, sii.item_code""",
+		{"ishlar": tuple(ishlar), "bugun": bugun},
+		as_dict=True,
+	):
+		if flt(r.qoldiq) > cfg_tolerance:
+			ishlar[r.ish]["qarz_turlari"][r.tur] = flt(r.qoldiq)
+
+	# 2) O'quv to'lovi — oylik qatorlar (manba hujjatsiz)
+	for r in frappe.db.sql(
+		"""SELECT qi.name ish, SUM(o.outstanding) qoldiq
+		   FROM `tabQarz Ishi` qi
+		   JOIN `tabTolov Rejasi Oyi` o ON o.parent = qi.tolov_rejasi
+		        AND o.parenttype = 'Tolov Rejasi'
+		   WHERE qi.name IN %(ishlar)s AND o.holat <> 'Bekor'
+		     AND (o.manba_hujjat IS NULL OR o.manba_hujjat = '')
+		     AND o.amount > 0 AND o.outstanding > 0 AND o.due_date <= %(bugun)s
+		   GROUP BY qi.name""",
+		{"ishlar": tuple(ishlar), "bugun": bugun},
+		as_dict=True,
+	):
+		if flt(r.qoldiq) > cfg_tolerance:
+			ishlar[r.ish]["qarz_turlari"][OQUV_TURI] = flt(r.qoldiq)
+
+	turlar = {}
+	for c in cases:
+		for tur, summa in c["qarz_turlari"].items():
+			d = turlar.setdefault(tur, {"soni": 0, "summa": 0.0})
+			d["soni"] += 1
+			d["summa"] += summa
+	# O'quv to'lovi birinchi, qolgani summasi bo'yicha
+	return dict(
+		sorted(turlar.items(), key=lambda x: (x[0] != OQUV_TURI, -x[1]["summa"]))
+	)
+
+
 def _qongiroq_statistikasi(cases) -> None:
 	"""Navbat ro'yxatiga qo'ng'iroq soni va oxirgi suhbat vaqtini qo'shadi.
 
@@ -424,6 +494,7 @@ def get_data(ketganlar: int = 0):
 		if not c.get("oxirgi_aloqa") and m and m.oxirgi:
 			c["oxirgi_aloqa"] = m.oxirgi
 
+	turlar = _qarz_turlari(cases)
 	_qongiroq_statistikasi(cases)
 
 	today = getdate(nowdate())
@@ -439,6 +510,7 @@ def get_data(ketganlar: int = 0):
 		"vada_buzilgan": sum(1 for c in cases if c.ishlov_status == "Va'da buzildi"),
 		"eskalatsiya": sum(1 for c in cases if c.ishlov_status == "Eskalatsiya"),
 		"ketgan_soni": ketgan_soni,
+		"turlar": turlar,
 		"ketganlar_rejimi": 1 if ketganlar else 0,
 		"buckets": {},
 	}

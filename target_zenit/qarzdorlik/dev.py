@@ -1185,10 +1185,9 @@ def qaytimli_royxat():
 def test_masul_avto(case="QI-2026-145130", user=None):
 	"""Mas'ul oxirgi gaplashgan xodimga avtomatik o'tyaptimi.
 
-	1) javobsiz qo'ng'iroq -> mas'ul o'zgarmaydi;
-	2) gaplashilgan qo'ng'iroq (Telefon Qongirogi) -> mas'ul o'zgaradi;
-	3) panelda yozilgan natija (Aloqa Yozuvi, «Javob yo'q» ham) -> o'sha xodimga;
-	4) Qarz Ishi'ga qo'lda komment -> o'sha xodimga.
+	1) telefon qo'ng'irog'i (gaplashilgan bo'lsa ham) -> mas'ul O'ZGARMAYDI;
+	2) panelda yozilgan natija (Aloqa Yozuvi, «Javob yo'q» ham) -> o'sha xodimga;
+	3) Qarz Ishi'ga qo'lda komment -> o'sha xodimga.
 	Oxirida hamma o'zgarish qaytariladi.
 	bench --site target.local execute target_zenit.qarzdorlik.dev.test_masul_avto
 	"""
@@ -1204,7 +1203,9 @@ def test_masul_avto(case="QI-2026-145130", user=None):
 	user = user or next(
 		u for u in frappe.get_all("Qarz Ishi", pluck="masul", limit_page_length=0)
 		if u and u != eski_masul and engine._masul_bola_oladi(u))
-	raqamlar = engine.case_raqamlar(qi.student, qi.payer_phone)
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	raqamlar = list(panel._case_raqamlar(qi.student, qi.payer_phone))
 	print(f"{case} ({qi.student_name}): mas'ul '{eski_masul}', raqamlar {raqamlar}")
 	assert raqamlar, "o'quvchida raqam yo'q"
 
@@ -1224,7 +1225,8 @@ def test_masul_avto(case="QI-2026-145130", user=None):
 		print(f"  javobsiz qo'ng'iroqdan keyin: '{keyin}'")
 		assert keyin == eski_masul, "javobsiz qo'ng'iroq mas'ulni o'zgartirdi"
 
-		# 2) Gaplashilgan qo'ng'iroq — mas'ul o'sha xodimga o'tadi
+		# 2) Gaplashilgan qo'ng'iroq ham mas'ulni o'zgartirmaydi: biriktirish
+		#    faqat panelda yozilgan ish bo'yicha ketadi
 		d = frappe.get_doc({
 			"doctype": "Telefon Qongirogi", "manba": "Android",
 			"asterisk_uniqueid": f"dev-masul-1-{frappe.generate_hash(length=6)}",
@@ -1235,11 +1237,11 @@ def test_masul_avto(case="QI-2026-145130", user=None):
 		yaratilgan.append(d.name)
 		frappe.db.commit()
 		keyin = frappe.db.get_value("Qarz Ishi", case, "masul")
-		print(f"  gaplashilgan qo'ng'iroqdan keyin: '{keyin}' (kutilgan '{user}')")
-		assert keyin == user, "qo'ng'iroqdan keyin mas'ul o'zgarmadi"
+		print(f"  gaplashilgan qo'ng'iroqdan keyin: '{keyin}' (o'zgarmasligi kerak)")
+		assert keyin == eski_masul, "telefon qo'ng'irog'i mas'ulni o'zgartirdi"
 
-		# 3) Panelda boshqa menejer «Javob yo'q» deb yozdi — bu ham qilingan ish
-		boshqa = eski_masul
+		# 3) Panelda BOSHQA menejer «Javob yo'q» deb yozdi — bu ham qilingan ish
+		boshqa = user
 		frappe.set_user(boshqa)
 		ay = frappe.get_doc({
 			"doctype": "Aloqa Yozuvi", "qarz_ishi": case, "kanal": "Qo'ng'iroq",
@@ -1253,16 +1255,16 @@ def test_masul_avto(case="QI-2026-145130", user=None):
 		print(f"  «Javob yo'q» yozuvidan keyin: '{keyin}' (kutilgan '{boshqa}')")
 		assert keyin == boshqa, "panel yozuvidan keyin mas'ul o'zgarmadi"
 
-		# 4) Qarz Ishi'ga qo'lda komment — u ham ish qilingani hisoblanadi
-		frappe.set_user(user)
+		# 4) Qarz Ishi'ga qo'lda komment (yana birinchi menejer) — u ham ish
+		frappe.set_user(eski_masul)
 		frappe.get_doc("Qarz Ishi", case).add_comment("Comment", "Sinov komment")
 		frappe.db.commit()
 		frappe.set_user("Administrator")
 		engine.masul_yangila(case)
 		frappe.db.commit()
 		keyin = frappe.db.get_value("Qarz Ishi", case, "masul")
-		print(f"  kommentdan keyin: '{keyin}' (kutilgan '{user}')")
-		assert keyin == user, "komment mas'ulni o'zgartirmadi"
+		print(f"  kommentdan keyin: '{keyin}' (kutilgan '{eski_masul}')")
+		assert keyin == eski_masul, "komment mas'ulni o'zgartirmadi"
 		print("OK — mas'ul oxirgi ishlagan xodimga avtomatik biriktirilyapti")
 	finally:
 		frappe.set_user("Administrator")
@@ -1282,3 +1284,37 @@ def test_masul_avto(case="QI-2026-145130", user=None):
 		frappe.db.set_value("Qarz Ishi", case, "masul", eski_masul, update_modified=False)
 		frappe.db.commit()
 		print(f"(tozalandi, mas'ul tiklandi: {eski_masul})")
+
+
+def test_qarz_turi_filtri():
+	"""Qarz turi bo'yicha bo'linish va jadval tepasidagi yakun to'g'rimi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_qarz_turi_filtri
+	"""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	d = panel.get_data()
+	turlar = d["stats"]["turlar"]
+	print("Qarz turlari (filtr ro'yxati):")
+	for tur, v in turlar.items():
+		print(f"  {tur:<22} {v['soni']:>4} ta  {v['summa']:>16,.0f}")
+
+	# Har ishning turlar yig'indisi umumiy qarzga teng bo'lishi kerak
+	farqli = []
+	for c in d["cases"]:
+		s = sum((c.get("qarz_turlari") or {}).values())
+		if abs(s - (c["qarz_summa"] or 0)) > 1500:
+			farqli.append((c["student_name"], c["qarz_summa"], s))
+	print(f"\nturlar yig'indisi qarzga teng emas: {len(farqli)} ta")
+	for f in farqli[:5]:
+		print(f"   {f[0]}: qarz {f[1]:,.0f} vs turlar {f[2]:,.0f}")
+
+	# Filtr namunasi: faqat Kitob/Forma/Yotoqxonadan qarzi borlar
+	for tanlov in (["Kitob"], ["Forma", "Yotoqxona to'lovi"], ["O'quv to'lovi"]):
+		mos = [c for c in d["cases"]
+		       if set(c.get("qarz_turlari") or {}) & set(tanlov)]
+		summa = sum(
+			sum((c["qarz_turlari"].get(t) or 0) for t in tanlov) for c in mos)
+		print(f"  filtr {tanlov}: {len(mos)} ta o'quvchi, shu tur bo'yicha {summa:,.0f}")
+	assert not farqli, "turlar yig'indisi qarz summasiga mos kelmadi"
+	print("\nOK — qarz turlari va yakunlar mos")

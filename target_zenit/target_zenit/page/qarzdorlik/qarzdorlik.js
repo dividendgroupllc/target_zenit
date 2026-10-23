@@ -20,6 +20,7 @@ class TZQarzPanel {
 		this.fStatus = "";
 		this.fSinflar = new Set();  // sinf filtri — bir vaqtda bir nechta sinf
 		this.fKetgan = 0;       // 0 = faol o'quvchilar, 1 = ketganlar ro'yxati
+		this.fTurlar = new Set();   // qarz turi: o'quv to'lovi / Kitob / Forma / Yotoqxona…
 		this.fQueue = "all";    // all | today | overdue
 		this.make_skeleton();
 		this.load(true);
@@ -129,6 +130,25 @@ class TZQarzPanel {
 		return [...g.entries()].sort((a, b) => Number(a[0]) - Number(b[0]) || String(a[0]).localeCompare(b[0]));
 	}
 
+	// Qarz turlari — serverdan (Sales Invoice itemlaridan), qotib yozilmaydi
+	turlar() {
+		return Object.entries((this.data.stats || {}).turlar || {})
+			.map(([tur, v]) => ({ tur, soni: v.soni, summa: v.summa }));
+	}
+
+	turLabel() {
+		const n = this.fTurlar.size;
+		if (!n) return "barchasi";
+		return n <= 2 ? [...this.fTurlar].join(", ") : `${n} ta tanlandi`;
+	}
+
+	// Tanlangan tur bo'yicha qarz summasi (filtrlangan ro'yxat ichida)
+	turSummasi(rows) {
+		if (!this.fTurlar.size) return null;
+		return rows.reduce((a, c) => a + [...this.fTurlar]
+			.reduce((b, t) => b + ((c.qarz_turlari || {})[t] || 0), 0), 0);
+	}
+
 	sinfLabel() {
 		const n = this.fSinflar.size;
 		if (!n) return "barchasi";
@@ -148,6 +168,10 @@ class TZQarzPanel {
 			if (this.fQueue === "overdue" && !(c.keyingi_aloqa && c.keyingi_aloqa < today)) return false;
 			if (this.fQueue === "gaplashilgan" && !(c.aloqa_soni > 0)) return false;
 			if (this.fQueue === "yozuvli" && !(c.yozuv_soni > 0)) return false;
+			if (this.fTurlar.size) {
+				const bor = Object.keys(c.qarz_turlari || {});
+				if (!bor.some((t) => this.fTurlar.has(t))) return false;
+			}
 			if (q) {
 				const hay = [c.student_name, c.sinf, c.payer_name, c.payer_phone].join(" ").toLowerCase();
 				if (!hay.includes(q)) return false;
@@ -225,6 +249,18 @@ class TZQarzPanel {
 						<button class="dd-clear" type="button">Tozalash</button>
 					</div>
 				</div>
+				<div class="dd tur-dd">
+					<button class="dd-btn" type="button">Qarz turi: <b>${this.esc(this.turLabel())}</b> ▾</button>
+					<div class="dd-menu" hidden>
+						${this.turlar().map((t) => `
+							<label class="dd-i"><input type="checkbox" data-tur="${this.esc(t.tur)}"
+								${this.fTurlar.has(t.tur) ? "checked" : ""}>
+								${this.esc(t.tur)}
+								<span class="n">${t.soni} ta · ${this.fmt(t.summa)}</span></label>`).join("")
+						|| `<div class="mini" style="padding:4px">Qarz turi topilmadi</div>`}
+						<button class="dd-clear" type="button">Tozalash</button>
+					</div>
+				</div>
 				<select class="fstatus">
 					<option value="">Barcha statuslar</option>
 					${["Yangi", "Urinilmoqda", "Gaplashildi - Va'da", "Gaplashildi - Nizo", "Bo'lib to'lash",
@@ -250,6 +286,16 @@ class TZQarzPanel {
 	render_list() {
 		const rows = this.filtered();
 		const today = this.today();
+		// Jadval tepasidagi yakun — FILTRLANGAN ro'yxat bo'yicha
+		const jami = rows.reduce((a, c) => a + (Number(c.qarz_summa) || 0), 0);
+		const turJami = this.turSummasi(rows);
+		const bosh = `<div class="list-head">
+			<span>Qarzdorlar: <b>${this.fmt(rows.length)}</b> ta</span>
+			<span>Jami qarz: <b class="money">${this.fmt(jami)}</b> so'm</span>
+			${turJami !== null ? `<span class="tur-jami">${this.esc(this.turLabel())}: <b class="money">${this.fmt(turJami)}</b> so'm</span>` : ""}
+			${rows.length !== (this.data.cases || []).length
+				? `<span class="mini">(filtr: ${this.fmt((this.data.cases || []).length)} tadan)</span>` : ""}
+		</div>`;
 		const html = rows.length
 			? `<table class="tbl">
 				<thead><tr><th>O'quvchi / to'lovchi</th><th>Sinf</th><th class="r">Qarz (so'm)</th><th>Kechikish</th><th>Ishlov holati</th><th>Keyingi aloqa</th><th>Menejer</th></tr></thead>
@@ -260,7 +306,10 @@ class TZQarzPanel {
 							? ` <span class="pill st-blue" title="${c.qongiroq_soni} ta qo'ng'iroq${c.yozuv_soni ? `, ${c.yozuv_soni} ta ovoz yozuvi` : ""}${c.oxirgi_qongiroq ? `, oxirgisi ${this.dtm(c.oxirgi_qongiroq)}` : ""}">🎧 ${c.qongiroq_soni}</span>` : ""}${c.aloqa_soni > 0 ? ` <span class="pill st-ok" title="O'quvchi bo'yicha ${c.aloqa_soni} ta aloqa yozuvi${c.gaplashildi_soni > 0 ? `, ${c.gaplashildi_soni} marta gaplashildi` : ""}${c.shu_ishda !== c.aloqa_soni ? `; shu ishda ${c.shu_ishda} ta` : ""}">✓ ${c.aloqa_soni} aloqa</span>` : ""}</div>
 							<div class="mini">${this.esc(c.payer_name || "")} ${this.tel(c.payer_phone)}</div></td>
 						<td>${this.esc(c.sinf || "—")}</td>
-						<td class="r money">${this.fmt(c.qarz_summa)}</td>
+						<td class="r money">${this.fmt(c.qarz_summa)}
+							${Object.keys(c.qarz_turlari || {}).length
+								? `<div class="mini tur-mini">${Object.entries(c.qarz_turlari)
+									.map(([t, v]) => `${this.esc(t)} ${this.fmt(v)}`).join(" · ")}</div>` : ""}</td>
 						<td>${this.bucketPill(c.aging_bucket, c.eng_eski_muddat)}</td>
 						<td>${this.statusPill(c.ishlov_status)}</td>
 						<td class="${c.keyingi_aloqa && c.keyingi_aloqa < today ? "red" : ""}">${this.dmy(c.keyingi_aloqa)}</td>
@@ -268,7 +317,7 @@ class TZQarzPanel {
 					</tr>`).join("")}
 				</tbody></table>`
 			: `<div class="empty">Filtrga mos ish topilmadi</div>`;
-		this.body.find(".list").html(html);
+		this.body.find(".list").html(bosh + html);
 		this.body.find(".list tr[data-case]").on("click", (e) => this.load_detail($(e.currentTarget).data("case")));
 	}
 
@@ -546,6 +595,22 @@ class TZQarzPanel {
 			this.sinf_sync(true);
 		});
 		dd.find(".dd-clear").on("click", () => { this.fSinflar.clear(); this.sinf_sync(true); });
+		// Qarz turi dropdowni (kitob / forma / yotoqxona / o'quv to'lovi)
+		const td = this.body.find(".tur-dd");
+		td.find(".dd-btn").on("click", (e) => { e.stopPropagation(); td.find(".dd-menu").prop("hidden", (i, v) => !v); });
+		td.find(".dd-menu").on("click", (e) => e.stopPropagation());
+		td.find("input[data-tur]").on("change", (e) => {
+			const v = String($(e.currentTarget).data("tur"));
+			e.currentTarget.checked ? this.fTurlar.add(v) : this.fTurlar.delete(v);
+			td.find(".dd-btn b").text(this.turLabel());
+			this.render_list();
+		});
+		td.find(".dd-clear").on("click", () => {
+			this.fTurlar.clear();
+			td.find("input[data-tur]").prop("checked", false);
+			td.find(".dd-btn b").text(this.turLabel());
+			this.render_list();
+		});
 		this.body.find(`[data-act="ketgan"]`).on("click", () => {
 			this.fKetgan = this.fKetgan ? 0 : 1;
 			this.selected = null; this.detail = null;

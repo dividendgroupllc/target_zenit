@@ -541,12 +541,17 @@ def hammasini_qil(limit: int = 500) -> dict:
 
 
 # ---------------------------------------------------------------- qolganlar
-def qolganlarni_qil(limit: int = 20, majburiy: bool = False) -> dict:
-	"""Soatlik vazifa: yozuvi bor, lekin transkript qilinmagan qo'ng'iroqlar.
+def qolganlarni_qil(limit: int = 60, majburiy: bool = False) -> dict:
+	"""Har 15 daqiqalik vazifa: yozuvi bor, lekin transkript qilinmagan qo'ng'iroqlar.
 
 	Nega kerak: `navbatga()` ingest paytida chaqiriladi, lekin worker o'chgan,
 	kalit noto'g'ri yoki sozlama keyinroq yoqilgan bo'lishi mumkin. Bu vazifa
 	o'tkazib yuborilganlarni yig'ib oladi.
+
+	Partiya 60 ta: bepul tarifda kunlik kvota 20 so'rov edi va katta partiyaning
+	ma'nosi yo'q edi. Pullik tarifda (Tier 1) chegara sarf bo'yicha, shuning uchun
+	soatiga ~240 ta yozuv o'tadi — bir kunlik to'planib qolgan navbat bir soatda
+	tozalanadi. Kvota tugasa `pauza_holati()` baribir hammasini to'xtatadi.
 	"""
 	s = _sozlamalar()
 	if not majburiy and (not s["yoqilgan"] or s["provayder"] == "yoq"):

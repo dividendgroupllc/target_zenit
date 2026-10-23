@@ -184,15 +184,8 @@ doc_events = {
 	# Asosiy yo'l api._yozuvni_biriktir ichida (yozuv kelgan zahoti); bu zaxira —
 	# qo'lda tahrir yoki kelgusida paydo bo'ladigan boshqa yuklash yo'li uchun.
 	"Telefon Qongirogi": {
-		"after_insert": [
-			"target_zenit.telefoniya.stt.qongiroq_on_update",
-			# Gaplashilgan qo'ng'iroqdan keyin qarz ishi o'sha menejerga o'tadi
-			"target_zenit.qarzdorlik.engine.qongiroq_masul",
-		],
-		"on_update": [
-			"target_zenit.telefoniya.stt.qongiroq_on_update",
-			"target_zenit.qarzdorlik.engine.qongiroq_masul",
-		],
+		"after_insert": "target_zenit.telefoniya.stt.qongiroq_on_update",
+		"on_update": "target_zenit.telefoniya.stt.qongiroq_on_update",
 	},
 	# Sinf (guruh) tanlansa — Student Group a'zoligini avtomatik ko'chirish;
 	# ketgan o'quvchining to'lov rejasida kelgusi oylar bekor qilinadi
