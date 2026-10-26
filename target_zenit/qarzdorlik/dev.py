@@ -1318,3 +1318,105 @@ def test_qarz_turi_filtri():
 		print(f"  filtr {tanlov}: {len(mos)} ta o'quvchi, shu tur bo'yicha {summa:,.0f}")
 	assert not farqli, "turlar yig'indisi qarz summasiga mos kelmadi"
 	print("\nOK — qarz turlari va yakunlar mos")
+
+
+def test_tel_ruxsat(userlar=None):
+	"""Qarzdorlik panelidagi ovoz yozuvi + transkript + AI tahlil qaysi
+	rollarga ko'rinadi. Har bir foydalanuvchi uchun: panel ochiladimi,
+	qo'ng'iroqlar ro'yxati to'ladimi, yozuvni eshita oladimi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_tel_ruxsat
+	"""
+	from target_zenit.target_zenit.doctype.telefon_qongirogi.telefon_qongirogi import (
+		_hammasini_korishi_mumkin,
+	)
+
+	userlar = userlar or [
+		"investor@gmail.com", "targetceo@gmail.com", "xojakbar@gmail.com",
+		"sotuv_menejer@gmail.com",
+	]
+	jami = frappe.db.count("Telefon Qongirogi")
+	print(f"bazada {jami} ta qo'ng'iroq yozuvi\n")
+	for u in userlar:
+		if not frappe.db.exists("User", u):
+			print(f"{u:<28} — yo'q")
+			continue
+		frappe.set_user(u)
+		rollar = sorted(set(frappe.get_roles(u)) & {
+			"investor", "Xojakbar_Operator", "Sotuv meneger", "Sales Manager",
+			"System Manager", "Telefoniya Agent"})
+		koradi = _hammasini_korishi_mumkin(u)
+		oqiy = frappe.has_permission("Telefon Qongirogi", "read")
+		nechta = len(frappe.get_list(
+			"Telefon Qongirogi", fields=["name"], limit_page_length=0, ignore_permissions=False))
+		print(f"{u:<28} rollar={rollar} | doctype o'qish={oqiy} | "
+		      f"hammasini ko'radi={koradi} | ro'yxatda {nechta}/{jami}")
+	frappe.set_user("Administrator")
+
+
+def test_investor_suhbatlari(user="investor@gmail.com", case=None):
+	"""Investor qarzdorlik kartasida suhbat (ovoz+matn+tahlil) ko'ra oladimi."""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user(user)
+	d = panel.get_data()
+	case = case or (d["cases"][0]["name"] if d["cases"] else None)
+	assert case, "ochiq ish yo'q"
+	k = panel.get_case(case)
+	q = k["qongiroqlar"]
+	print(f"{user}: panel {len(d['cases'])} ta ish; karta {case}")
+	print(f"  tel_hammasi={k['tel_hammasi']}, qo'ng'iroqlar={len(q)}")
+	for x in q[:5]:
+		print(f"   {x['boshlandi']} audio={x['audio']} "
+		      f"transkript={'bor' if x.get('transkript') else 'yo‘q'} "
+		      f"tahlil={'bor' if x.get('ai_xulosa') else 'yo‘q'} menejer={x['menejer']}")
+	frappe.set_user("Administrator")
+	return {"ishlar": len(d["cases"]), "qongiroqlar": len(q)}
+
+
+def test_investor_tahlil_korinishi(case="QI-2026-145130", user="investor@gmail.com"):
+	"""To'liq oqim: ovoz yozuvi + transkript + AI tahlili bor qo'ng'iroq
+	yaratiladi va INVESTOR uni qarzdorlik kartasida ko'ra olishi tekshiriladi
+	(matn to'liq keladimi, pleer manzili ochiladimi). Oxirida o'chiriladi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_investor_tahlil_korinishi
+	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	qi = frappe.db.get_value("Qarz Ishi", case, ["student", "payer_phone"], as_dict=True)
+	raqam = next(iter(panel._case_raqamlar(qi.student, qi.payer_phone)))
+	matn = "Menejer: Assalomu alaykum. Ota-ona: Shu oy 15-sanada to'laymiz." * 3
+	xulosa = ("MAVZU: Qarz bo'yicha kelishuv\nMIJOZ HOLATI: Ijobiy\n"
+	          "VA'DA: 15-sanada to'lash\nDIQQAT: Yo'q")
+	d = frappe.get_doc({
+		"doctype": "Telefon Qongirogi", "manba": "Android",
+		"asterisk_uniqueid": f"dev-investor-{frappe.generate_hash(length=6)}",
+		"yonalish": "Chiquvchi", "boshlandi": add_to_date(now_datetime(), minutes=-20),
+		"tashqi_raqam": raqam, "tugash_sababi": "Javob berildi", "suhbat_vaqti": 95,
+		"yozuv_bor": 1, "fayl_yoli": "dev/sinov.mp3", "holat": "Tahlil qilindi",
+		"transkript": matn, "transkript_sozlar": len(matn.split()),
+		"ai_xulosa": xulosa, "ai_model": "gemini-sinov",
+	}).insert(ignore_permissions=True)
+	frappe.db.commit()
+	try:
+		frappe.set_user(user)
+		k = panel.get_case(case)
+		q = [x for x in k["qongiroqlar"] if x["name"] == d.name]
+		print(f"{user}: kartada {len(k['qongiroqlar'])} qo'ng'iroq, tel_hammasi={k['tel_hammasi']}")
+		assert q, "investor qo'ng'iroqni ko'rmadi"
+		q = q[0]
+		print(f"  audio={q['audio']} | transkript {len(q.get('transkript') or '')} belgi "
+		      f"({q.get('transkript_sozlar')} so'z) | tahlil {len(q.get('ai_xulosa') or '')} belgi")
+		assert q.get("transkript") == matn, "transkript to'liq kelmadi"
+		assert q.get("ai_xulosa") == xulosa, "AI tahlil kelmadi"
+		# Pleer endpointi: ruxsat tekshiruvi o'tadimi (fayl yo'qligi boshqa xato)
+		doc = frappe.get_doc("Telefon Qongirogi", d.name)
+		doc.check_permission("read")
+		print("  stream_recording ruxsati: OK")
+		print("OK — investor ovoz yozuvi, to'liq matn va AI tahlilni ko'ra oladi")
+	finally:
+		frappe.set_user("Administrator")
+		frappe.delete_doc("Telefon Qongirogi", d.name, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print("(sinov qo'ng'irog'i o'chirildi)")

@@ -82,8 +82,19 @@ def has_permission(doc, ptype: str | None = None, user: str | None = None) -> bo
 	return (doc.foydalanuvchi or "") == user
 
 
+# Hamma qo'ng'iroqni (va yozuvni) ko'ra oladigan rollar. Menejer faqat o'zinikini
+# ko'radi; rahbariyat/nazorat esa hammasini — qarzdorlik panelidagi ovoz
+# yozuvlari va AI tahlili ham shu ro'yxat bo'yicha ochiladi.
+HAMMASINI_KORADI = {
+	"System Manager",
+	"Sales Manager",
+	"Telefoniya Agent",
+	"investor",
+	"Xojakbar_Operator",
+}
+
+
 def _hammasini_korishi_mumkin(user: str) -> bool:
 	if user == "Administrator":
 		return True
-	rollar = set(frappe.get_roles(user))
-	return bool(rollar & {"System Manager", "Sales Manager", "Telefoniya Agent"})
+	return bool(set(frappe.get_roles(user)) & HAMMASINI_KORADI)
