@@ -55,9 +55,7 @@ class TZQarzPanel {
 		const royxatdan = (this.data.cases || []).find(
 			(c) => (h.case && c.name === h.case) || (h.student && c.student === h.student));
 		if (royxatdan) {
-			this.load_detail(royxatdan.name);
-			setTimeout(() => this.body.find(`.list tr[data-case="${royxatdan.name}"]`)
-				.get(0)?.scrollIntoView({ block: "center" }), 200);
+			this.ochish(royxatdan);
 			return;
 		}
 		frappe.call({
@@ -75,9 +73,31 @@ class TZQarzPanel {
 					this.load();
 					return;
 				}
-				this.load_detail(m.case);
+				const c = (this.data.cases || []).find((x) => x.name === m.case);
+				if (c) this.ochish(c);
+				else this.load_detail(m.case);
 			},
 		});
+	}
+
+	// Havola bilan kelganda: chap ro'yxat SHU o'quvchiga filtrlanadi, karta
+	// o'ng tarafda ochiladi. Boshqa filtrlar (sinf, qarz turi, navbat) tozalanadi
+	// — aks holda izlangan o'quvchi ro'yxatdan tushib qolardi.
+	ochish(c) {
+		this.q = c.student_name || "";
+		this.fSinflar.clear();
+		this.fTurlar.clear();
+		this.fQueue = "all";
+		this.fStatus = "";
+		this.fBucket = "";
+		if (this.data.rahbar) this.fManager = "";
+		this.selected = c.name;
+		this.render();
+		this.load_detail(c.name);
+		frappe.show_alert({
+			message: __("Ro'yxat {0} bo'yicha filtrlandi", [c.student_name || c.name]),
+			indicator: "blue",
+		}, 5);
 	}
 
 	// ================= helpers =================
