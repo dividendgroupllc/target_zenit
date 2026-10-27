@@ -188,6 +188,10 @@ doc_events = {
 	# Telefoniya: yozuvi bor-u transkripti yo'q qo'ng'iroq saqlansa — avto navbatga.
 	# Asosiy yo'l api._yozuvni_biriktir ichida (yozuv kelgan zahoti); bu zaxira —
 	# qo'lda tahrir yoki kelgusida paydo bo'ladigan boshqa yuklash yo'li uchun.
+	# Qarz Ishi'ga yozilgan komment — mas'ulni darhol o'sha xodimga biriktiradi
+	"Comment": {
+		"after_insert": "target_zenit.qarzdorlik.engine.komment_masul",
+	},
 	"Telefon Qongirogi": {
 		"after_insert": "target_zenit.telefoniya.stt.qongiroq_on_update",
 		"on_update": "target_zenit.telefoniya.stt.qongiroq_on_update",

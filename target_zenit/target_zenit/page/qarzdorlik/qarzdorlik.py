@@ -816,3 +816,36 @@ def qaytardi(case: str):
 				engine.recompute_plan(tr, sync_case=True)
 	frappe.db.commit()
 	return {"ok": 1, "student": student, "tiklandi": tiklandi}
+
+
+@frappe.whitelist()
+def ish_topish(case: str | None = None, student: str | None = None) -> dict:
+	"""Havola bilan kelgan o'quvchining qarz ishini topadi.
+
+	Sotuv nazoratidan "qarzdorlik panelida ochish" bosilganda ishlatiladi:
+	ro'yxatda ko'rinmagan (ketgan o'quvchi yoki yopilgan ish) holatda ham
+	karta ochilishi kerak. Qaytaradi: ish nomi + o'quvchi ketganmi."""
+	_guard()
+	qi = None
+	if case:
+		qi = frappe.db.get_value("Qarz Ishi", case, ["name", "student"], as_dict=True)
+	if not qi and student:
+		# Avval ochiq ish, bo'lmasa oxirgi yopilgani
+		qi = frappe.db.get_value(
+			"Qarz Ishi",
+			{"student": student, "ishlov_status": ["not in", list(YOPIQ)]},
+			["name", "student"], as_dict=True,
+		) or frappe.db.get_value(
+			"Qarz Ishi", {"student": student}, ["name", "student"],
+			as_dict=True, order_by="modified desc",
+		)
+	if not qi:
+		return {"case": None}
+	st = frappe.db.get_value(
+		"Student", qi.student, ["enabled", "date_of_leaving"], as_dict=True
+	) or frappe._dict()
+	return {
+		"case": qi.name,
+		"student": qi.student,
+		"ketgan": 1 if (not st.enabled or st.date_of_leaving) else 0,
+	}

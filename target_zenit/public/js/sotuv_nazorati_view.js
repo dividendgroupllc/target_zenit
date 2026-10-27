@@ -49,6 +49,14 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 	}
 	pct(v) { return v === null || v === undefined ? "—" : `${v}%`; }
 
+	// Qarzdorlik panelida shu o'quvchini ochish: ish nomi bo'lsa shu bo'yicha,
+	// bo'lmasa o'quvchi ID bo'yicha (panel o'zi topadi).
+	panelUrl(student, qarz_ishi) {
+		if (qarz_ishi) return `/app/qarzdorlik?case=${encodeURIComponent(qarz_ishi)}`;
+		if (student) return `/app/qarzdorlik?student=${encodeURIComponent(student)}`;
+		return "/app/qarzdorlik";
+	}
+
 	sverkaUrl(customer) {
 		const b = frappe.datetime.str_to_obj(frappe.datetime.get_today());
 		const yil = b.getMonth() + 1 >= 7 ? b.getFullYear() : b.getFullYear() - 1;
@@ -351,7 +359,9 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 				<td class="nowrap">${this.dt(g.oxirgi)}</td>
 				<td class="tz-komment">${this.esc(g.mavzu || "—")}</td>
 				<td class="r">${g.taklif ? `<span class="tz-chip warn">${g.taklif}</span>` : "—"}</td>
-				<td>${g.qarz_ishi ? `<a class="tz-sverka" href="/app/qarz-ishi/${encodeURIComponent(g.qarz_ishi)}" target="_blank">qarz ishi ↗</a>` : ""}</td></tr>`).join("");
+				<td>${g.student || g.qarz_ishi
+					? `<a class="tz-sverka" href="${this.panelUrl(g.student, g.qarz_ishi)}" target="_blank"
+						title="Qarzdorlik panelida ochish">qarzdorlik ↗</a>` : ""}</td></tr>`).join("");
 		return `<div class="tbl-wrap"><table class="tz-sotuv-tbl">
 			<thead><tr><th>Kim bilan</th><th class="r">Qo'ng'iroq</th><th class="r">Gaplashdi</th>
 				<th class="r">Daqiqa</th><th>Oxirgi</th><th>Nima haqida (AI)</th>
@@ -369,7 +379,7 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 		if (!list.length) return `<div class="empty-hint">Panelda yozuv yo'q</div>`;
 		const rows = list.map((a) => `
 			<tr><td class="nowrap">${this.dt(a.creation)}</td>
-				<td><a href="/app/qarz-ishi/${encodeURIComponent(a.qarz_ishi || "")}" target="_blank">${this.esc(a.student_name || "—")}</a>
+				<td><a href="${this.panelUrl(a.student, a.qarz_ishi)}" target="_blank">${this.esc(a.student_name || "—")}</a>
 					<div class="tz-sub">${this.esc(a.sinf || "")}</div></td>
 				<td>${a.aloqa_natijasi === "Gaplashildi"
 					? `<b>${this.esc(a.aloqa_natijasi)}</b>${a.hisob_natijasi ? ` → ${this.esc(a.hisob_natijasi)}` : ""}`
@@ -405,7 +415,7 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 				</tr>
 				${ochiq ? `<tr class="sn-drill"><td colspan="8">
 					<div class="sn-drill-head">
-						<a href="/app/qarzdorlik" target="_blank">Qarzdorlik panelida ochish ↗</a>
+						<a href="${this.panelUrl(o.student, o.qarz_ishi)}" target="_blank">Qarzdorlik panelida ochish ↗</a>
 						${o.qarz_ishi ? ` · <a href="/app/qarz-ishi/${encodeURIComponent(o.qarz_ishi)}" target="_blank">qarz ishi ↗</a>` : ""}
 						${o.student ? ` · <a href="/app/student/${encodeURIComponent(o.student)}" target="_blank">o'quvchi ↗</a>` : ""}
 					</div>
@@ -436,7 +446,9 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 				<td>${this.esc(t.menejer)}</td>
 				<td class="sn-taklif">${this.esc(t.matn)}</td>
 				<td>${t.holat ? `<span class="tz-chip${/qarshi/i.test(t.holat) ? " neg" : ""}">${this.esc(t.holat)}</span>` : ""}</td>
-				<td><a class="tz-sverka" href="/app/telefon-qongirogi/${encodeURIComponent(t.qongiroq)}" target="_blank">suhbat ↗</a></td></tr>`).join("");
+				<td>${t.student || t.qarz_ishi
+					? `<a class="tz-sverka" href="${this.panelUrl(t.student, t.qarz_ishi)}" target="_blank"
+						title="Qarzdorlik panelida shu o'quvchini ochish">qarzdorlik ↗</a>` : ""}</td></tr>`).join("");
 		return `<div class="card">
 			<div class="hd"><div><h3>Ota-onalarning taklif va shikoyatlari</h3>
 				<div class="meta">AI tahlilidan ajratilgan — maktab bo'yicha fikrlar (o'qituvchi, nazorat,
@@ -486,7 +498,9 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 				${q.tugash_sababi ? `<span class="tz-chip${q.tugash_sababi === "Javob berildi" ? "" : " neg"}">${this.esc(q.tugash_sababi)}</span>` : ""}
 				<span class="spacer"></span>
 				<span class="tz-sub">${this.esc(q.menejer)} · ${this.esc(q.student_name || q.tashqi_raqam || "")}</span>
-				<a class="tz-sverka" href="/app/telefon-qongirogi/${encodeURIComponent(q.name)}" target="_blank">↗</a>
+				${q.student || q.qarz_ishi
+					? `<a class="tz-sverka" href="${this.panelUrl(q.student, q.qarz_ishi)}" target="_blank"
+						title="Qarzdorlik panelida shu o'quvchini ochish">qarzdorlik ↗</a>` : ""}
 			</div>
 			<div class="sb-grid">
 				<div class="sb-chap">

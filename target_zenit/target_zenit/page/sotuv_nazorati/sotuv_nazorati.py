@@ -418,7 +418,7 @@ def get_telefon(from_date=None, to_date=None, masul=None, limit=1200):
             takliflar.append({
                 "qongiroq": q.name, "sana": q.boshlandi, "menejer": q["menejer"],
                 "student": q["student"], "student_name": q["student_name"],
-                "sinf": q["sinf"], "matn": taklif,
+                "sinf": q["sinf"], "qarz_ishi": q["qarz_ishi"], "matn": taklif,
                 "holat": _xulosa_qatori(q.ai_xulosa, "MIJOZ HOLATI"),
             })
 

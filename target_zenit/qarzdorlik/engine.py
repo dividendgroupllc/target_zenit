@@ -946,23 +946,36 @@ def plan_xulosa(tr) -> dict:
 # Eng YANGISI g'olib. Telefon qo'ng'iroqlarining o'zi (Telefon Qongirogi)
 # mas'ulni O'ZGARTIRMAYDI — ular kartada ko'rinadi, lekin biriktirish faqat
 # menejer yozib qoldirgan ish bo'yicha ketadi (foydalanuvchi qarori).
-MASUL_ROLLAR = {"sales manager", "sales user", "sotuv meneger"}
+# Qarzdorlik panelida ishlay oladigan rollar — kim ishlasa, o'sha mas'ul
+# bo'la oladi. "investor" ataylab yo'q: u kuzatuvchi, ish egasi emas.
+MASUL_ROLLAR = {
+	"sales manager", "sales user", "sotuv meneger",
+	"xojakbar_operator", "operator", "system manager",
+}
+
+
+def masul_bola_oladimi(user: str | None) -> tuple[bool, str]:
+	"""(mumkinmi, sabab) — nega biriktirilmagani ham qaytadi.
+
+	Sabab kerak: avval jim rad etilardi va "nega mas'ul o'zgarmadi?" degan
+	savolga javob topib bo'lmasdi (2026-10-28 tekshiruvi). Endi
+	`dev.masul_diagnostika` shu sababni ko'rsatadi."""
+	if not user:
+		return False, "foydalanuvchi yo'q"
+	if user in ("Administrator", "Guest"):
+		return False, "xizmat hisobi (Administrator/Guest)"
+	if not frappe.db.get_value("User", user, "enabled"):
+		return False, "foydalanuvchi o'chirilgan"
+	rollar = {r.lower() for r in frappe.get_roles(user)}
+	if MASUL_ROLLAR & rollar:
+		return True, "rol bo'yicha"
+	if frappe.db.exists("Qarz Ishi", {"masul": user}):
+		return True, "allaqachon mas'ul"
+	return False, f"mos rol yo'q ({', '.join(sorted(rollar)) or '—'})"
 
 
 def _masul_bola_oladi(user: str | None) -> bool:
-	"""Bu foydalanuvchini mas'ul qilib qo'yish mumkinmi.
-
-	Xizmat hisoblari (Administrator, telefoniya integratsiyasi) va o'chirilgan
-	foydalanuvchilarga ish biriktirilmaydi — aks holda ish ko'rinmas bo'lib
-	qolardi. Rol nomi boshqacha bo'lishi mumkin, shuning uchun allaqachon
-	mas'ul bo'lib ishlayotgan foydalanuvchi ham qabul qilinadi."""
-	if not user or user in ("Administrator", "Guest"):
-		return False
-	if not frappe.db.get_value("User", user, "enabled"):
-		return False
-	if MASUL_ROLLAR & {r.lower() for r in frappe.get_roles(user)}:
-		return True
-	return bool(frappe.db.exists("Qarz Ishi", {"masul": user}))
+	return masul_bola_oladimi(user)[0]
 
 
 def oxirgi_ishlagan(qarz_ishi: str):
@@ -1041,6 +1054,21 @@ def masul_yangila(qarz_ishi: str, izoh: bool = True) -> str | None:
 			}
 		).insert(ignore_permissions=True)
 	return user
+
+
+def komment_masul(doc, method=None):
+	"""Qarz Ishi'ga qo'lda komment yozilganda mas'ul o'sha xodimga o'tadi.
+
+	Ilgari komment faqat kechqurun (`masullarni_yangila`) hisobga olinardi —
+	menejer izoh yozib qo'yardi-yu, ish boshqa odamda turaverardi."""
+	try:
+		if doc.reference_doctype != "Qarz Ishi" or doc.comment_type != "Comment":
+			return
+		if not doc.reference_name or doc.owner == "Administrator":
+			return
+		masul_yangila(doc.reference_name)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"qarzdorlik komment_masul: {doc.name}")
 
 
 def masullarni_yangila() -> dict:

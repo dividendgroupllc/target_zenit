@@ -22,8 +22,62 @@ class TZQarzPanel {
 		this.fKetgan = 0;       // 0 = faol o'quvchilar, 1 = ketganlar ro'yxati
 		this.fTurlar = new Set();   // qarz turi: o'quv to'lovi / Kitob / Forma / Yotoqxona…
 		this.fQueue = "all";    // all | today | overdue
+		// Boshqa sahifadan havola bilan kelish: /app/qarzdorlik?case=QI-… yoki
+		// ?student=EDU-STU-… — o'sha o'quvchining kartasi darhol ochiladi
+		// (sotuv nazoratidan suhbat/taklif qatorini bosganda shu ishlaydi).
+		this.havola = this.havola_oqi();
 		this.make_skeleton();
 		this.load(true);
+	}
+
+	// Havola parametrlari: frappe.route_options yoki to'g'ridan-to'g'ri URL
+	havola_oqi() {
+		const out = {};
+		const ro = frappe.route_options || {};
+		if (ro.case) out.case = String(ro.case);
+		if (ro.student) out.student = String(ro.student);
+		try {
+			const u = new URLSearchParams(window.location.search || "");
+			if (!out.case && u.get("case")) out.case = u.get("case");
+			if (!out.student && u.get("student")) out.student = u.get("student");
+		} catch (e) { /* URL o'qilmasa — muammo emas */ }
+		if (out.case || out.student) frappe.route_options = {};
+		return out.case || out.student ? out : null;
+	}
+
+	// Havoladagi ishni topib ochadi. Ro'yxatda bo'lmasa (ketgan o'quvchi yoki
+	// yopilgan ish) — serverdan so'rab, kerak bo'lsa "Ketganlar" ro'yxatiga
+	// o'tib ochadi, aks holda foydalanuvchi "topilmadi" deb qolardi.
+	havolani_och() {
+		const h = this.havola;
+		this.havola = null;
+		if (!h) return;
+		const royxatdan = (this.data.cases || []).find(
+			(c) => (h.case && c.name === h.case) || (h.student && c.student === h.student));
+		if (royxatdan) {
+			this.load_detail(royxatdan.name);
+			setTimeout(() => this.body.find(`.list tr[data-case="${royxatdan.name}"]`)
+				.get(0)?.scrollIntoView({ block: "center" }), 200);
+			return;
+		}
+		frappe.call({
+			method: `${QARZ_M}.ish_topish`,
+			args: { case: h.case || null, student: h.student || null },
+			callback: (r) => {
+				const m = r.message;
+				if (!m || !m.case) {
+					frappe.show_alert({ message: __("Bu o'quvchida ochiq qarz ishi yo'q"), indicator: "orange" }, 7);
+					return;
+				}
+				if (m.ketgan && !this.fKetgan) {
+					this.fKetgan = 1;
+					this.havola = { case: m.case };
+					this.load();
+					return;
+				}
+				this.load_detail(m.case);
+			},
+		});
 	}
 
 	// ================= helpers =================
@@ -90,6 +144,7 @@ class TZQarzPanel {
 				if (first && !this.data.rahbar) this.fManager = this.data.me;
 				this.render();
 				if (this.selected) this.load_detail(this.selected, true);
+				if (this.havola) this.havolani_och();
 			},
 			error: () => this.body.html(`<div class="loading">Xatolik. Sahifani yangilang.</div>`),
 		});

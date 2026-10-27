@@ -1598,3 +1598,156 @@ def test_suhbat_matni(user="investor@gmail.com"):
 		frappe.delete_doc("Telefon Qongirogi", d.name, force=True, ignore_permissions=True)
 		frappe.db.commit()
 		print("(sinov qo'ng'irog'i o'chirildi)")
+
+
+def test_panel_havolasi(case="QI-2026-145130"):
+	"""Sotuv nazoratidagi havola qarzdorlik panelini shu o'quvchida ochadimi.
+
+	`ish_topish` uchta holatni qoplashi kerak: ish nomi bo'yicha, o'quvchi
+	bo'yicha, va ketgan o'quvchi (panel "Ketganlar" ro'yxatiga o'tadi).
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_panel_havolasi
+	"""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	student = frappe.db.get_value("Qarz Ishi", case, "student")
+
+	r1 = panel.ish_topish(case=case)
+	r2 = panel.ish_topish(student=student)
+	r3 = panel.ish_topish(student="EDU-STU-YOQ-0000")
+	print(f"ish bo'yicha : {r1}")
+	print(f"o'quvchi b-cha: {r2}")
+	print(f"topilmagan   : {r3}")
+	assert r1["case"] == case and r2["case"] == case, "ish topilmadi"
+	assert r1["ketgan"] == 0, "faol o'quvchi 'ketgan' deb belgilandi"
+	assert r3["case"] is None, "yo'q o'quvchiga ish qaytdi"
+
+	# Ketgan o'quvchi: panel "Ketganlar" ro'yxatiga o'tishi uchun bayroq kerak
+	eski = frappe.db.get_value("Student", student, ["enabled", "date_of_leaving"], as_dict=True)
+	try:
+		frappe.db.set_value("Student", student, {"enabled": 0,
+		                                         "date_of_leaving": frappe.utils.today()})
+		frappe.db.commit()
+		r4 = panel.ish_topish(case=case)
+		print(f"ketgan holat : {r4}")
+		assert r4["ketgan"] == 1, "ketgan o'quvchi aniqlanmadi"
+	finally:
+		frappe.db.set_value("Student", student, {"enabled": eski.enabled,
+		                                         "date_of_leaving": eski.date_of_leaving})
+		frappe.db.commit()
+	print("OK — havola panelni to'g'ri o'quvchida ochadi")
+
+
+def masul_diagnostika(limit=25):
+	"""Nega qarz ishlari bitta menejerda qolib ketgan — sababini ko'rsatadi.
+
+	Serverda ishga tushirish:
+	  bench --site targetschool.erpcontrol.uz execute \
+	      target_zenit.qarzdorlik.dev.masul_diagnostika
+	"""
+	from target_zenit.qarzdorlik.engine import (
+		YOPIQ_STATUSLAR,
+		masul_bola_oladimi,
+		oxirgi_ishlagan,
+	)
+
+	cfg = frappe.get_cached_doc("Qarzdorlik Sozlamalari")
+	print("=== 0) Yangi ish OCHILGANDA kimga biriktiriladi (sinf qoidalari) ===")
+	qoidalar = [(r.sinf_pattern, r.masul) for r in (cfg.biriktirish or [])]
+	for p_, m_ in qoidalar:
+		print(f"   {p_!s:<24} -> {m_}")
+	print(f"   DEFAULT (qoida mos kelmasa): {cfg.default_masul or 'Administrator'}")
+	kimlar = {m for _, m in qoidalar} | ({cfg.default_masul} if cfg.default_masul else set())
+	if len(kimlar) <= 1:
+		print("   ⚠ Hamma yangi ish BITTA odamga tushadi — qoidalarni bo'lib bering "
+		      "(Qarzdorlik Sozlamalari -> Sinf bo'yicha avto-biriktirish).")
+
+	print("\n=== 1) Qarz ishlari kimda (ochiq ishlar) ===")
+	for r in frappe.db.sql(
+		"""SELECT masul, COUNT(*) n FROM `tabQarz Ishi`
+		   WHERE ishlov_status NOT IN %(y)s GROUP BY masul ORDER BY n DESC""",
+		{"y": tuple(YOPIQ_STATUSLAR)}, as_dict=True):
+		mumkin, sabab = masul_bola_oladimi(r.masul)
+		print(f"   {r.masul!s:<34} {r.n:>5} ta   (mas'ul bo'la oladi: {mumkin} — {sabab})")
+
+	print("\n=== 2) Kim panelga yozyapti (Aloqa Yozuvi) ===")
+	for r in frappe.db.sql(
+		"""SELECT masul, COUNT(*) n, MAX(creation) oxirgi FROM `tabAloqa Yozuvi`
+		   GROUP BY masul ORDER BY n DESC""", as_dict=True):
+		mumkin, sabab = masul_bola_oladimi(r.masul)
+		print(f"   {r.masul!s:<34} {r.n:>5} ta   oxirgi {str(r.oxirgi)[:16]}   "
+		      f"({'biriktiriladi' if mumkin else 'BIRIKTIRILMAYDI: ' + sabab})")
+
+	print("\n=== 3) Kim komment yozyapti (Qarz Ishi kommentlari) ===")
+	for r in frappe.db.sql(
+		"""SELECT owner, COUNT(*) n, MAX(creation) oxirgi FROM `tabComment`
+		   WHERE reference_doctype='Qarz Ishi' AND comment_type='Comment'
+		   GROUP BY owner ORDER BY n DESC""", as_dict=True):
+		mumkin, sabab = masul_bola_oladimi(r.owner)
+		print(f"   {r.owner!s:<34} {r.n:>5} ta   oxirgi {str(r.oxirgi)[:16]}   "
+		      f"({'biriktiriladi' if mumkin else 'BIRIKTIRILMAYDI: ' + sabab})")
+
+	print("\n=== 4) Faollik bor, lekin mas'ul mos emas (eng muhimi) ===")
+	nomuvofiq = 0
+	for name, masul in frappe.db.sql(
+		"""SELECT name, masul FROM `tabQarz Ishi`
+		   WHERE ishlov_status NOT IN %(y)s ORDER BY modified DESC""",
+		{"y": tuple(YOPIQ_STATUSLAR)}):
+		user, vaqt, manba = oxirgi_ishlagan(name)
+		if not user or user == masul:
+			continue
+		mumkin, sabab = masul_bola_oladimi(user)
+		nomuvofiq += 1
+		if nomuvofiq <= limit:
+			print(f"   {name}: hozir '{masul}' · oxirgi ishlagan '{user}' "
+			      f"({manba}, {str(vaqt)[:16]}) -> {'o‘tadi' if mumkin else 'TO‘SIQ: ' + sabab}")
+	print(f"   jami nomuvofiq: {nomuvofiq} ta")
+
+	print("\n=== 5) Avtomatik biriktirish tarixi (tizim izohlari) ===")
+	n = frappe.db.count("Comment", {"reference_doctype": "Qarz Ishi",
+	                                "comment_type": "Info",
+	                                "content": ["like", "%Mas'ul avtomatik%"]})
+	print(f"   {n} ta ish avtomatik qayta biriktirilgan")
+	print("\nXULOSA: 2/3-bo'limda 'BIRIKTIRILMAYDI' bo'lsa — rol muammosi; "
+	      "hammasi bitta foydalanuvchida bo'lsa — jamoa bitta login bilan ishlayapti; "
+	      "4-bo'limda nomuvofiq ko'p bo'lsa — `engine.masullarni_yangila()` ni "
+	      "ishga tushiring (kechasi o'zi ham ishlaydi).")
+
+
+def test_komment_biriktirish(case="QI-2026-145130"):
+	"""Qarz Ishi'ga komment yozilganda mas'ul darhol o'sha xodimga o'tadimi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_komment_biriktirish
+	"""
+	from target_zenit.qarzdorlik import engine
+
+	frappe.set_user("Administrator")
+	eski = frappe.db.get_value("Qarz Ishi", case, "masul")
+	yangi_user = next(
+		u for u in frappe.get_all("Qarz Ishi", pluck="masul", limit_page_length=0)
+		if u and u != eski and engine._masul_bola_oladi(u))
+	print(f"{case}: mas'ul '{eski}' · komment yozadi '{yangi_user}'")
+	try:
+		frappe.set_user(yangi_user)
+		frappe.get_doc("Qarz Ishi", case).add_comment("Comment", "Sinov: ota-ona bilan gaplashdim")
+		frappe.db.commit()
+		frappe.set_user("Administrator")
+		keyin = frappe.db.get_value("Qarz Ishi", case, "masul")
+		print(f"  kommentdan keyin: '{keyin}' (kutilgan '{yangi_user}')")
+		assert keyin == yangi_user, "komment hook ishlamadi"
+		izoh = frappe.get_all(
+			"Comment",
+			filters={"reference_doctype": "Qarz Ishi", "reference_name": case,
+			         "comment_type": "Info", "content": ["like", "%Mas'ul avtomatik%"]},
+			fields=["content"], order_by="creation desc", limit=1)
+		print(f"  iz: {izoh[0].content if izoh else '—'}")
+		assert izoh, "o'zgarish izohi yozilmadi"
+		print("OK — komment yozilishi bilan ish o'sha xodimga o'tdi")
+	finally:
+		frappe.set_user("Administrator")
+		for c in frappe.get_all("Comment", filters={
+			"reference_doctype": "Qarz Ishi", "reference_name": case,
+			"content": ["like", "%Sinov:%"]}, pluck="name"):
+			frappe.delete_doc("Comment", c, force=True, ignore_permissions=True)
+		frappe.db.set_value("Qarz Ishi", case, "masul", eski, update_modified=False)
+		frappe.db.commit()
+		print(f"(tiklandi: {eski})")
