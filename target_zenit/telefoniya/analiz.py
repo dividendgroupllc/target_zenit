@@ -36,6 +36,11 @@ MAVZU: <suhbat nima haqida — 1 qisqa gap>
 NATIJA: <nima bilan tugadi — 1 qisqa gap>
 KELISHUV: <aniq kelishuv bo'lsa yoz: summa va sana. Bo'lmasa: yo'q>
 E'TIROZ: <mijozning asosiy e'tirozi yoki sababi. Bo'lmasa: yo'q>
+TAKLIF VA SHIKOYAT: <ota-onaning MAKTAB haqidagi taklifi yoki shikoyati:
+o'qituvchi (masalan "falonchi o'qituvchi yaxshi edi, qaytarsangiz"), bolalar
+nazorati, dars sifati, tadbir, ovqat, transport, sinf sharoiti va h.k.
+To'lov/qarz haqidagi gap BU YERGA KIRMAYDI. Bitta satrda, mijozning o'z gapiga
+yaqin yoz. Hech qanday taklif/shikoyat bo'lmasa: Taklif yo'q>
 MIJOZ HOLATI: <biridan birini tanla: Ijobiy / Neytral / Qarshi / Bog'lanmadi>
 KEYINGI QADAM: <menejer nima qilishi kerak — 1 qisqa gap>
 DIQQAT: <rahbar bilishi shart bo'lgan muhim narsa bo'lsa yoz, bo'lmasa: yo'q>
@@ -44,6 +49,11 @@ Qoidalar:
 - Faqat matnda BOR narsani yoz, taxmin qilma, o'zingdan qo'shma.
 - Summalar va sanalarni matndagidek aniq ko'rsat.
 - Matn juda qisqa yoki tushunarsiz bo'lsa: MAVZU: aniqlanmadi — qolganlarga: yo'q
+- TAKLIF VA SHIKOYAT qatorini HAR DOIM yoz: ota-ona maktab haqida hech narsa
+  aytmagan bo'lsa ham "Taklif yo'q" deb qoldir. Aytgan bo'lsa — qisqartirmasdan,
+  mohiyatini yo'qotmasdan yoz: bu rahbariyat uchun eng qimmatli qaytaruv aloqa.
+- To'lov bo'yicha e'tiroz/sabab E'TIROZ qatoriga, maktab bo'yicha fikr esa
+  TAKLIF VA SHIKOYAT qatoriga tushsin — ikkisi aralashmasin.
 - O'zbek tilida yoz.
 
 SUHBAT MATNI:

@@ -499,3 +499,6 @@
   background:var(--brand-wash,#e4f2f3); color:var(--brand-ink,#0a5c64);
   border:1px solid var(--brand,#0e7c86); text-decoration:none; }
 .tz-inv .tz-sverka:hover { background:var(--brand,#0e7c86); color:#fff; }
+
+/* Sotuv nazorati alohida sahifada — tepadagi havola */
+.tz-inv .tz-sn-link { display:inline-flex; align-items:center; text-decoration:none; }

@@ -438,34 +438,6 @@ class TZQarzPanel {
 			</tbody></table>` : `<div class="mini">To'lov yo'q</div>`}</div>`;
 
 		const qlar = d.qongiroqlar || [];
-		const calls = `<div class="box"><div class="box-t">Telefon suhbatlari (${qlar.length})${
-				qlar.filter((q) => q.audio).length ? ` · ${qlar.filter((q) => q.audio).length} ta ovoz yozuvi` : ""}</div>
-			${d.tel_hammasi ? "" : `<div class="mini" style="margin-bottom:6px">Faqat o'zingiz qilgan qo'ng'iroqlar ko'rsatilyapti.</div>`}
-			${qlar.length ? qlar.map((q) => {
-				const url = `/api/method/target_zenit.telefoniya.api.stream_recording?qongiroq=${encodeURIComponent(q.name)}`;
-				const natija = q.tugash_sababi || "";
-				const pill = natija === "Javob berildi" ? "st-ok" : natija ? "st-mut" : "st-mut";
-				const izoh = q.izoh || q.ay_komment || "";
-				return `<div class="call">
-					<div class="call-head">
-						<b>${this.dtm(q.boshlandi)}</b>
-						<span class="call-dir ${q.yonalish === "Kiruvchi" ? "in" : "out"}">${q.yonalish === "Kiruvchi" ? "📥 kiruvchi" : "📤 chiquvchi"}</span>
-						${q.suhbat_vaqti ? `<span class="mini">suhbat ${this.dur(q.suhbat_vaqti)}</span>` : ""}
-						${natija ? `<span class="pill ${pill}">${this.esc(natija)}</span>` : ""}
-						<span class="spacer"></span>
-						<span class="mini">menejer: <b>${this.esc(q.menejer)}</b></span>
-						<a class="mini" href="/app/telefon-qongirogi/${encodeURIComponent(q.name)}" target="_blank">↗</a>
-					</div>
-					<div class="mini">Kim bilan: ${this.esc(q.kim || "noma'lum")} · ${this.tel(q.tashqi_raqam) || ""}</div>
-					${q.audio
-						? `<audio class="call-audio" controls preload="none" src="${url}"></audio>`
-						: `<div class="mini">${q.yozuv_ochirildi ? "Ovoz yozuvi saqlash muddati tugab o'chirilgan" : "Ovoz yozuvi yo'q"}</div>`}
-					${izoh ? `<div class="call-note">${this.esc(izoh)}${
-						q.ay_natija ? ` <span class="pill st-blue">${this.esc(q.ay_natija)}</span>` : ""}</div>` : ""}
-				</div>`;
-			}).join("") : `<div class="mini">Bu to'lovchi raqamlari bo'yicha qo'ng'iroq topilmadi</div>`}
-		</div>`;
-
 		const tl = `<div class="box"><div class="box-t">Timeline${(d.ays || []).some((a) => a.boshqa_ish)
 			? ` <span class="mini">(o'quvchining butun aloqa tarixi)</span>` : ""}</div>
 			${(d.ays || []).length ? d.ays.map((a) => `
@@ -530,7 +502,7 @@ class TZQarzPanel {
 						? `<button class="btn-ketgan back">↩ Ketgan belgisini olish</button>`
 						: `<button class="btn-ketgan">🚪 O'quvchi ketdi</button>`) : ""}
 			</div>
-			${sibs}${xulosa}${months}${pays}${calls}${tl}
+			${sibs}${xulosa}${months}${pays}${tl}
 		`);
 
 		this.body.find(".btn-suhbat").on("click", () => this.suhbat_dialog());
@@ -646,12 +618,14 @@ class TZQarzPanel {
 		});
 
 		dlg.fields_dict["ro'yxat"].$wrapper.html(
-			`<div class="tz-suhbatlar">${qlar.map((q, i) => this.suhbat_karta(q, i)).join("")}</div>`
+			`${d.tel_hammasi ? "" : `<div class="mini" style="margin-bottom:8px">Faqat o'zingiz qilgan qo'ng'iroqlar ko'rsatilyapti.</div>`}
+			<div class="tz-suhbatlar">${qlar.map((q, i) => this.suhbat_karta(q, i)).join("")}</div>`
 		);
 
 		// Tahlil yo'q bo'lsa — shu oynadan buyurtma qilish mumkin
         dlg.$wrapper.on("click", ".sb-tahlil-btn", (e) => {
 			const nom = $(e.currentTarget).data("q");
+			const eski = $(e.currentTarget).text();
 			$(e.currentTarget).prop("disabled", true).text(__("Tahlil qilinmoqda…"));
 			frappe.call({
 				method: "target_zenit.telefoniya.analiz.qolda",
@@ -667,7 +641,8 @@ class TZQarzPanel {
 							message: __("Tahlil bo'lmadi: {0}", [m.sabab || m.holat || "?"]),
 							indicator: "orange",
 						}, 8);
-						$(e.currentTarget).prop("disabled", false).text(__("🤖 Tahlil qilish"));
+						$(e.currentTarget).prop("disabled", false)
+							.text(eski || __("🤖 Tahlil qilish"));
 					}
 				},
 			});
@@ -692,12 +667,29 @@ class TZQarzPanel {
 		// AI xulosasi qat'iy formatda keladi ("MAVZU: …") — qatorlarga ajratib chiqaramiz
 		const xulosa = (q.ai_xulosa || "").trim();
 		const qatorlar = xulosa ? xulosa.split(/\r?\n/).map((x) => x.trim()).filter(Boolean) : [];
+		// Ota-onaning MAKTAB haqidagi taklifi/shikoyati (o'qituvchi, nazorat, tadbir,
+		// sharoit…) — HAR DOIM ko'rinadi: aytilmagan bo'lsa ham "Taklif yo'q" deb
+		// turadi, aytilgan bo'lsa ajralib turadi (rahbariyat uchun qaytaruv aloqa).
+		const TAKLIF = "TAKLIF VA SHIKOYAT";
+		const ESKI_TAKLIF = "MIJOZ TAKLIFI";   // birinchi versiyadagi nom
+		const taklifBor = qatorlar.some((qt) => {
+			const u = qt.toUpperCase();
+			return u.startsWith(TAKLIF + ":") || u.startsWith(ESKI_TAKLIF + ":");
+		});
+		if (xulosa && !taklifBor) qatorlar.push(`${TAKLIF}: Taklif yo'q`);
+
 		const tahlil = qatorlar.length
 			? `<div class="sb-tahlil">${qatorlar.map((qt) => {
 					const m = qt.match(/^([A-ZА-ЯЎҚҒҲ' ]{3,20}):\s*(.*)$/);
 					if (!m) return `<div class="sb-t-row"><span class="sb-t-v">${this.esc(qt)}</span></div>`;
 					const bosh = m[1].trim(), qiymat = (m[2] || "").trim();
-					const yoq = /^(yo'q|yoq|—|-)$/i.test(qiymat);
+					const yoq = /^(yo'q|yoq|taklif yo'q|—|-|)$/i.test(qiymat);
+					if (bosh === TAKLIF || bosh === ESKI_TAKLIF) {
+						return `<div class="sb-t-row${yoq ? "" : " sb-taklif-bor"}">
+							<span class="sb-t-k">${this.esc(TAKLIF)}</span>
+							<span class="sb-t-v${yoq ? " sb-t-yoq" : " sb-t-taklif"}">${
+								this.esc(yoq ? "Taklif yo'q" : qiymat)}</span></div>`;
+					}
 					if (yoq) return "";
 					const holat = bosh === "MIJOZ HOLATI"
 						? ` sb-h-${/ijobiy/i.test(qiymat) ? "ok" : /qarshi/i.test(qiymat) ? "bad" : "mut"}` : "";
@@ -705,7 +697,9 @@ class TZQarzPanel {
 					return `<div class="sb-t-row${diqqat}">
 						<span class="sb-t-k">${this.esc(bosh)}</span>
 						<span class="sb-t-v${holat}">${this.esc(qiymat)}</span></div>`;
-				}).join("")}</div>`
+				}).join("")}
+				${q.transkript ? `<button class="btn-mini ghost sb-tahlil-btn" data-q="${this.esc(q.name)}"
+					title="Tahlilni yangi format bo'yicha qayta yuritish (mijoz taklifi qo'shiladi)">↻ qayta tahlil</button>` : ""}</div>`
 			: `<div class="sb-yoq">Qisqa tahlil yo'q
 				${q.transkript ? `<button class="btn-mini sb-tahlil-btn" data-q="${this.esc(q.name)}">🤖 Tahlil qilish</button>` : ""}</div>`;
 

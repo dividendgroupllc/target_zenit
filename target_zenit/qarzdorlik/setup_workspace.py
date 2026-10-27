@@ -1,7 +1,9 @@
 # Copyright (c) 2026, Target Zenit
-# Sotuv menejerining o'z workspace'iga ("Sotuv Menejr") qarzdorlik yorliqlarini
-# qo'shadi. Bu workspace DB'da (UI orqali) yaratilgan — faylda yo'q, shuning uchun
-# after_migrate'da idempotent qo'shiladi: serverda ham o'zi paydo bo'ladi.
+# DB'da (UI orqali) yaratilgan workspace'larga yorliq qo'shish. Bunday
+# workspace'lar app fayllarida yo'q, shuning uchun after_migrate'da idempotent
+# qo'shiladi — serverda ham o'zi paydo bo'ladi.
+#   * "Sotuv Menejr"  — qarzdorlik paneli va qarz ishlari;
+#   * "Investor"      — sotuv nazorati sahifasi (2026-10-27).
 from __future__ import annotations
 
 import json
@@ -27,16 +29,30 @@ SHORTCUTS = [
 ]
 
 
-def add_qarzdorlik_shortcuts():
+# Investor workspace'ida sotuv nazorati ALOHIDA sahifa bo'lib tursin
+# (dashboard ichida emas — foydalanuvchi qarori, 2026-10-27).
+INVESTOR_WORKSPACE = "Investor"
+INVESTOR_SHORTCUTS = [
+	{
+		"label": "Sotuv nazorati",
+		"type": "Page",
+		"link_to": "sotuv-nazorati",
+		"color": "Blue",
+	},
+]
+
+
+def add_qarzdorlik_shortcuts(workspace: str = TARGET_WORKSPACE, shortcuts=None):
 	"""Yorliqlarni qo'shadi (bor bo'lsa tegmaydi) va content bloklariga kiritadi."""
-	if not frappe.db.exists("Workspace", TARGET_WORKSPACE):
+	shortcuts = SHORTCUTS if shortcuts is None else shortcuts
+	if not frappe.db.exists("Workspace", workspace):
 		return
 
-	ws = frappe.get_doc("Workspace", TARGET_WORKSPACE)
+	ws = frappe.get_doc("Workspace", workspace)
 	mavjud = {s.label for s in ws.shortcuts}
 	qoshildi = []
 
-	for sc in SHORTCUTS:
+	for sc in shortcuts:
 		if sc["label"] in mavjud:
 			continue
 		ws.append("shortcuts", sc)
@@ -64,11 +80,15 @@ def add_qarzdorlik_shortcuts():
 	ws.content = json.dumps(blocks)
 	ws.save(ignore_permissions=True)
 	frappe.db.commit()
-	print(f"{TARGET_WORKSPACE}: qo'shildi -> {qoshildi}")
+	print(f"{workspace}: qo'shildi -> {qoshildi}")
 
 
 def after_migrate():
-	try:
-		add_qarzdorlik_shortcuts()
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), "qarzdorlik setup_workspace")
+	for ws, shortcuts in (
+		(TARGET_WORKSPACE, SHORTCUTS),
+		(INVESTOR_WORKSPACE, INVESTOR_SHORTCUTS),
+	):
+		try:
+			add_qarzdorlik_shortcuts(ws, shortcuts)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"setup_workspace: {ws}")

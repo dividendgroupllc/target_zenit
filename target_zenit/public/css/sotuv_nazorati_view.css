@@ -1,0 +1,146 @@
+/* Copyright (c) 2026, Target Zenit — Sotuv nazorati sahifasi.
+   Uslublar investor dashboarddan ko'chirildi (.tz-inv -> .tz-sn) va sahifaga
+   xos boshqaruv paneli (davr tanlash) qo'shildi. */
+.tz-sn {
+	--card: var(--fg-color, #fff);
+	--card-2: var(--bg-light-gray, #f7f9fc);
+	--line: var(--border-color, #e3e8f0);
+	--ink: var(--text-color, #1f272e);
+	--ink-2: var(--text-muted, #4c5a67);
+	--muted: var(--text-light, #8d99a6);
+	--brand: #0e7c86;
+	--radius: 12px;
+	--shadow: 0 1px 2px rgba(16, 24, 40, .05);
+	padding: 14px 16px 40px;
+	color: var(--ink);
+	font-size: 13px;
+}
+.tz-sn .mb { margin-bottom: 14px; }
+
+/* Davr paneli */
+.tz-sn .sn-top { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+.tz-sn .sn-davr { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.tz-sn .sn-davr label { font-size:12px; color:var(--muted); margin:0; }
+.tz-sn .sn-davr input[type="date"] { border:1px solid var(--line); border-radius:8px;
+	padding:6px 9px; font-size:12.5px; background:var(--card); color:var(--ink); }
+.tz-sn .sn-preset button { border:0; background:transparent; color:var(--ink-2); font:inherit;
+	font-size:12.5px; font-weight:650; padding:6px 12px; border-radius:8px; cursor:pointer; }
+.tz-sn .sn-preset button.on { background:var(--brand); color:#fff; }
+.tz-sn .sn-tools { margin-left:auto; }
+.tz-sn .sn-refresh { background:var(--card); border:1px solid var(--line); border-radius:9px;
+	padding:7px 13px; font-size:12.5px; cursor:pointer; color:var(--ink); }
+.tz-sn .sn-refresh .dot { display:inline-block; width:7px; height:7px; border-radius:50%;
+	background:var(--brand); margin-right:6px; }
+.tz-sn .sn-orin { color:var(--muted); font-weight:700; }
+.tz-sn .tz-sotuv-tbl tbody tr[data-masul] { cursor:pointer; }
+
+/* section header */
+.tz-sn .sec-h { display:flex; align-items:baseline; gap:10px; margin:2px 0 14px; }
+.tz-sn .sec-h h2 { font-size:15px; font-weight:750; letter-spacing:-.01em; margin:0; }
+.tz-sn .sec-h span { font-size:12px; color:var(--muted); }
+.tz-sn .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 17px; min-width:0; }
+.tz-sn .card h3 { margin:0; font-size:13.5px; font-weight:650; letter-spacing:-.01em; }
+.tz-sn .card .hd { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.tz-sn .card .hd .meta { font-size:11.5px; color:var(--muted); margin-top:2px; }
+/* tables */
+.tz-sn .tbl-wrap { overflow-x:auto; }
+/* segment toggle (o'quvchilar kesimi ⇄ har bir to'lov) — davr yig'imidan ajralib turadi */
+.tz-sn .tz-seg { display:inline-flex; padding:3px; gap:3px; background:var(--card-2); border:1px solid var(--line); border-radius:11px; }
+.tz-sn .tz-seg-opt { border:0; background:transparent; color:var(--ink-2); font:inherit; font-size:12.5px; font-weight:650; padding:7px 15px; border-radius:8px; cursor:pointer; white-space:nowrap; transition:background .12s, color .12s; }
+.tz-sn .tz-seg-opt:hover { color:var(--ink); }
+.tz-sn .tz-seg-opt.on { background:var(--brand); color:#fff; box-shadow:0 1px 3px rgba(14,124,134,.35); }
+.tz-sn .tz-loader { padding:24px 8px; text-align:center; color:var(--muted); font-size:13px; }
+.tz-sn .empty-hint { color:var(--muted); font-size:12.5px; padding:14px 4px; line-height:1.6; }
+.tz-sn .tz-loader { padding:44px; text-align:center; color:var(--muted); font-size:13px; }
+.tz-sn .sec-h { flex-wrap:wrap; }
+/* Nachisleniya — sarlavhadagi filtrlar va rejim almashtirgichi bir qatorda */
+.tz-sn .tz-nach-tools { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-left:auto; }
+/* ===== Sotuv nazorati (kontrol-list) ===== */
+.tz-sn .tz-sotuv-kpi { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+.tz-sn .tz-sotuv-kpi .k { background:var(--tz-card-2,#f7f9fc); border:1px solid var(--tz-line,#e3e8f0);
+  border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:2px; }
+.tz-sn .tz-sotuv-kpi .k .l { font-size:11px; text-transform:uppercase; letter-spacing:.3px; opacity:.65; }
+.tz-sn .tz-sotuv-kpi .k .v { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; }
+.tz-sn .tz-sotuv-kpi .k .s { font-size:11px; opacity:.6; }
+.tz-sn .tz-sotuv-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+.tz-sn .tz-sotuv-tbl th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.3px;
+  opacity:.65; padding:8px 10px; border-bottom:1px solid var(--tz-line-strong,#d3dae6); white-space:nowrap; }
+.tz-sn .tz-sotuv-tbl td { padding:8px 10px; border-bottom:1px solid var(--tz-line,#e3e8f0); vertical-align:top; }
+.tz-sn .tz-sotuv-tbl .r { text-align:right; font-variant-numeric:tabular-nums; }
+.tz-sn .tz-sotuv-tbl tbody tr:hover { background:var(--tz-card-2,#f7f9fc); }
+.tz-sn .tz-sotuv-tbl tbody tr.on { background:#e4f2f3; }
+[data-theme="dark"] .tz-sn .tz-sotuv-tbl tbody tr.on { background:#0e2e33; }
+.tz-sn .tz-sotuv-tbl .neg { color:#d8443c; font-weight:600; }
+.tz-sn .tz-sotuv-tbl .nowrap { white-space:nowrap; }
+.tz-sn .tz-sotuv-tbl .tz-sub { font-size:10.5px; opacity:.6; font-weight:400; }
+.tz-sn .tz-sotuv-tbl .tz-komment { max-width:380px; white-space:pre-wrap; }
+.tz-sn .tz-chip { display:inline-block; font-size:10px; padding:1px 7px; border-radius:999px;
+  background:var(--tz-card-2,#eef1f6); border:1px solid var(--tz-line-strong,#d3dae6); white-space:nowrap; }
+.tz-sn .tz-chip.warn { background:#fbf1dc; color:#a8730b; border-color:#dd9a1f; }
+.tz-sn .tz-chip.neg { background:#fbeae9; color:#b93129; border-color:#d8443c; }
+/* Sotuv nazorati — "sverka" havolasi */
+.tz-sn .tz-sverka { display:inline-block; margin-left:6px; font-size:10.5px; font-weight:600;
+  padding:1px 7px; border-radius:999px; white-space:nowrap;
+  background:var(--brand-wash,#e4f2f3); color:var(--brand-ink,#0a5c64);
+  border:1px solid var(--brand,#0e7c86); text-decoration:none; }
+.tz-sn .tz-sverka:hover { background:var(--brand,#0e7c86); color:#fff; }
+
+/* Suhbat kartalari (ovoz + matn + AI tahlil) */
+.tz-sn .tz-suhbatlar { display:flex; flex-direction:column; gap:10px; max-height:70vh; overflow:auto; }
+.tz-sn .sb-card { border:1px solid var(--line); border-radius:10px; padding:9px 11px; background:var(--card); }
+.tz-sn .sb-head { display:flex; align-items:center; gap:7px; font-size:12px; flex-wrap:wrap; margin-bottom:6px; }
+.tz-sn .sb-head .spacer { flex:1; }
+.tz-sn .sb-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+@media (max-width:900px){ .tz-sn .sb-grid { grid-template-columns:1fr; } }
+.tz-sn .sb-audio { width:100%; height:32px; display:block; }
+.tz-sn .sb-matn-bar { display:flex; align-items:center; gap:8px; margin-top:7px; }
+.tz-sn .sb-matn { margin-top:6px; font-size:12px; line-height:1.5; white-space:pre-wrap;
+	max-height:220px; overflow:auto; background:var(--card-2); border:1px solid var(--line);
+	border-radius:8px; padding:6px 8px; }
+.tz-sn .sb-matn.yopiq { display:none; }
+.tz-sn .sb-tahlil { display:flex; flex-direction:column; gap:4px; }
+.tz-sn .sb-t-row { display:grid; grid-template-columns:110px 1fr; gap:8px; font-size:12px; align-items:baseline; }
+.tz-sn .sb-t-k { font-size:9.5px; text-transform:uppercase; letter-spacing:.3px; color:var(--muted);
+	text-align:right; padding-top:2px; }
+.tz-sn .sb-t-v { line-height:1.45; }
+.tz-sn .sb-t-v.sb-h-ok { color:#1a7f37; font-weight:600; }
+.tz-sn .sb-t-v.sb-h-bad { color:#d8443c; font-weight:600; }
+.tz-sn .sb-t-v.sb-h-mut { color:var(--muted); font-weight:600; }
+.tz-sn .sb-t-v.sb-t-taklif { font-weight:600; }
+.tz-sn .sb-t-v.sb-t-yoq { color:var(--muted); font-style:italic; }
+.tz-sn .sb-t-row.sb-taklif-bor { background:#eef6ff; border-left:3px solid #1a5bb8;
+	border-radius:5px; padding:4px 6px; margin-left:-6px; }
+.tz-sn .sb-diqqat { background:#fff7ed; border-left:3px solid #b45309; border-radius:5px;
+	padding:4px 6px; margin-left:-6px; }
+.tz-sn .sb-yoq { font-size:11.5px; color:var(--muted); }
+[data-theme="dark"] .tz-sn .sb-t-row.sb-taklif-bor { background:#11243a; }
+[data-theme="dark"] .tz-sn .sb-diqqat { background:#2c2410; }
+
+/* Bo'lim navigatsiyasi va kunlik matritsa */
+.tz-sn .sn-nav { margin-bottom:14px; flex-wrap:wrap; }
+.tz-sn .sn-matritsa td, .tz-sn .sn-matritsa th { padding:5px 6px; font-size:11.5px; }
+.tz-sn .sn-matritsa .sn-bosh { color:var(--muted); }
+.tz-sn .sn-taklif { max-width:520px; white-space:pre-wrap; font-weight:500; }
+.tz-sn .tz-sotuv-kpi { grid-template-columns:repeat(6,1fr); }
+@media (max-width:1400px){ .tz-sn .tz-sotuv-kpi { grid-template-columns:repeat(3,1fr); } }
+@media (max-width:900px){ .tz-sn .tz-sotuv-kpi { grid-template-columns:repeat(2,1fr); } }
+
+/* ---- Master–detail: qator ustiga bosilsa ichi ochiladi ---- */
+.tz-sn .sn-master tbody tr.sn-bosh-qator { cursor:pointer; }
+.tz-sn .sn-master tbody tr.sn-bosh-qator.on { background:var(--card-2); font-weight:600; }
+.tz-sn .sn-master tbody tr.sn-bosh-qator.on td { border-bottom:0; }
+.tz-sn tr.sn-drill > td { background:var(--card-2); padding:12px 14px;
+	border-bottom:2px solid var(--brand); }
+.tz-sn .sn-drill-nav { margin-bottom:10px; flex-wrap:wrap; }
+.tz-sn .sn-drill-body > .tbl-wrap { background:var(--card); border:1px solid var(--line);
+	border-radius:10px; }
+.tz-sn .sn-drill-head { font-size:12px; margin-bottom:8px; }
+
+/* Kunlik faollik ustunchalari */
+.tz-sn .sn-bars { display:flex; align-items:flex-end; gap:4px; height:110px;
+	padding:6px 2px 0; overflow-x:auto; }
+.tz-sn .sn-bar { display:flex; flex-direction:column; justify-content:flex-end;
+	align-items:center; min-width:26px; height:100%; }
+.tz-sn .sn-bar-v { width:16px; background:var(--brand); border-radius:3px 3px 0 0; min-height:2px; }
+.tz-sn .sn-bar-n { font-size:10px; font-variant-numeric:tabular-nums; }
+.tz-sn .sn-bar-k { font-size:9.5px; color:var(--muted); white-space:nowrap; }

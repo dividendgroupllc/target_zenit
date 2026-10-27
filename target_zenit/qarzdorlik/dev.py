@@ -199,13 +199,13 @@ def check_sotuv_perms(user="sotuv_menejer@gmail.com"):
 
 
 def test_sotuv_nazorati():
-	"""Sotuv nazorati paneli: rollar bo'yicha ko'rinish tekshiruvi."""
-	from target_zenit.target_zenit.page.investor_dashboard import investor_dashboard as inv
+	"""Sotuv nazorati sahifasi: rollar bo'yicha ko'rinish tekshiruvi."""
+	from target_zenit.target_zenit.page.sotuv_nazorati import sotuv_nazorati as sn
 
 	for user in ("Administrator", "xojakbar@gmail.com", "sotuv_menejer@gmail.com"):
 		frappe.set_user(user)
 		try:
-			d = inv.get_sotuv_nazorati()
+			d = sn.get_data()
 			print(
 				f"{user:28} faqat_ozi={d['faqat_ozi']!s:5} "
 				f"menejerlar={len(d['menejerlar'])} aloqalar={len(d['aloqalar'])} "
@@ -1415,6 +1415,184 @@ def test_investor_tahlil_korinishi(case="QI-2026-145130", user="investor@gmail.c
 		doc.check_permission("read")
 		print("  stream_recording ruxsati: OK")
 		print("OK — investor ovoz yozuvi, to'liq matn va AI tahlilni ko'ra oladi")
+	finally:
+		frappe.set_user("Administrator")
+		frappe.delete_doc("Telefon Qongirogi", d.name, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print("(sinov qo'ng'irog'i o'chirildi)")
+
+
+def test_sotuv_sahifasi():
+	"""Yangi «Sotuv nazorati» sahifasi: Page yozuvi, fayllar, endpoint va
+	rollar bo'yicha ko'rinish.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_sotuv_sahifasi
+	"""
+	import os
+
+	from target_zenit.target_zenit.page.sotuv_nazorati import sotuv_nazorati as sn
+
+	frappe.set_user("Administrator")
+	page = frappe.db.get_value("Page", "sotuv-nazorati", ["title", "module"], as_dict=True)
+	rollar = frappe.get_all("Has Role", filters={"parent": "sotuv-nazorati",
+	                                             "parenttype": "Page"}, pluck="role")
+	papka = os.path.dirname(sn.__file__)
+	fayllar = sorted(f for f in os.listdir(papka) if not f.startswith("__"))
+	print(f"Page: {page} \n  rollar: {sorted(rollar)}\n  fayllar: {fayllar}")
+	assert page, "Page yozuvi yaratilmadi (migrate kerak)"
+	for kerak in ("sotuv_nazorati.js", "sotuv_nazorati.py", "sotuv_nazorati.json"):
+		assert kerak in fayllar, f"{kerak} yo'q"
+
+	# Ko'rinish umumiy bundle'da (sahifa ham, boshqa joy ham shuni ishlatadi)
+	import target_zenit
+
+	ildiz = os.path.dirname(target_zenit.__file__)
+	for yol in ("public/js/sotuv_nazorati_view.js", "public/css/sotuv_nazorati_view.css"):
+		assert os.path.exists(os.path.join(ildiz, yol)), f"{yol} yo'q"
+	hooks = frappe.get_hooks("app_include_js") + frappe.get_hooks("app_include_css")
+	assert any("sotuv_nazorati_view" in h for h in hooks), "hooks'ga ulanmagan"
+	print("  umumiy ko'rinish: public/js + public/css, hooks'da bor")
+
+	# Workspace yorliqlari — investor va qarzdorlik CRM
+	for ws in ("Investor", "Qarzdorlik CRM"):
+		yorliq = frappe.db.exists("Workspace Shortcut",
+		                          {"parent": ws, "link_to": "sotuv-nazorati"})
+		print(f"  {ws} workspace yorlig'i: {'bor' if yorliq else 'YO‘Q'}")
+		assert yorliq, f"{ws} workspace'ida yorliq yo'q"
+
+	# Endpoint — davr bo'yicha
+	d = sn.get_data(from_date=frappe.utils.add_days(frappe.utils.today(), -60))
+	print(f"  get_data: menejerlar={len(d['menejerlar'])} aloqalar={len(d['aloqalar'])} "
+	      f"jami={ {k: round(v) if isinstance(v, float) else v for k, v in d['jami'].items()} }")
+
+	t = sn.get_telefon(from_date=frappe.utils.add_days(frappe.utils.today(), -60))
+	print(f"  get_telefon: qo'ng'iroq={t['jami']['qongiroq']} menejer={len(t['menejerlar'])} "
+	      f"o'quvchi={len(t['oquvchilar'])} taklif={t['jami']['taklif']}")
+
+	# Investor dashboardda eski endpoint qolmaganini tekshirish
+	from target_zenit.target_zenit.page.investor_dashboard import investor_dashboard as inv
+
+	assert not hasattr(inv, "get_sotuv_nazorati"), "eski endpoint dashboardda qolib ketdi"
+	print("  investor dashboardda eski endpoint yo'q — ko'chirish to'liq")
+
+	# Rollar: sotuv menejeri faqat o'zini, nazorat — hammani
+	for user in ("xojakbar@gmail.com", "investor@gmail.com", "sotuv_menejer@gmail.com"):
+		if not frappe.db.exists("User", user):
+			continue
+		frappe.set_user(user)
+		try:
+			r = sn.get_data()
+			print(f"  {user:<26} faqat_ozi={r['faqat_ozi']!s:5} menejerlar={len(r['menejerlar'])}")
+		except Exception as e:
+			print(f"  {user:<26} XATO: {type(e).__name__}: {str(e)[:60]}")
+	frappe.set_user("Administrator")
+	print("OK — sahifa tayyor")
+
+
+def test_sotuv_telefon_kesimi(case="QI-2026-145130"):
+	"""Investor uchun telefon kesimi: menejer/kun/o'quvchi bo'yicha fakt,
+	AI tahlil va ota-ona takliflari ajratilyaptimi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_sotuv_telefon_kesimi
+	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+	from target_zenit.target_zenit.page.sotuv_nazorati import sotuv_nazorati as sn
+
+	frappe.set_user("Administrator")
+	qi = frappe.db.get_value("Qarz Ishi", case, ["student", "student_name", "payer_phone"], as_dict=True)
+	raqam = next(iter(panel._case_raqamlar(qi.student, qi.payer_phone)))
+	user = frappe.db.get_value("User", {"enabled": 1, "name": ["like", "%menejer%"]}, "name") or "Administrator"
+
+	namunalar = [
+		("Suhbat 1", 95, "MAVZU: Qarz bo'yicha\nNATIJA: Kelishildi\n"
+		 "TAKLIF VA SHIKOYAT: Matematika o'qituvchisi yaxshi edi, qaytarsangiz\n"
+		 "MIJOZ HOLATI: Ijobiy\nDIQQAT: yo'q"),
+		("Suhbat 2", 120, "MAVZU: Eslatma\nNATIJA: Gaplashildi\n"
+		 "TAKLIF VA SHIKOYAT: Taklif yo'q\nMIJOZ HOLATI: Neytral\nDIQQAT: yo'q"),
+		("Suhbat 3", 60, "MAVZU: Qarz\nNATIJA: Va'da berdi\n"
+		 "TAKLIF VA SHIKOYAT: Bolalar nazoratini kuchaytirish kerak, tadbirlar kam\n"
+		 "MIJOZ HOLATI: Qarshi\nDIQQAT: yo'q"),
+	]
+	yaratilgan = []
+	try:
+		for i, (nom, vaqt, xulosa) in enumerate(namunalar):
+			d = frappe.get_doc({
+				"doctype": "Telefon Qongirogi", "manba": "Android",
+				"asterisk_uniqueid": f"dev-kesim-{i}-{frappe.generate_hash(length=6)}",
+				"yonalish": "Chiquvchi" if i % 2 == 0 else "Kiruvchi",
+				"boshlandi": add_to_date(now_datetime(), days=-i, hours=-1),
+				"tashqi_raqam": raqam, "tugash_sababi": "Javob berildi",
+				"suhbat_vaqti": vaqt, "yozuv_bor": 1, "fayl_yoli": "dev/sinov.mp3",
+				"holat": "Tahlil qilindi", "foydalanuvchi": user,
+				"transkript": f"{nom}: menejer va ota-ona suhbati matni. " * 10,
+				"transkript_sozlar": 90, "ai_xulosa": xulosa, "ai_model": "gemini-sinov",
+			}).insert(ignore_permissions=True)
+			yaratilgan.append(d.name)
+		frappe.db.commit()
+
+		d = sn.get_telefon(from_date=frappe.utils.add_days(frappe.utils.today(), -7))
+		j = d["jami"]
+		print(f"JAMI: qo'ng'iroq={j['qongiroq']} gaplashildi={j['gaplashildi']} "
+		      f"daqiqa={j['daqiqa']} mijoz={j['mijozlar']} o'quvchi={j['oquvchilar']} "
+		      f"yozuv={j['yozuv']} tahlil={j['tahlil']} taklif={j['taklif']}")
+		m = next((x for x in d["menejerlar"] if x["masul"] == user), None)
+		print(f"MENEJER {user}: qo'ng'iroq={m['qongiroq']} kun={m['kunlar_soni']} "
+		      f"kunlik_o'rtacha={m['kunlik_ortacha']} daqiqa={m['daqiqa']} "
+		      f"noyob_mijoz={m['mijozlar_soni']} o'quvchi={m['oquvchilar_soni']} taklif={m['taklif']}")
+		o = next((x for x in d["oquvchilar"] if x["student"] == qi.student), None)
+		print(f"O'QUVCHI {qi.student_name.strip()}: qo'ng'iroq={o['qongiroq']} "
+		      f"daqiqa={o['daqiqa']} menejer={o['menejerlar']} nima_haqida='{o['oxirgi_mavzu']}'")
+		print(f"KUNLIK: {d['kunlik']}")
+		print("TAKLIFLAR:")
+		for t in d["takliflar"]:
+			print(f"   {str(t['sana'])[:16]} · {t['student_name'].strip()} · {t['menejer']}: {t['matn']}")
+
+		assert m and m["qongiroq"] == 3, "menejer kesimi noto'g'ri"
+		assert o and o["qongiroq"] == 3, "o'quvchi kesimi noto'g'ri"
+		assert len(d["takliflar"]) == 2, f"2 ta taklif kutilgan, {len(d['takliflar'])} chiqdi"
+		assert all(t["student"] == qi.student for t in d["takliflar"]), "taklif o'quvchiga bog'lanmadi"
+		assert j["tahlil"] == 3 and j["yozuv"] == 3, "yozuv/tahlil hisobi noto'g'ri"
+		assert m["kunlik_ortacha"] > 0 and m["daqiqa"] > 4, "kunlik/daqiqa hisobi noto'g'ri"
+		print("\nOK — menejer, kun, o'quvchi kesimi va takliflar to'g'ri ajratilyapti")
+	finally:
+		for n in yaratilgan:
+			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print(f"({len(yaratilgan)} sinov qo'ng'irog'i o'chirildi)")
+
+
+def test_suhbat_matni(user="investor@gmail.com"):
+	"""Suhbat matni talab bo'yicha ochiladimi (ro'yxatda yuborilmaydi)."""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.target_zenit.page.sotuv_nazorati import sotuv_nazorati as sn
+
+	frappe.set_user("Administrator")
+	matn = "Menejer: Assalomu alaykum. Ota-ona: Shu hafta to'laymiz. " * 20
+	d = frappe.get_doc({
+		"doctype": "Telefon Qongirogi", "manba": "Android",
+		"asterisk_uniqueid": f"dev-matn-{frappe.generate_hash(length=6)}",
+		"yonalish": "Chiquvchi", "boshlandi": add_to_date(now_datetime(), minutes=-10),
+		"tashqi_raqam": "+998901112233", "tugash_sababi": "Javob berildi",
+		"suhbat_vaqti": 140, "yozuv_bor": 1, "fayl_yoli": "dev/sinov.mp3",
+		"holat": "Tahlil qilindi", "transkript": matn, "transkript_sozlar": len(matn.split()),
+		"ai_xulosa": "MAVZU: Qarz\nTAKLIF VA SHIKOYAT: Taklif yo'q\nMIJOZ HOLATI: Ijobiy",
+	}).insert(ignore_permissions=True)
+	frappe.db.commit()
+	try:
+		ro = sn.get_telefon(from_date=frappe.utils.today())
+		q = next(x for x in ro["qongiroqlar"] if x["name"] == d.name)
+		print(f"ro'yxatda: transkript_bor={q['transkript_bor']} sozlar={q['transkript_sozlar']} "
+		      f"matn maydoni={'bor' if 'transkript' in q else 'YO‘Q (to‘g‘ri)'}")
+		assert "transkript" not in q, "ro'yxat og'ir: matn yuborilyapti"
+		assert q["transkript_bor"] == 1
+
+		frappe.set_user(user)
+		s = sn.get_suhbat(d.name)
+		print(f"{user}: get_suhbat -> {len(s['transkript'])} belgi, "
+		      f"tahlil {len(s['ai_xulosa'])} belgi, taklif='{s['taklif']}'")
+		assert s["transkript"] == matn, "to'liq matn kelmadi"
+		print("OK — matn faqat talab bo'yicha ochilyapti")
 	finally:
 		frappe.set_user("Administrator")
 		frappe.delete_doc("Telefon Qongirogi", d.name, force=True, ignore_permissions=True)

@@ -91,6 +91,13 @@ HAMMASINI_KORADI = {
 	"Telefoniya Agent",
 	"investor",
 	"Xojakbar_Operator",
+	# Sotuv bo'limining o'zi ham hammasini ko'radi (2026-10-27): qarz yig'ishda
+	# ishni bir menejer boshlab, boshqasi davom ettiradi — oldingi suhbatning
+	# yozuvi va AI tahlili ko'rinmasa, ota-ona bilan nima gaplashilgani
+	# bilinmay qoladi.
+	"Sotuv meneger",
+	"Sales User",
+	"Operator",
 }
 
 

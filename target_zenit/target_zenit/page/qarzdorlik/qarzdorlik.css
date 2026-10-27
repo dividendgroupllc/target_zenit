@@ -258,3 +258,11 @@
 .tz-qarz .list-head .tur-jami { padding:1px 8px; border-radius:20px;
   background:var(--warn-wash); color:var(--warn-ink); border:1px solid var(--warn); }
 .tz-qarz .tur-mini { font-weight:400; color:var(--muted); white-space:normal; }
+
+/* AI tahlil: maktab bo'yicha taklif/shikoyat — qator har doim turadi.
+   Taklif bo'lsa ajralib turadi (rahbariyat uchun qaytaruv aloqa). */
+.tz-suhbatlar .sb-t-v.sb-t-taklif { font-weight: 600; }
+.tz-suhbatlar .sb-t-v.sb-t-yoq { color: var(--text-light); font-style: italic; font-weight: 400; }
+.tz-suhbatlar .sb-t-row.sb-taklif-bor { background: #eef6ff; border-left: 3px solid #1a5bb8;
+	border-radius: 5px; padding: 4px 6px; margin-left: -6px; }
+[data-theme="dark"] .tz-suhbatlar .sb-t-row.sb-taklif-bor { background: #11243a; }
