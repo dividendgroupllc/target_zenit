@@ -249,9 +249,24 @@ def _yozilishlar(enrolments, lines):
 		chunk = enrolments[i : i + ENROL_BATCH]
 		try:
 			_call("enrol_manual_enrol_users", {"enrolments": chunk})
+			continue
 		except MoodleError as e:
-			xato_kurslar |= {c["courseid"] for c in chunk}
-			lines.append(f"XATO yozilishda ({len(chunk)} ta, {len(set(c['courseid'] for c in chunk))} kurs): {e}")
+			if len(chunk) == 1:
+				xato_kurslar.add(chunk[0]["courseid"])
+				lines.append(f"XATO yozilishda (kurs {chunk[0]['courseid']}, user {chunk[0]['userid']}): {e}")
+				continue
+			lines.append(f"Partiya rad etildi ({len(chunk)} ta) — bittalab ajratilmoqda: {e}")
+
+		# Partiya atomar: bittasi yiqilsa hammasi yiqiladi. Aybdorni ajratamiz,
+		# shunda bitta muammoli yozilish qolgan 149 tasini to'smaydi.
+		for bitta in chunk:
+			try:
+				_call("enrol_manual_enrol_users", {"enrolments": [bitta]})
+			except MoodleError as e2:
+				xato_kurslar.add(bitta["courseid"])
+				lines.append(
+					f"XATO yozilishda (kurs {bitta['courseid']}, user {bitta['userid']}): {e2}"
+				)
 	return xato_kurslar
 
 
