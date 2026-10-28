@@ -45,7 +45,7 @@ app_include_js = [
 	"/assets/target_zenit/js/dars_audio.js?v=20261015",
 	# Sotuv nazorati: bitta ko'rinish — /app/sotuv-nazorati sahifasi ham,
 	# investor dashboardning "Sotuv nazorati" bo'limi ham shuni ishlatadi
-	"/assets/target_zenit/js/sotuv_nazorati_view.js?v=20261028",
+	"/assets/target_zenit/js/sotuv_nazorati_view.js?v=20261028b",
 ]
 
 # include js, css files in header of web template

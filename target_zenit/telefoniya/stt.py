@@ -194,7 +194,14 @@ def qolda(qongiroq: str) -> dict:
 	ko'rsatish o'rniga qancha kutish kerakligini aytamiz. Pauzani Sozlamalardagi
 	tugma bilan olib tashlash mumkin (tarif ko'tarilgan bo'lsa).
 	"""
+	from target_zenit.telefoniya.analiz import qayta_ruxsat
+
 	frappe.has_permission("Telefon Qongirogi", "write", doc=qongiroq, throw=True)
+	# Matni YO'Q yozuvni hamma yurgiza oladi; QAYTA transkripsiya — faqat admin
+	qayta_ruxsat(
+		bool(frappe.db.get_value("Telefon Qongirogi", qongiroq, "transkript")),
+		"transkripsiya",
+	)
 	p = pauza_holati()
 	if p["bor"]:
 		return {"holat": "kvota", "sabab": _kvota_xabari(p), "kutish_sek": p["qolgan_sek"]}

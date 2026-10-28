@@ -1751,3 +1751,111 @@ def test_komment_biriktirish(case="QI-2026-145130"):
 		frappe.db.set_value("Qarz Ishi", case, "masul", eski, update_modified=False)
 		frappe.db.commit()
 		print(f"(tiklandi: {eski})")
+
+
+def test_qayta_tahlil_ruxsati(user="sotuv_menejer@gmail.com"):
+	"""Qayta tahlil/transkripsiya faqat adminda, birinchi marta — hammada.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_qayta_tahlil_ruxsati
+	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.telefoniya import analiz
+
+	frappe.set_user("Administrator")
+	d = frappe.get_doc({
+		"doctype": "Telefon Qongirogi", "manba": "Android",
+		"asterisk_uniqueid": f"dev-ruxsat-{frappe.generate_hash(length=6)}",
+		"yonalish": "Chiquvchi", "boshlandi": add_to_date(now_datetime(), minutes=-5),
+		"tashqi_raqam": "+998901112233", "tugash_sababi": "Javob berildi",
+		"suhbat_vaqti": 60, "yozuv_bor": 1, "fayl_yoli": "dev/sinov.mp3",
+		"transkript": "sinov matni", "transkript_sozlar": 2,
+	}).insert(ignore_permissions=True)
+	frappe.db.commit()
+	natija = {}
+	try:
+		for u in ("Administrator", user):
+			frappe.set_user(u)
+			natija[u] = {"ruxsatmi": analiz.qayta_ruxsatmi()}
+			# tahlili YO'Q — hamma yurgiza olishi kerak (to'siq faqat qaytada)
+			try:
+				analiz.qayta_ruxsat(False, "tahlil")
+				natija[u]["birinchi"] = "mumkin"
+			except Exception as e:
+				natija[u]["birinchi"] = f"TO'SIQ: {type(e).__name__}"
+			# tahlili BOR — faqat admin
+			try:
+				analiz.qayta_ruxsat(True, "tahlil")
+				natija[u]["qayta"] = "mumkin"
+			except Exception as e:
+				natija[u]["qayta"] = f"to'siq ({type(e).__name__})"
+		for u, r in natija.items():
+			print(f"  {u:<28} ruxsatmi={r['ruxsatmi']!s:5} birinchi={r['birinchi']:<10} qayta={r['qayta']}")
+
+		assert natija["Administrator"]["qayta"] == "mumkin", "admin qayta yurgiza olmadi"
+		assert natija[user]["qayta"].startswith("to'siq"), "oddiy foydalanuvchi qayta yurgiza oldi!"
+		assert natija[user]["birinchi"] == "mumkin", "birinchi tahlil ham yopilib qolgan"
+		print("OK — qayta tahlil faqat adminda, avtomatik/birinchi tahlil hammada")
+	finally:
+		frappe.set_user("Administrator")
+		frappe.delete_doc("Telefon Qongirogi", d.name, force=True, ignore_permissions=True)
+		frappe.db.commit()
+
+
+def test_qongiroq_biriktirish():
+	"""Eski qo'ng'iroqlarni to'g'ri xodimga biriktirish (ikki telefon bitta
+	akkauntda bo'lgan holat): ko'rish -> dry run -> yozish -> tekshirish.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_qongiroq_biriktirish
+	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.telefoniya import backfill
+
+	frappe.set_user("Administrator")
+	emp = frappe.db.get_value("Employee", {"status": "Active"}, ["name", "user_id"], as_dict=True)
+	# "Ikkala telefonda bitta akkaunt" holatini taqlid qilamiz — mavjud
+	# foydalanuvchi olinadi (yangi User yaratish bu lokal nusxada ishlamaydi)
+	umumiy = frappe.db.get_value("User", {"enabled": 1, "name": ["like", "%menejer%"]}, "name")
+	assert umumiy, "sinov uchun foydalanuvchi topilmadi"
+	yaratilgan = []
+	try:
+		for i, sim in enumerate(["+998901111111", "+998902222222"] * 2):
+			d = frappe.get_doc({
+				"doctype": "Telefon Qongirogi", "manba": "Android",
+				"asterisk_uniqueid": f"dev-bf-{i}-{frappe.generate_hash(length=6)}",
+				"yonalish": "Chiquvchi", "boshlandi": add_to_date(now_datetime(), days=-i),
+				"tashqi_raqam": f"+99893000000{i}", "tugash_sababi": "Javob berildi",
+				"suhbat_vaqti": 60, "yozuv_bor": 1, "fayl_yoli": "dev/sinov.mp3",
+				"foydalanuvchi": umumiy, "qurilma": "Redmi 13", "sim_raqam": sim,
+			}).insert(ignore_permissions=True)
+			yaratilgan.append(d.name)
+		frappe.db.commit()
+		print("--- koring() ---")
+		backfill.koring(foydalanuvchi=umumiy)
+
+		print("\n--- dry run (faqat 1-SIM) ---")
+		r1 = backfill.biriktir(xodim=emp.name, foydalanuvchi=umumiy,
+		                       sim="+998901111111", dry_run=1)
+		assert r1["jami"] == 2 and r1["ozgardi"] == 0, "dry run yozib yubordi!"
+
+		print("\n--- yozish ---")
+		r2 = backfill.biriktir(xodim=emp.name, foydalanuvchi=umumiy,
+		                       sim="+998901111111", dry_run=0)
+		assert r2["ozgardi"] == 2
+
+		biriktirilgan = frappe.get_all(
+			"Telefon Qongirogi", filters={"name": ["in", yaratilgan]},
+			fields=["name", "sim_raqam", "xodim", "foydalanuvchi"])
+		for b in biriktirilgan:
+			print(f"   {b.sim_raqam}  xodim={b.xodim or '—'}  user={b.foydalanuvchi}")
+		bir = [b for b in biriktirilgan if b.sim_raqam == "+998901111111"]
+		ikki = [b for b in biriktirilgan if b.sim_raqam == "+998902222222"]
+		assert all(b.xodim == emp.name for b in bir), "1-SIM biriktirilmadi"
+		assert all(not b.xodim for b in ikki), "2-SIM ham o'zgarib ketdi!"
+		if emp.user_id:
+			assert all(b.foydalanuvchi == emp.user_id for b in bir), "foydalanuvchi yangilanmadi"
+		print("\nOK — faqat tanlangan telefon yozuvlari biriktirildi")
+	finally:
+		for n in yaratilgan:
+			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print(f"({len(yaratilgan)} sinov yozuvi o'chirildi)")

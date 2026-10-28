@@ -102,6 +102,12 @@ class TZQarzPanel {
 
 	// ================= helpers =================
 	esc(s) { return frappe.utils.escape_html(String(s == null ? "" : s)); }
+	// Qayta tahlil — faqat administrator (har urinish AI tokenini sarflaydi).
+	// Tahlili yo'q yozuvni yurgizish hammaga ochiq, u avtomatik oqimning davomi.
+	qayta_ruxsat() {
+		return frappe.session.user === "Administrator"
+			|| (frappe.user_roles || []).includes("System Manager");
+	}
 	dmy(s) { const p = String(s || "").slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : "—"; }
 	fmt(n) {
 		n = Math.round(Number(n) || 0);
@@ -773,8 +779,8 @@ class TZQarzPanel {
 						<span class="sb-t-k">${this.esc(bosh)}</span>
 						<span class="sb-t-v${holat}">${this.esc(qiymat)}</span></div>`;
 				}).join("")}
-				${q.transkript ? `<button class="btn-mini ghost sb-tahlil-btn" data-q="${this.esc(q.name)}"
-					title="Tahlilni yangi format bo'yicha qayta yuritish (mijoz taklifi qo'shiladi)">↻ qayta tahlil</button>` : ""}</div>`
+				${q.transkript && this.qayta_ruxsat() ? `<button class="btn-mini ghost sb-tahlil-btn" data-q="${this.esc(q.name)}"
+					title="Tahlilni yangi format bo'yicha qayta yuritish (faqat admin — AI tokeni sarflanadi)">↻ qayta tahlil</button>` : ""}</div>`
 			: `<div class="sb-yoq">Qisqa tahlil yo'q
 				${q.transkript ? `<button class="btn-mini sb-tahlil-btn" data-q="${this.esc(q.name)}">🤖 Tahlil qilish</button>` : ""}</div>`;
 

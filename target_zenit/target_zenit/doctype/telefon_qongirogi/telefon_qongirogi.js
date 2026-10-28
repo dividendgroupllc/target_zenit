@@ -56,6 +56,11 @@ function transkript_tugma(frm) {
 	if (frm.is_new() || !frm.doc.yozuv_bor || frm.doc.yozuv_ochirildi) return;
 
 	const bor = !!frm.doc.transkript;
+	// Mavjud transkriptni QAYTA yurgizish — faqat administrator (token isrofi);
+	// matni yo'q yozuvni hamma yurgiza oladi.
+	const admin = frappe.session.user === "Administrator"
+		|| (frappe.user_roles || []).includes("System Manager");
+	if (bor && !admin) return;
 	frm.add_custom_button(bor ? __("Transkriptni yangilash") : __("Transkripsiya qilish"), () => {
 		if (bor && !confirm(__("Mavjud transkript ustiga yoziladi. Davom etamizmi?"))) return;
 		frappe.call({

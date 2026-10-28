@@ -63,6 +63,30 @@ SUHBAT MATNI:
 
 MAKS_BELGI = 60_000       # juda uzun transkriptni kesamiz (token xarajati nazorati)
 
+# QAYTA yurgizish huquqi — faqat administrator (2026-10-28). Sabab: natija
+# allaqachon bor bo'lsa, uni qayta yurgizish AI tokenini bekorga sarflaydi.
+# Avtomatik oqim (yangi yozuv -> transkript -> tahlil) HAMMAGA ishlayveradi,
+# natijasi yo'q yozuvni qo'lda yurgizish ham ochiq qoladi.
+QAYTA_ROLLAR = {"system manager"}
+
+
+def qayta_ruxsatmi() -> bool:
+	"""Qayta yurgizish mumkinmi (UI tugmani shunga qarab ko'rsatadi)."""
+	return frappe.session.user == "Administrator" or bool(
+		QAYTA_ROLLAR & {r.lower() for r in frappe.get_roles()}
+	)
+
+
+def qayta_ruxsat(bor: bool, nima: str = "tahlil") -> None:
+	"""`bor` — natija allaqachon mavjudmi. Mavjud bo'lsa faqat admin qayta yuritadi."""
+	if not bor or qayta_ruxsatmi():
+		return
+	frappe.throw(
+		_("Qayta {0} faqat administrator uchun — har urinish AI tokenini "
+		  "sarflaydi. Mavjud natija o'zgarmadi.").format(nima),
+		frappe.PermissionError,
+	)
+
 
 def navbatga(qongiroq: str, majburiy: bool = False) -> bool:
 	"""Transkript tayyor bo'lgandan keyin chaqiriladi."""
@@ -82,8 +106,13 @@ def navbatga(qongiroq: str, majburiy: bool = False) -> bool:
 
 @frappe.whitelist()
 def qolda(qongiroq: str) -> dict:
-	"""Formadagi/paneldagi «Tahlil qilish» tugmasi (kvota pauzasini hurmat qiladi)."""
+	"""«Tahlil qilish» tugmasi (kvota pauzasini hurmat qiladi).
+
+	Tahlili bo'lmagan yozuvni hamma yurgizishi mumkin; tahlil ALLAQACHON bor
+	bo'lsa — qayta yurgizishni faqat administrator qila oladi (token isrofi)."""
 	frappe.has_permission("Telefon Qongirogi", "write", doc=qongiroq, throw=True)
+	# Tahlili YO'Q yozuvni hamma yurgiza oladi; QAYTA yurgizish — faqat admin
+	qayta_ruxsat(bool(frappe.db.get_value("Telefon Qongirogi", qongiroq, "ai_xulosa")), "tahlil")
 	p = stt.pauza_holati()
 	if p["bor"]:
 		return {"holat": "kvota", "sabab": stt._kvota_xabari(p), "kutish_sek": p["qolgan_sek"]}
