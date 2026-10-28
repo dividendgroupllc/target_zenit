@@ -176,3 +176,179 @@ def biriktir(
 	print(f"\nTAYYOR: {len(nomlar)} ta yozuv {emp.name} ga biriktirildi"
 	      f"{f' (foydalanuvchi: {emp.user_id})' if emp.user_id else ''}.")
 	return {"jami": len(nomlar), "ozgardi": len(nomlar), "xodim": emp.name}
+
+
+# ===========================================================================
+# Umumiy akkauntni butunlay xodimga ko'chirish va eski userni o'chirishga
+# tayyorlash. Holat: boshida ilovada `sotuvmanager@gmail.com` ishlatilgan,
+# endi har telefonga Employee ID kiritildi — eski yozuvlar o'sha akkauntda
+# qolgan va hisobotda "ikkinchi menejer" bo'lib chalg'itadi.
+# ===========================================================================
+
+# Eski akkauntga ishora qiladigan app maydonlari (ko'chirishga xavfsiz).
+# Har biri: (doctype, maydon) — qiymati User bo'lgan Link maydon.
+KOCHIRILADIGAN = [
+	("Telefon Qongirogi", "foydalanuvchi"),
+	("Qarz Ishi", "masul"),
+	("Aloqa Yozuvi", "masul"),
+	("Tolov Vadasi", "masul"),
+	("ToDo", "allocated_to"),
+	("Qarzdorlik Biriktirish", "masul"),
+]
+
+
+# Frappe User o'chirilganda O'ZI tozalaydigan tizim doctype'lari — bular
+# to'siq emas, shunchaki ma'lumot uchun ko'rsatiladi.
+TIZIM_IZLARI = {
+	"Activity Log", "DocShare", "Contact", "Communication", "Notification Settings",
+	"Energy Point Log", "Access Log", "Route History", "View Log", "Comment",
+	"Dashboard Settings", "User Settings", "File", "Report View Settings",
+}
+
+
+def akkaunt_izlari(user: str = UMUMIY_AKKAUNT) -> dict:
+	"""Shu foydalanuvchi qayerlarda ishlatilgan — o'chirishdan oldin ko'rish.
+
+	Frappe User'ni Link maydonlari bo'sh bo'lmasa o'chirmaydi, shuning uchun
+	avval shu ro'yxat tozalanishi kerak."""
+	out = {}
+	print(f"=== '{user}' qayerlarda uchraydi ===")
+	for dt, maydon in KOCHIRILADIGAN:
+		if not frappe.db.exists("DocType", dt):
+			continue
+		n = frappe.db.count(dt, {maydon: user})
+		if n:
+			out[f"{dt}.{maydon}"] = n
+			print(f"   {dt}.{maydon:<14} {n:>6} ta")
+
+	# Boshqa (app'ga tegishli bo'lmagan) Link maydonlari — faqat xabar beramiz
+	boshqa = frappe.db.sql(
+		"""SELECT df.parent dt, df.fieldname FROM `tabDocField` df
+		   JOIN `tabDocType` dtp ON dtp.name = df.parent
+		   WHERE df.fieldtype='Link' AND df.options='User' AND dtp.issingle=0
+		     AND dtp.istable=0""", as_dict=True)
+	for r in boshqa:
+		if (r.dt, r.fieldname) in KOCHIRILADIGAN:
+			continue
+		try:
+			n = frappe.db.count(r.dt, {r.fieldname: user})
+		except Exception:
+			continue
+		if n:
+			tizim = r.dt in TIZIM_IZLARI
+			if not tizim:
+				out[f"{r.dt}.{r.fieldname}"] = n
+			print(f"   {r.dt}.{r.fieldname:<14} {n:>6} ta   "
+			      f"{'(tizim — o‘chirishda o‘zi tozalanadi)' if tizim else '(qo‘lda tekshiring)'}")
+
+	soz = frappe.db.get_single_value("Qarzdorlik Sozlamalari", "default_masul")
+	if soz == user:
+		out["Qarzdorlik Sozlamalari.default_masul"] = 1
+		print("   Qarzdorlik Sozlamalari.default_masul — shu foydalanuvchi!")
+	if not out:
+		print("   (app ma'lumotlarida ishlatilmagan — o'chirsa bo'ladi)")
+	return out
+
+
+def akkauntni_kochir(
+	xodim: str,
+	eski: str = UMUMIY_AKKAUNT,
+	hammasi: int = 1,
+	dry_run: int = 1,
+):
+	"""Eski umumiy akkauntdagi HAMMA narsani xodimga (uning user_id siga) ko'chiradi.
+
+	`hammasi=1` — qo'ng'iroqlardan tashqari qarz ishlari, aloqa yozuvlari,
+	va'dalar va ToDo'lar ham ko'chadi (eski userni o'chirish uchun shart).
+	`hammasi=0` — faqat telefon yozuvlari.
+	Default `dry_run=1`."""
+	_ruxsat()
+	emp = frappe.db.get_value(
+		"Employee", xodim, ["name", "employee_name", "user_id"], as_dict=True)
+	if not emp:
+		frappe.throw(_("Employee topilmadi: {0}").format(xodim))
+	if not emp.user_id:
+		frappe.throw(_("{0} ({1}) ning user_id si yo'q — avval Employee'ga "
+		               "foydalanuvchi biriktiring.").format(emp.name, emp.employee_name))
+
+	print(f"Eski akkaunt : {eski}")
+	print(f"Yangi egasi  : {emp.name} — {emp.employee_name} (user: {emp.user_id})\n")
+
+	reja = []
+	n_tel = frappe.db.count(DT, {"foydalanuvchi": eski})
+	reja.append((DT, "foydalanuvchi", n_tel))
+	if int(hammasi or 0):
+		for dt, maydon in KOCHIRILADIGAN:
+			if dt == DT or not frappe.db.exists("DocType", dt):
+				continue
+			n = frappe.db.count(dt, {maydon: eski})
+			if n:
+				reja.append((dt, maydon, n))
+
+	for dt, maydon, n in reja:
+		print(f"   {dt}.{maydon:<14} {n:>6} ta -> {emp.user_id}")
+	if not any(n for _, _, n in reja):
+		print("   (ko'chiriladigan narsa yo'q)")
+		return {"ozgardi": 0}
+
+	if int(dry_run or 0):
+		print("\nDRY RUN — hech nima o'zgartirilmadi. Yozish uchun dry_run=0.")
+		return {"reja": {f"{d}.{m}": n for d, m, n in reja}, "ozgardi": 0, "dry_run": 1}
+
+	jami = 0
+	for dt, maydon, n in reja:
+		if not n:
+			continue
+		if dt == DT:
+			# Telefon yozuvida xodim maydoni ham to'ldiriladi
+			frappe.db.sql(
+				f"""UPDATE `tab{DT}` SET foydalanuvchi=%(u)s, xodim=%(x)s
+				    WHERE foydalanuvchi=%(e)s""",
+				{"u": emp.user_id, "x": emp.name, "e": eski})
+		else:
+			frappe.db.sql(
+				f"UPDATE `tab{dt}` SET `{maydon}`=%(u)s WHERE `{maydon}`=%(e)s",
+				{"u": emp.user_id, "e": eski})
+		jami += n
+		print(f"   {dt}.{maydon}: {n} ta ko'chirildi")
+	frappe.db.commit()
+
+	qoldi = akkaunt_izlari(eski)
+	print(f"\nTAYYOR: {jami} ta yozuv {emp.name} ({emp.user_id}) ga o'tdi.")
+	if qoldi:
+		print("Eski akkauntni o'chirishdan oldin yuqoridagi qoldiqlarni tozalang.")
+	else:
+		print(f"Eski akkaunt bo'sh — endi o'chirish mumkin:\n"
+		      f"   bench … execute target_zenit.telefoniya.backfill.akkauntni_ochir "
+		      f"--kwargs \"{{'user':'{eski}'}}\"")
+	return {"ozgardi": jami, "qoldi": qoldi}
+
+
+def akkauntni_ochir(user: str = UMUMIY_AKKAUNT, dry_run: int = 1):
+	"""Eski foydalanuvchini o'chiradi (izlari qolmagan bo'lsa).
+
+	O'chirib bo'lmasa — nima to'sayotganini aytadi; o'shanda `akkauntni_kochir`
+	bilan qoldiqni ko'chirib, qayta uriniladi. Muqobil: foydalanuvchini
+	o'chirmasdan NOFAOL qilish (`enabled=0`) — tarix buzilmaydi."""
+	_ruxsat()
+	if not frappe.db.exists("User", user):
+		print(f"'{user}' topilmadi — allaqachon o'chirilgan.")
+		return {"holat": "yo'q"}
+	izlar = akkaunt_izlari(user)
+	if izlar:
+		print("\nIzlar bor — avval ularni ko'chiring (akkauntni_kochir).")
+		return {"holat": "to'siq", "izlar": izlar}
+	if int(dry_run or 0):
+		print("\nDRY RUN — o'chirilmadi. O'chirish uchun dry_run=0.")
+		return {"holat": "tayyor", "dry_run": 1}
+	try:
+		frappe.delete_doc("User", user, ignore_permissions=True)
+		frappe.db.commit()
+		print(f"'{user}' o'chirildi.")
+		return {"holat": "o'chirildi"}
+	except Exception as e:
+		frappe.db.rollback()
+		print(f"O'chirib bo'lmadi: {type(e).__name__}: {str(e)[:300]}")
+		print("Tavsiya: foydalanuvchini nofaol qiling (User -> Enabled belgisini oling) —"
+		      " tarix saqlanadi, ro'yxatlarda ko'rinmaydi.")
+		return {"holat": "xato", "sabab": str(e)[:300]}

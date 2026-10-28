@@ -1859,3 +1859,107 @@ def test_qongiroq_biriktirish():
 			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
 		frappe.db.commit()
 		print(f"({len(yaratilgan)} sinov yozuvi o'chirildi)")
+
+
+def test_akkaunt_kochirish():
+	"""Umumiy akkauntdagi yozuvlarni xodimga ko'chirish va eski userni
+	o'chirishga tayyorlash oqimi (sinov ma'lumotida).
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_akkaunt_kochirish
+	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.telefoniya import backfill
+
+	frappe.set_user("Administrator")
+	eski = "sotuvmanager@gmail.com"
+	assert frappe.db.exists("User", eski), f"{eski} topilmadi"
+	emp = frappe.db.get_value(
+		"Employee", "HR-EMP-00068", ["name", "employee_name", "user_id"], as_dict=True)
+	print(f"eski akkaunt: {eski} | maqsad: {emp.name} ({emp.user_id})")
+
+	yaratilgan = []
+	try:
+		for i in range(3):
+			d = frappe.get_doc({
+				"doctype": "Telefon Qongirogi", "manba": "Android",
+				"asterisk_uniqueid": f"dev-kochir-{i}-{frappe.generate_hash(length=6)}",
+				"yonalish": "Chiquvchi", "boshlandi": add_to_date(now_datetime(), days=-i),
+				"tashqi_raqam": f"+99893111000{i}", "tugash_sababi": "Javob berildi",
+				"suhbat_vaqti": 60, "yozuv_bor": 1, "fayl_yoli": "dev/sinov.mp3",
+				"foydalanuvchi": eski, "qurilma": "Redmi 13",
+			}).insert(ignore_permissions=True)
+			yaratilgan.append(d.name)
+		frappe.db.commit()
+
+		print("\n--- izlar (ko'chirishdan oldin) ---")
+		izlar = backfill.akkaunt_izlari(eski)
+		assert izlar.get("Telefon Qongirogi.foydalanuvchi", 0) >= 3
+
+		print("\n--- dry run ---")
+		r1 = backfill.akkauntni_kochir(xodim=emp.name, eski=eski, dry_run=1)
+		assert r1["ozgardi"] == 0, "dry run yozib yubordi!"
+
+		print("\n--- ko'chirish ---")
+		r2 = backfill.akkauntni_kochir(xodim=emp.name, eski=eski, dry_run=0)
+		print(f"   natija: {r2['ozgardi']} ta ko'chdi, qoldi: {r2['qoldi']}")
+		qolgan = frappe.db.count("Telefon Qongirogi", {"foydalanuvchi": eski})
+		yangi = frappe.get_all(
+			"Telefon Qongirogi", filters={"name": ["in", yaratilgan]},
+			fields=["name", "foydalanuvchi", "xodim"])
+		for y in yangi:
+			print(f"   {y.name}: user={y.foydalanuvchi} xodim={y.xodim}")
+		assert qolgan == 0, "eski akkauntda yozuv qoldi"
+		assert all(y.xodim == emp.name and y.foydalanuvchi == emp.user_id for y in yangi)
+
+		print("\n--- o'chirishga tayyorligi (dry run) ---")
+		r3 = backfill.akkauntni_ochir(user=eski, dry_run=1)
+		print(f"   holat: {r3['holat']}")
+		print("\nOK — ko'chirish ishladi, akkaunt o'chirishga tayyorlanadi")
+	finally:
+		for n in yaratilgan:
+			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print(f"({len(yaratilgan)} sinov yozuvi o'chirildi)")
+
+
+def test_biriktir_hammasi():
+	"""Serverda ALLAQACHON turgan `biriktir()` bilan umumiy akkauntning
+	hamma yozuvini bitta xodimga ko'chirish (xodimsiz=0) — deploy kutmasdan.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_biriktir_hammasi
+	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	from target_zenit.telefoniya import backfill
+
+	frappe.set_user("Administrator")
+	eski = "sotuvmanager@gmail.com"
+	emp = frappe.db.get_value("Employee", "HR-EMP-00068",
+	                          ["name", "user_id"], as_dict=True)
+	boshqa = frappe.db.get_value("Employee", {"name": ["!=", emp.name], "status": "Active"}, "name")
+	yaratilgan = []
+	try:
+		# Biri xodimsiz, biri BOSHQA xodimga biriktirilgan — ikkalasi ham ko'chishi kerak
+		for i, xod in enumerate([None, boshqa]):
+			d = frappe.get_doc({
+				"doctype": "Telefon Qongirogi", "manba": "Android",
+				"asterisk_uniqueid": f"dev-hammasi-{i}-{frappe.generate_hash(length=6)}",
+				"yonalish": "Chiquvchi", "boshlandi": add_to_date(now_datetime(), days=-i),
+				"tashqi_raqam": f"+99893222000{i}", "tugash_sababi": "Javob berildi",
+				"suhbat_vaqti": 60, "foydalanuvchi": eski, "xodim": xod,
+			}).insert(ignore_permissions=True)
+			yaratilgan.append(d.name)
+		frappe.db.commit()
+
+		r = backfill.biriktir(xodim=emp.name, foydalanuvchi=eski, xodimsiz=0, dry_run=0)
+		print(f"   ko'chirildi: {r['ozgardi']} ta")
+		natija = frappe.get_all("Telefon Qongirogi", filters={"name": ["in", yaratilgan]},
+		                        fields=["name", "xodim", "foydalanuvchi"])
+		for n in natija:
+			print(f"   {n.name}: xodim={n.xodim} user={n.foydalanuvchi}")
+		assert all(n.xodim == emp.name and n.foydalanuvchi == emp.user_id for n in natija), \
+			"xodimsiz=0 bilan hammasi ko'chmadi"
+		print("OK — `biriktir(xodimsiz=0)` umumiy akkauntning hammasini ko'chiradi")
+	finally:
+		for n in yaratilgan:
+			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
+		frappe.db.commit()
