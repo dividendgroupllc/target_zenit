@@ -345,6 +345,12 @@ scheduler_events = {
 		"20 7 * * *": [
 			"target_zenit.integrations.moodle_jadval.daily_sync"
 		],
+		# 07:30 — oylik tabel (xodim o'z oyligini Moodle'da ko'radi).
+		# Foydalanuvchi sinxronidan KEYIN: bog'lanish `user.idnumber` orqali,
+		# ya'ni xodim avval Moodle'da yaratilgan bo'lishi kerak.
+		"30 7 * * *": [
+			"target_zenit.integrations.moodle_oylik.daily_sync"
+		],
 		# Har yili 1-sentabr 06:00 — hamma faol o'quvchi bir sinf yuqoriga (G4A -> G5A)
 		"0 6 1 9 *": [
 			"target_zenit.student_group_sync.yearly_promotion"
