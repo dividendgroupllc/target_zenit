@@ -199,13 +199,15 @@ def sync(yil=None, oy=None, trigger="Qo'lda"):
 			# Ortiqcha qatorlarni o'chirish — BARCHA bo'lak yuborilgandan KEYIN
 			# bir marta. Bo'laklar ichida qilinsa, ikkinchi bo'lak birinchisini
 			# o'chirib tashlardi.
+			# `rows` ATAYLAB yuborilmaydi: `_flatten` bo'sh massivdan hech
+			# qanday forma maydoni yasamaydi, ya'ni "rows": [] so'rovdan
+			# butunlay yo'qoladi va Moodle "invalidparameter" deydi.
 			oxirgi = _call("local_targetzenit_push_payroll", {
 				"yil": yil,
 				"oy": oy,
 				"holat": holat,
 				"valyuta": valyuta,
 				"keep": [q["useridnumber"] for q in qatorlar],
-				"rows": [],
 			})
 			xulosa = {
 				"yangi": yangi,
