@@ -182,33 +182,37 @@ def sync(yil=None, oy=None, trigger="Qo'lda"):
 				qatorlar[i : i + OYLIK_BATCH]
 				for i in range(0, len(qatorlar), OYLIK_BATCH)
 			]
+			oxirgi = {}
 			for n, bolak in enumerate(bolaklar):
-				res = _call("local_targetzenit_push_payroll", {
+				sorov = {
 					"yil": yil,
 					"oy": oy,
 					"holat": holat,
 					"valyuta": valyuta,
 					"rows": bolak,
-				})
+				}
+				# Ortiqcha qatorlarni o'chirish (tabeldan chiqib ketgan xodim)
+				# OXIRGI bo'lak bilan birga ketadi — chaqiruv ichida avval
+				# qatorlar yoziladi, keyin tozalash bo'ladi.
+				#
+				# NEGA ALOHIDA CHAQIRUV EMAS: `_flatten` bo'sh massivdan hech
+				# qanday forma maydoni yasamaydi, ya'ni "rows": [] so'rovdan
+				# butunlay yo'qoladi va Moodle "invalidparameter" deydi.
+				# Shu yo'l bilan rows'siz chaqiruv umuman bo'lmaydi.
+				#
+				# NEGA BO'LAKLAR ICHIDA EMAS: tozalash 1-bo'lakda bo'lsa,
+				# u hali yuborilmagan 2-bo'lak xodimlarini o'chirib tashlardi.
+				if n == len(bolaklar) - 1:
+					sorov["keep"] = [q["useridnumber"] for q in qatorlar]
+
+				res = _call("local_targetzenit_push_payroll", sorov)
 				yangi += cint(res.get("yangi"))
 				yangilandi += cint(res.get("yangilandi"))
+				oxirgi = res
 				lines.append(
 					f"  bo'lak {n + 1}/{len(bolaklar)}: {len(bolak)} xodim yuborildi"
 				)
 
-			# Ortiqcha qatorlarni o'chirish — BARCHA bo'lak yuborilgandan KEYIN
-			# bir marta. Bo'laklar ichida qilinsa, ikkinchi bo'lak birinchisini
-			# o'chirib tashlardi.
-			# `rows` ATAYLAB yuborilmaydi: `_flatten` bo'sh massivdan hech
-			# qanday forma maydoni yasamaydi, ya'ni "rows": [] so'rovdan
-			# butunlay yo'qoladi va Moodle "invalidparameter" deydi.
-			oxirgi = _call("local_targetzenit_push_payroll", {
-				"yil": yil,
-				"oy": oy,
-				"holat": holat,
-				"valyuta": valyuta,
-				"keep": [q["useridnumber"] for q in qatorlar],
-			})
 			xulosa = {
 				"yangi": yangi,
 				"yangilandi": yangilandi,
