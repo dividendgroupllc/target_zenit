@@ -892,3 +892,96 @@ def yetim_akkauntlar(ochir=0):
 		"ochirildi": ochirildi,
 		"keyingi_qadam": "target_zenit.integrations.moodle.sync_now",
 	}
+
+@frappe.whitelist()
+def parol_tikla(idnumbers=None, dry_run=1):
+	"""Paroli saqlanmagan XODIM akkauntlariga yangi parol qo'yadi.
+
+	NEGA KERAK: sinxron avval Moodle'da akkaunt yaratadi, keyin bog'lanishni
+	parol bilan saqlaydi. Shu oraliqda xato chiqsa — akkaunt bor-u parol
+	hech qayerda yo'q, ya'ni unga kirib bo'lmaydi. Moodle parolni qaytarib
+	bermaydi, shuning uchun YANGISI qo'yiladi.
+
+	XAVFSIZLIK — bu funksiya "hamma parolsizni tuzat" EMAS:
+	  1. `idnumbers` berilsa FAQAT o'shalar bilan ishlanadi (tavsiya etiladi:
+	     ro'yxat `yetim_akkauntlar()` chiqishidan olinadi);
+	  2. berilmasa — faqat `person_type = 'Employee'` bog'lanishlari, ya'ni
+	     o'quvchi va o'qituvchi hisoblariga umuman tegilmaydi;
+	  3. har holatda Moodle'da HECH QACHON KIRMAGAN akkauntlargina olinadi —
+	     kimdir allaqachon foydalanayotgan bo'lsa paroli saqlanadi.
+
+	Ishlatish:
+	    parol_tikla()                      # kimga tegishini ko'rish
+	    parol_tikla(dry_run=0)             # tiklash
+	    parol_tikla(idnumbers=["HR-EMP-00018", ...], dry_run=0)
+	"""
+	frappe.only_for(("System Manager", "Administrator"))
+	dry_run = int(dry_run or 0)
+	if isinstance(idnumbers, str):
+		idnumbers = json.loads(idnumbers) if idnumbers.strip().startswith("[") \
+			else [i.strip() for i in idnumbers.split(",") if i.strip()]
+
+	filtr = {"moodle_user_id": [">", 0]}
+	if idnumbers:
+		filtr["idnumber"] = ["in", list(idnumbers)]
+	else:
+		filtr["person_type"] = "Employee"
+
+	nomzodlar = []
+	for r in frappe.get_all(
+		"Moodle User Link", filters=filtr,
+		fields=["name", "idnumber", "moodle_user_id", "moodle_username", "full_name"],
+		limit_page_length=0,
+	):
+		doc = frappe.get_doc("Moodle User Link", r.name)
+		if doc.get_password("initial_password", raise_exception=False):
+			continue                     # paroli bor — tegilmaydi
+		nomzodlar.append(r)
+
+	if not nomzodlar:
+		return {"parolsiz": 0, "tiklandi": 0}
+
+	# Kirganlarni chetlab o'tamiz: parolini almashtirish ularni tizimdan
+	# chiqarib qo'yadi.
+	mavjud = _moodle_by_idnumber([r.idnumber for r in nomzodlar])
+	tegiladi, kirganlar = [], []
+	for r in nomzodlar:
+		u = mavjud.get(r.idnumber) or {}
+		if int(u.get("firstaccess") or 0) > 0 or int(u.get("lastaccess") or 0) > 0:
+			kirganlar.append(r.moodle_username)
+		else:
+			tegiladi.append(r)
+
+	if dry_run:
+		return {
+			"parolsiz": len(nomzodlar),
+			"tegiladi": len(tegiladi),
+			"kirgani_uchun_tegilmaydi": kirganlar,
+			"namuna": [r.moodle_username for r in tegiladi[:10]],
+			"tiklandi": 0,
+		}
+
+	tiklandi, xato = 0, []
+	for r in tegiladi:
+		yangi = _password()
+		try:
+			_call("core_user_update_users", {
+				"users": [{"id": int(r.moodle_user_id), "password": yangi}],
+			})
+		except Exception as e:
+			xato.append(f"{r.moodle_username}: {e}")
+			continue
+		# Moodle qabul qilgandan KEYIN saqlaymiz — aks holda Frappe'da bir
+		# parol, Moodle'da boshqasi bo'lib qoladi.
+		doc = frappe.get_doc("Moodle User Link", r.name)
+		doc.initial_password = yangi
+		doc.save(ignore_permissions=True)
+		tiklandi += 1
+		frappe.db.commit()
+
+	return {
+		"parolsiz": len(nomzodlar),
+		"tiklandi": tiklandi,
+		"kirgani_uchun_tegilmaydi": kirganlar,
+		"xato": xato[:10],
+	}
