@@ -232,7 +232,7 @@
    "depends_on": "eval:doc.party_type === 'Customer' && doc.student_group",
    "description": "О́quvchi qaysi sinfga (guruhga) tegishli",
    "fieldname": "student_group",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "label": "Синф (группа)",
    "read_only": 1
   },

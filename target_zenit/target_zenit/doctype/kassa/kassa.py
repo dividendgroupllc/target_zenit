@@ -1389,7 +1389,13 @@ def get_student_group(customer):
         if not rows and st.custom_sinf_guruh and st.custom_sinf_guruh not in groups:
             groups.append(st.custom_sinf_guruh)
 
-    return ", ".join(groups) if groups else None
+    if not groups:
+        return None
+    # Ko'p guruhli o'quvchida ro'yxat cho'zilib ketmasin: birinchi 6 tasi
+    # ko'rsatiladi, qolganlari soni bilan (maydon faqat ma'lumot uchun)
+    if len(groups) > 6:
+        return ", ".join(groups[:6]) + f" … (+{len(groups) - 6} guruh)"
+    return ", ".join(groups)
 
 
 def get_employee_payable_account(company):
