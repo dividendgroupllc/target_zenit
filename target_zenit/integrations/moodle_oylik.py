@@ -28,6 +28,9 @@ from frappe.utils import cint, flt, getdate, now_datetime, nowdate
 
 from target_zenit.integrations.moodle import _call, _settings
 from target_zenit.target_zenit.api.oylik_tabel import _tabel_hisobla, _valyuta
+from target_zenit.target_zenit.page.investor_dashboard.investor_dashboard import (
+	personal_months,
+)
 
 # Bitta so'rovda nechta xodim yuboriladi.
 # SABAB: Moodle REST so'rovni forma maydonlari ko'rinishida oladi — har xodim
@@ -130,6 +133,88 @@ def _qatorlar(natija, vaqtlar):
 	return chiqish
 
 
+
+# Hisob-kitob qatorlari bitta so'rovda nechta ketadi.
+# Har qator ~8 maydon, PHP `max_input_vars` = 5000 -> 400 x 8 = 3200 xavfsiz.
+HISOB_BATCH = 400
+
+
+def _hisob_qatorlari(emp_ids):
+	"""Har xodim uchun oy kesimida: nachisleniya / to'langan / qoldiq.
+
+	MANBA BITTA: `investor_dashboard.personal_months` — investor paneli ham
+	shu funksiyadan oziqlanadi. Mantiq bu yerda QAYTA YOZILMAYDI, aks holda
+	o'qituvchi ko'rgan son direktor ko'rgan sondan farq qilib qolardi.
+
+	Sekinroq (xodim boshiga 2 so'rov), lekin bu kunlik fon ishi — to'g'rilik
+	tezlikdan muhimroq.
+	"""
+	qatorlar = []
+	for emp in emp_ids:
+		try:
+			natija = personal_months("Employee", emp)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"Moodle hisob-kitob: {emp}")
+			continue
+		for m in natija.get("months") or []:
+			oy = str(m.get("oy") or "")
+			if len(oy) != 7 or oy[4] != "-":
+				continue              # "—" kabi noma'lum oy — yuborilmaydi
+			qatorlar.append({
+				"useridnumber": emp,
+				"oy": oy,
+				"valyuta": m.get("currency") or "UZS",
+				# Yaxlitlash: hisobdan 10^-9 kabi qoldiqlar chiqadi, ular
+				# "to'lanmagan" bo'lib ko'rinib qolmasligi kerak.
+				"oylik": round(flt(m.get("oylik")), 2),
+				"nach": round(flt(m.get("nach")), 2),
+				"paid": round(flt(m.get("paid")), 2),
+				"advance": round(flt(m.get("advance")), 2),
+				"debt": round(flt(m.get("debt")), 2),
+			})
+	return qatorlar
+
+
+def _hisobni_yubor(emp_ids, lines):
+	"""Hisob-kitobni Moodle'ga uzatadi. Natija: qisqa xulosa."""
+	qatorlar = _hisob_qatorlari(emp_ids)
+	if not qatorlar:
+		lines.append("Hisob-kitob: yuboriladigan qator yo'q.")
+		return {"yangi": 0, "yangilandi": 0, "ochirildi": 0, "qator": 0}
+
+	# Yurish belgisi: shu sinxronda yozilgan qatorlarni ajratish uchun.
+	# Vaqt sifatida emas, shunchaki tenglik uchun ishlatiladi — Frappe va
+	# Moodle soatlari farq qilishi mumkin.
+	runid = int(now_datetime().timestamp())
+
+	yangi = yangilandi = 0
+	bolaklar = [
+		qatorlar[i : i + HISOB_BATCH]
+		for i in range(0, len(qatorlar), HISOB_BATCH)
+	]
+	oxirgi = {}
+	for n, bolak in enumerate(bolaklar):
+		sorov = {"runid": runid, "rows": bolak}
+		# Eskirgan qatorlarni o'chirish OXIRGI bo'lak bilan — aks holda hali
+		# yuborilmagan bo'lakning qatorlari o'chib ketardi.
+		if n == len(bolaklar) - 1:
+			sorov["keep"] = emp_ids
+		oxirgi = _call("local_targetzenit_push_settlement", sorov)
+		yangi += cint(oxirgi.get("yangi"))
+		yangilandi += cint(oxirgi.get("yangilandi"))
+
+	lines.append(
+		f"Hisob-kitob: {len(qatorlar)} qator ({len(bolaklar)} bo'lak) | "
+		f"yangi {yangi}, yangilandi {yangilandi}, "
+		f"eskirgani o'chirildi {cint(oxirgi.get('ochirildi'))}"
+	)
+	return {
+		"yangi": yangi,
+		"yangilandi": yangilandi,
+		"ochirildi": cint(oxirgi.get("ochirildi")),
+		"qator": len(qatorlar),
+	}
+
 def sync(yil=None, oy=None, trigger="Qo'lda"):
 	"""Bitta oyni Moodle'ga uzatadi. Yil/oy berilmasa — joriy oy.
 
@@ -224,6 +309,11 @@ def sync(yil=None, oy=None, trigger="Qo'lda"):
 				f"yangilandi {xulosa['yangilandi']}, "
 				f"ortiqcha o'chirildi {xulosa['ochirildi']}"
 			)
+			# Oylar kesimida hisob-kitob — oylik qatorlaridan ALOHIDA:
+			# u joriy oyga tegishli, bu esa xodimning BUTUN tarixi.
+			xulosa["hisob"] = _hisobni_yubor(
+				[q["useridnumber"] for q in qatorlar], lines)
+
 			if xulosa["boglanmagan"]:
 				lines.append(
 					f"OGOHLANTIRISH: {xulosa['boglanmagan']} xodimning Moodle "

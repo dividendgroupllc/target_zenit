@@ -2621,8 +2621,22 @@ def get_personal(from_date=None, to_date=None, limit=500, months=None, nach_stat
 
 @frappe.whitelist()
 def get_personal_months(party_type=None, party=None, months=None):
+    """Panel uchun kirish nuqtasi — ruxsatni tekshirib, hisobni qaytaradi."""
+    _guard()
+    if not (party_type and party):
+        frappe.throw("Kontragent ko'rsatilmagan")
+    return personal_months(party_type, party, months)
+
+
+def personal_months(party_type, party, months=None):
     """Bitta kontragent bo'yicha OY KESIMIDA: nachisleniya / to'langan / qoldiq.
     Personal jadvalida qator ochilganda chaqiriladi.
+
+    RUXSAT TEKSHIRILMAYDI — chaqiruvchi hal qiladi. Sabab: shu hisobdan
+    Moodle sinxroni (`integrations/moodle_oylik.py`) ham foydalanadi, u esa
+    scheduler ostida rolsiz ishlaydi. Mantiqni nusxalash o'rniga ajratildi:
+    aks holda investor paneli va o'qituvchi ko'rgan son bir-biridan uzilib
+    ketardi.
 
     Oy — nachisleniya hujjatidagi "За какой месяц" (custom_payment_month),
     bo'lmasa hujjat sanasining oyi. To'lov o'zi bog'langan nachisleniyaning
@@ -2632,9 +2646,6 @@ def get_personal_months(party_type=None, party=None, months=None):
 
     months — Personal'dagi "Oy" filtri: berilsa faqat shu oylar ko'rsatiladi,
     shunda oy kesimi JAMI'si yopiq qatordagi sonlar bilan mos qoladi."""
-    _guard()
-    if not (party_type and party):
-        frappe.throw("Kontragent ko'rsatilmagan")
     picked_months = {m for m in _as_list(months) if re.fullmatch(r"\d{4}-\d{2}", str(m))}
     company = _default_company()
     ccy = _company_currency(company)
