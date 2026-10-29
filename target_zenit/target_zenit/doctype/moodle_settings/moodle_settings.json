@@ -13,6 +13,7 @@
   "section_qamrov",
   "sync_students",
   "sync_teachers",
+  "sync_staff",
   "column_break_2",
   "suspend_on_leave",
   "dry_run",
@@ -80,6 +81,13 @@
    "fieldname": "sync_teachers",
    "fieldtype": "Check",
    "label": "O'qituvchilarni yuborish"
+  },
+  {
+   "fieldname": "sync_staff",
+   "fieldtype": "Check",
+   "label": "Oylik tabeldagi barcha xodimni yuborish",
+   "default": "0",
+   "description": "Tabelda ko'ringan har bir xodim (oshpaz, tozalik, qo'riqchi, moliya ...) Moodle'da akkaunt oladi va o'z oyligini ko'radi. Kalit — Employee ID."
   },
   {
    "fieldname": "column_break_2",

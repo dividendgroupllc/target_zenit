@@ -267,6 +267,58 @@ def _instructors():
 	return out
 
 
+def _staff():
+	"""Oylik tabelda yuritiladigan BARCHA xodim.
+
+	NEGA KERAK: tabelda nafaqat o'qituvchi, balki oshpaz, tozalik xodimi,
+	qo'riqchi, sotuv va moliya ham bor. Foydalanuvchi talabi — tabelda
+	ko'ringan har bir xodim o'z oyligini Moodle'da ko'rsin, shuning uchun
+	ularning hammasiga Moodle akkaunti kerak.
+
+	Filtr `_tabel_hisobla()` dagi bilan BIR XIL bo'lishi shart: `custom_tabelda`
+	belgisi. Boshqa filtr qo'yilsa, tabelda ko'rinadigan-u Moodle'da yo'q xodim
+	paydo bo'ladi.
+
+	Kalit — `Employee.name` (barqaror). `Instructor` lar ham aynan shu kalit
+	bilan ketadi, shuning uchun chaqiruvchi joy TAKRORLARNI olib tashlaydi.
+	"""
+	rows = frappe.get_all(
+		"Employee",
+		filters={"custom_tabelda": 1},
+		fields=["name", "employee_name", "status", "relieving_date", "designation"],
+		limit_page_length=0,
+	)
+	out = []
+	for r in rows:
+		out.append({
+			"idnumber": r.name,
+			"person_type": "Xodim",
+			"reference_name": r.name,
+			"full_name": (r.employee_name or "").strip(),
+			"active": r.status == "Active",
+			"designation": r.designation or "",
+		})
+	return out
+
+
+def _takrorsiz(people):
+	"""Bir xil `idnumber` ikki marta kelsa — birinchisi qoladi.
+
+	NEGA: `Instructor` ning kaliti bog'langan `Employee.name`, `_staff()` ham
+	shu kalitni beradi. Ikkisi ham o'tsa Moodle'da bitta odam uchun ikkita
+	`Moodle User Link` paydo bo'lardi va ular username uchun bir-biri bilan
+	kurashardi. Instructor avval qo'shiladi — unda kursga yozilish bor.
+	"""
+	korilgan = set()
+	out = []
+	for p in people:
+		if p["idnumber"] in korilgan:
+			continue
+		korilgan.add(p["idnumber"])
+		out.append(p)
+	return out
+
+
 # ---------------------------------------------------------------- Moodle tomoni
 
 def _moodle_by_idnumber(idnumbers):
@@ -356,8 +408,16 @@ def sync(trigger="Qo'lda", limit=0):
 			people += _students()
 		if s.sync_teachers:
 			people += _instructors()
+		if s.sync_staff:
+			# Instructor'dan KEYIN: takror bo'lsa Instructor yozuvi qoladi.
+			oldin = len(people)
+			people = _takrorsiz(people + _staff())
+			lines.append(
+				f"Tabel xodimlari qo'shildi: jami {len(people) - oldin} yangi kalit "
+				f"(takrorlar Instructor yozuvi hisobiga tashlandi)."
+			)
 		if not people:
-			lines.append("Sinxron qamrovi bo'sh — o'quvchi ham, o'qituvchi ham belgilanmagan.")
+			lines.append("Sinxron qamrovi bo'sh — hech qaysi guruh belgilanmagan.")
 
 		limit = int(limit or 0)
 		if limit > 0:
@@ -667,6 +727,8 @@ def preview(limit=10):
 		people += _students()
 	if s.sync_teachers:
 		people += _instructors()
+	if s.sync_staff:
+		people = _takrorsiz(people + _staff())
 
 	faol = [p for p in people if p["active"]]
 	namuna = []
@@ -689,6 +751,7 @@ def preview(limit=10):
 		"nofaol": len(people) - len(faol),
 		"o_quvchi": sum(1 for p in people if p["person_type"] == "Student"),
 		"o_qituvchi": sum(1 for p in people if p["person_type"] == "Instructor"),
+		"xodim": sum(1 for p in people if p["person_type"] == "Xodim"),
 		"employee_yo_q_o_qituvchi": sum(1 for p in people if p.get("no_employee")),
 		"namuna": namuna,
 	}
