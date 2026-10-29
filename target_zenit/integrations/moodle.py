@@ -292,7 +292,11 @@ def _staff():
 	for r in rows:
 		out.append({
 			"idnumber": r.name,
-			"person_type": "Xodim",
+			# DIQQAT: `Moodle User Link.reference_name` — Dynamic Link, uning
+			# maqsad doctype'i `person_type` dan O'QILADI. Shuning uchun bu
+			# yerda HAQIQIY DocType nomi turishi shart: "Xodim" deb yozilsa
+			# Frappe "DocType Xodim not found" deb yiqiladi.
+			"person_type": "Employee",
 			"reference_name": r.name,
 			"full_name": (r.employee_name or "").strip(),
 			"active": r.status == "Active",
@@ -751,7 +755,7 @@ def preview(limit=10):
 		"nofaol": len(people) - len(faol),
 		"o_quvchi": sum(1 for p in people if p["person_type"] == "Student"),
 		"o_qituvchi": sum(1 for p in people if p["person_type"] == "Instructor"),
-		"xodim": sum(1 for p in people if p["person_type"] == "Xodim"),
+		"xodim": sum(1 for p in people if p["person_type"] == "Employee"),
 		"employee_yo_q_o_qituvchi": sum(1 for p in people if p.get("no_employee")),
 		"namuna": namuna,
 	}
@@ -810,3 +814,81 @@ def daily_sync():
 	if not s.enabled:
 		return
 	sync(trigger="Avto (07:00)")
+
+@frappe.whitelist()
+def yetim_akkauntlar(ochir=0):
+	"""Moodle'da BOR, lekin Frappe'da bog'lanishi YO'Q akkauntlarni topadi.
+
+	NEGA PAYDO BO'LADI: sinxron avval Moodle'da akkaunt yaratadi, keyin
+	bog'lanishni (parol bilan birga) Frappe'ga saqlaydi. Shu oraliqda xato
+	chiqsa — akkaunt bor-u parol hech qayerda yo'q. Parolni Moodle qaytarib
+	bermaydi, ya'ni bunday akkauntga kirib bo'lmaydi.
+
+	YECHIM — parolni almashtirish EMAS, akkauntni o'chirish: bu yangi
+	yaratilgan, hali hech kim kirmagan akkaunt. O'chirilgandan keyin keyingi
+	sinxron uni qaytadan yaratadi va parolini saqlaydi.
+
+	XAVFSIZLIK CHEGARALARI (uchalasi ham majburiy):
+	  1. Faqat `Employee` kaliti bo'yicha topilganlar — qo'lda ochilgan
+	     admin akkauntlariga tegilmaydi;
+	  2. Frappe'da bog'lanishi bo'lmaganlar — ishlayotgan hisoblar chetda;
+	  3. Moodle'da hech qachon KIRMAGANLAR (`firstaccess` = 0) — kimdir
+	     allaqachon foydalanayotgan bo'lsa o'chirilmaydi.
+	"""
+	frappe.only_for(("System Manager", "Administrator"))
+	ochir = int(ochir or 0)
+
+	xodimlar = {p["idnumber"]: p for p in _staff()}
+	if not xodimlar:
+		return {"nomzod": 0, "yetim": [], "ochirildi": 0}
+
+	bogli = {
+		r.idnumber for r in frappe.get_all(
+			"Moodle User Link", filters={"idnumber": ["in", list(xodimlar)]},
+			fields=["idnumber"], limit_page_length=0)
+	}
+	bogsiz = [k for k in xodimlar if k not in bogli]
+	if not bogsiz:
+		return {"nomzod": 0, "yetim": [], "ochirildi": 0}
+
+	# Moodle'da shu kalit bilan akkaunt bormi?
+	mavjud = _moodle_by_idnumber(bogsiz)
+
+	yetimlar = []
+	kirganlar = []
+	nomalum = []
+	for key, u in mavjud.items():
+		nom = {
+			"idnumber": key,
+			"username": u.get("username"),
+			"moodle_id": u.get("id"),
+			"ism": xodimlar[key]["full_name"],
+		}
+		# `firstaccess` — Moodle'da VALUE_OPTIONAL, ya'ni javobda BO'LMASLIGI
+		# mumkin. Yo'qligini "kirmagan" deb hisoblash xavfli tomonga
+		# adashishdir, shuning uchun qoida teskari: o'chirish uchun maydon
+		# BOR va 0 ga TENG bo'lishi shart. Aks holda akkaunt "noma'lum"
+		# ro'yxatiga tushadi va unga tegilmaydi.
+		if "firstaccess" not in u and "lastaccess" not in u:
+			nomalum.append(nom)
+		elif int(u.get("firstaccess") or 0) > 0 or int(u.get("lastaccess") or 0) > 0:
+			kirganlar.append(nom)
+		else:
+			yetimlar.append(nom)
+
+	ochirildi = 0
+	if ochir and yetimlar:
+		for i in range(0, len(yetimlar), BATCH):
+			bolak = yetimlar[i : i + BATCH]
+			_call("core_user_delete_users",
+			      {"userids": [int(y["moodle_id"]) for y in bolak]})
+			ochirildi += len(bolak)
+
+	return {
+		"bogsiz_xodim": len(bogsiz),
+		"yetim": yetimlar,
+		"kirgan_shuning_uchun_tegilmadi": kirganlar,
+		"nomalum_tegilmadi": nomalum,
+		"ochirildi": ochirildi,
+		"keyingi_qadam": "target_zenit.integrations.moodle.sync_now",
+	}
