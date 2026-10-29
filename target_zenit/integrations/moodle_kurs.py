@@ -420,8 +420,17 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 				if uid:
 					kerak[st] = (uid, student_role)
 			o_kalit = _oqituvchi_kaliti(v.get("oqituvchi"))
-			if o_kalit and users.get(o_kalit):
+			# O'qituvchini Moodle'da ANIQ topdikmi? Topa olmaslik — ma'lumot
+			# bo'shlig'i, "ishdan ketdi" degani EMAS. Farqi muhim: pastda
+			# suspend qilish qarori shunga tayanadi.
+			oqituvchi_aniq = bool(o_kalit and users.get(o_kalit))
+			if oqituvchi_aniq:
 				kerak[o_kalit] = (users[o_kalit], teacher_role)
+			elif o_kalit:
+				lines.append(
+					f"OGOHLANTIRISH: {v['shortname']} — o'qituvchi {o_kalit} "
+					"Moodle'da topilmadi; mavjud yozilishga tegilmaydi."
+				)
 
 			link = links.get(key)
 			eski = _json_oqi(link.enrolled_json) if link else {}
@@ -430,14 +439,41 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 				if eski.get(kalit) != rid:
 					enrolments.append({"roleid": rid, "userid": uid, "courseid": cid, "suspend": 0})
 
-			# Chiqib ketganlar: o'chirmaymiz — yozilishini suspend qilamiz
-			for kalit, rid in (eski or {}).items():
-				if kalit not in kerak:
-					uid = users.get(kalit)
-					if uid:
-						enrolments.append({"roleid": rid, "userid": uid, "courseid": cid, "suspend": 1})
+			# Shu kursda KERAK bo'lgan Moodle foydalanuvchilari (kalit emas, ID).
+			# Kalit o'zgarsa (INSTR-<ism> -> HR-EMP-xxxxx) odam o'sha qoladi,
+			# shuning uchun solishtirish ID bo'yicha bo'lishi kerak.
+			kerak_uid = {uid for uid, _r in kerak.values()}
 
-			enrol_holat[key] = {k: r for k, (_u, r) in kerak.items()}
+			# Chiqib ketganlar: o'chirmaymiz — yozilishini suspend qilamiz.
+			for kalit, rid in (eski or {}).items():
+				if kalit in kerak:
+					continue
+				uid = users.get(kalit)
+				if not uid:
+					continue
+				# TUZOQ 1: kalit o'zgargan, odam esa O'SHA. Eski kalit bo'yicha
+				# suspend yuborilsa, u yangi kalit bo'yicha yuborilgan
+				# yozilishning USTIGA tushadi (bir so'rovda, keyin kelgani
+				# g'alaba qiladi) va odam kursdan chiqib qoladi.
+				if uid in kerak_uid:
+					continue
+				# TUZOQ 2: o'qituvchini Moodle'da topa olmagan bo'lsak, uning
+				# mavjud yozilishini SUSPEND QILMAYMIZ. Aks holda kalit
+				# almashgan paytda (foydalanuvchi sinxroni hali yetib
+				# ulgurmagan) o'qituvchi o'z kurslaridan chiqarib tashlanadi.
+				if rid == teacher_role and not oqituvchi_aniq:
+					continue
+				enrolments.append({"roleid": rid, "userid": uid, "courseid": cid, "suspend": 1})
+
+			holat = {k: r for k, (_u, r) in kerak.items()}
+			if not oqituvchi_aniq:
+				# O'qituvchi aniqlanmagan bo'lsa eski yozuvini saqlab qolamiz —
+				# aks holda holat yo'qoladi va keyingi yurishda qayta
+				# "chiqib ketgan" bo'lib ko'rinadi.
+				for k, r in (eski or {}).items():
+					if r == teacher_role and k not in holat:
+						holat[k] = r
+			enrol_holat[key] = holat
 			v["student_count"] = sum(1 for _k, (_u, r) in kerak.items() if r == student_role)
 
 		lines.append(f"Yozilish o'zgarishi: {len(enrolments)} ta")
@@ -586,3 +622,47 @@ def daily_sync():
 	if not s.enabled:
 		return
 	sync_kurslar(trigger="Avto (07:00)")
+
+@frappe.whitelist()
+def yozilishni_tikla(dry_run=1):
+	"""Suspend qilib qo'yilgan yozilishlarni tiklash uchun holatni tozalaydi.
+
+	NEGA KERAK: kalit o'zgarganda (INSTR-<ism> -> HR-EMP-xxxxx) sinxron
+	o'qituvchini "chiqib ketgan" deb hisoblab yozilishini suspend qilgan.
+	Xato tuzatildi, ammo `enrolled_json` da endi YANGI kalit turadi va u
+	kerakli holat bilan mos — shuning uchun sinxron hech narsa yubormaydi va
+	suspend holati o'z-o'zidan tuzalmaydi.
+
+	Bu funksiya `enrolled_json` ni bo'shatadi. Keyingi kurs sinxroni har bir
+	kerakli odamni qaytadan `suspend=0` bilan yozadi va hech kimni suspend
+	qilmaydi (eski holat bo'sh bo'lgani uchun solishtirishga narsa yo'q).
+
+	Guruhdan haqiqatan chiqib ketganlar Moodle'da suspend holatida QOLADI —
+	bu funksiya ularni tiklamaydi, shunchaki ularga qayta tegmaydi.
+
+	Ishlatish tartibi:
+	    yozilishni_tikla()                 # nechta yozuv tozalanishini ko'rish
+	    yozilishni_tikla(dry_run=0)        # tozalash
+	    sync_now()                         # qaytadan yozish
+	"""
+	frappe.only_for(("System Manager", "Administrator"))
+	dry_run = int(dry_run or 0)
+
+	nomlar = [
+		r.name for r in frappe.get_all(
+			"Moodle Course Link",
+			filters={"enrolled_json": ["not in", ["", None]]},
+			fields=["name"], limit_page_length=0)
+	]
+	if not dry_run:
+		for nom in nomlar:
+			frappe.db.set_value("Moodle Course Link", nom, "enrolled_json", "",
+			                    update_modified=False)
+		frappe.db.commit()
+
+	return {
+		"dry_run": bool(dry_run),
+		"tozalanadi": len(nomlar),
+		"tozalandi": 0 if dry_run else len(nomlar),
+		"keyingi_qadam": "target_zenit.integrations.moodle_kurs.sync_now",
+	}
