@@ -14,7 +14,10 @@
 window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 	constructor(o) {
 		this.$w = o.wrapper;
-		this.state = { from_date: o.from_date, to_date: o.to_date };
+		// `sanalar` — "gaplashilgan sana" filtri: bo'sh bo'lsa butun davr,
+		// to'la bo'lsa FAQAT o'sha kun(lar)da gaplashilganlar (sahifaning hamma
+		// bo'limi uchun bitta filtr: menejer, o'quvchi, taklif).
+		this.state = { from_date: o.from_date, to_date: o.to_date, sanalar: [] };
 		this.withToolbar = !!o.toolbar;
 		this.M = "target_zenit.target_zenit.page.sotuv_nazorati.sotuv_nazorati";
 		this.lens = "menejer";      // menejer | oquvchi | taklif
@@ -24,6 +27,7 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 		this.tel = null;
 		this.matnlar = {};          // qongiroq -> to'liq transkript (talab bo'yicha)
 		this.skeleton();
+		if (this.withToolbar) this.sanaChips();
 		this.load();
 	}
 
@@ -84,7 +88,16 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 					</div>
 				</div>
 				<div class="sn-tools"><button class="sn-refresh"><span class="dot"></span> Yangilash</button></div>
-			</div>` : ""}
+			</div>
+			<div class="sn-sana">
+				<label>Gaplashilgan sana:</label>
+				<input type="date" class="sn-sana-input" max="${frappe.datetime.get_today()}">
+				<button class="tz-seg-opt sn-sana-add">+ qo'shish</button>
+				<button class="tz-seg-opt sn-sana-bugun">Bugun</button>
+				<button class="tz-seg-opt sn-sana-kecha">Kecha</button>
+				<span class="sn-sana-tanlangan"></span>
+			</div>
+			<div class="sn-kunlar"></div>` : ""}
 			<div class="sn-kpi"></div>
 			<div class="sn-lens tz-seg"></div>
 			<div class="sn-body"><div class="tz-loader">Yuklanyapti…</div></div>`);
@@ -94,6 +107,17 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 			this.$w.find(".sn-to").on("change", (e) => { this.state.to_date = e.target.value; this.load(); });
 			this.$w.find(".sn-refresh").on("click", () => this.load());
 			this.$w.find(".sn-preset button").on("click", (e) => this.preset($(e.currentTarget).data("preset")));
+			this.$w.find(".sn-sana-add").on("click", () => {
+				const v = this.$w.find(".sn-sana-input").val();
+				if (v) this.sanaQosh(v);
+			});
+			// Kalendardan tanlash — darhol qo'shiladi (yana tugma bosish shart emas)
+			this.$w.find(".sn-sana-input").on("change", (e) => {
+				if (e.target.value) this.sanaQosh(e.target.value);
+			});
+			this.$w.find(".sn-sana-bugun").on("click", () => this.sanaQosh(frappe.datetime.get_today()));
+			this.$w.find(".sn-sana-kecha").on("click", () =>
+				this.sanaQosh(frappe.datetime.add_days(frappe.datetime.get_today(), -1)));
 		}
 	}
 
@@ -115,6 +139,55 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 		this.load();
 	}
 
+	// ---- "gaplashilgan sana" filtri ----
+	sanaQosh(kun) {
+		kun = String(kun).slice(0, 10);
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(kun)) return;
+		if (!this.state.sanalar.includes(kun)) {
+			this.state.sanalar = this.state.sanalar.concat(kun).sort();
+			this.load();
+		} else {
+			this.sanaChips();
+		}
+	}
+
+	sanaOchir(kun) {
+		this.state.sanalar = this.state.sanalar.filter((x) => x !== kun);
+		this.load();
+	}
+
+	sanaTozala() {
+		if (!this.state.sanalar.length) return;
+		this.state.sanalar = [];
+		this.load();
+	}
+
+	// Tanlangan kunlar (chip) + davrdagi mavjud kunlar tanlagichi
+	sanaChips() {
+		const tanlangan = this.state.sanalar;
+		this.$w.find(".sn-sana-tanlangan").html(tanlangan.length
+			? tanlangan.slice().reverse().map((k) =>
+				`<span class="sn-sana-chip" data-sana-ochir="${k}">${this.kun(k)} <b>×</b></span>`).join("")
+				+ `<button class="tz-seg-opt sn-sana-clear">tozalash</button>`
+			: `<span class="tz-sub">tanlanmagan — butun davr ko'rinadi</span>`);
+
+		const mavjud = (this.tel && this.tel.mavjud_kunlar) || [];
+		this.$w.find(".sn-kunlar").html(mavjud.length
+			? `<span class="tz-sub">Davrdagi kunlar (bosib tanlang, bir nechtasi ham bo'ladi):</span>`
+				+ mavjud.map((k) => `<button class="sn-kun${tanlangan.includes(k.kun) ? " on" : ""}"
+					data-sana-toggle="${k.kun}" title="${k.soni} qo'ng'iroq · ${k.gaplashildi} gaplashildi">
+					${this.kun(k.kun)}<span class="sn-kun-n">${k.gaplashildi}</span></button>`).join("")
+			: "");
+
+		this.$w.find("[data-sana-ochir]").off("click").on("click", (e) =>
+			this.sanaOchir(String($(e.currentTarget).data("sana-ochir"))));
+		this.$w.find("[data-sana-toggle]").off("click").on("click", (e) => {
+			const k = String($(e.currentTarget).data("sana-toggle"));
+			this.state.sanalar.includes(k) ? this.sanaOchir(k) : this.sanaQosh(k);
+		});
+		this.$w.find(".sn-sana-clear").off("click").on("click", () => this.sanaTozala());
+	}
+
 	setPeriod(from_date, to_date) {
 		this.state.from_date = from_date;
 		this.state.to_date = to_date;
@@ -124,7 +197,10 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 	// ======================= ma'lumot =======================
 	load() {
 		this.$w.find(".sn-body").html(`<div class="tz-loader">Yuklanyapti…</div>`);
-		const args = { from_date: this.state.from_date, to_date: this.state.to_date };
+		const args = {
+			from_date: this.state.from_date, to_date: this.state.to_date,
+			sanalar: JSON.stringify(this.state.sanalar),
+		};
 		Promise.all([
 			frappe.call({ method: `${this.M}.get_data`, args }),
 			frappe.call({ method: `${this.M}.get_telefon`, args }),
@@ -179,6 +255,7 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 
 	// ======================= chizish =======================
 	paint() {
+		if (this.withToolbar) this.sanaChips();
 		this.$w.find(".sn-kpi").html(this.kpi());
 		const t = (this.tel && this.tel.jami) || {};
 		const lenslar = [
@@ -243,7 +320,12 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 		const a = (this.aloqa && this.aloqa.jami) || {};
 		const t = (this.tel && this.tel.jami) || {};
 		const ozi = (this.aloqa && this.aloqa.faqat_ozi) || (this.tel && this.tel.faqat_ozi);
+		const sn = this.state.sanalar;
 		return `${ozi ? `<div class="empty-hint" style="padding:2px 0">Faqat o'z ko'rsatkichingiz.</div>` : ""}
+			${sn.length ? `<div class="sn-filtr-bar">Gaplashilgan sana filtri:
+				<b>${sn.slice().reverse().map((k) => this.kun(k)).join(", ")}</b>
+				— sahifadagi hamma bo'lim (menejerlar, o'quvchilar, ota-ona takliflari)
+				faqat shu kun${sn.length > 1 ? "lar" : ""}dagi gaplashishlarni ko'rsatyapti.</div>` : ""}
 			<div class="tz-sotuv-kpi">
 				<div class="k"><span class="l">Suhbatlar</span><span class="v">${this.fmt(t.gaplashildi)}</span>
 					<span class="s">${this.fmt(t.qongiroq)} qo'ng'iroqdan · ${this.fmt(t.daqiqa)} daqiqa</span></div>
@@ -350,7 +432,11 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 				g.mavzu = q.mavzu || q.natija || "";
 			}
 		}
-		const rows = Object.values(guruh).sort((a, b) => b.soni - a.soni).map((g) => `
+		// Oxirgi gaplashilgan sana bo'yicha: eng yaqinda gaplashilgani tepada
+		const rows = Object.values(guruh)
+			.sort((a, b) => String(b.oxirgi || "").localeCompare(String(a.oxirgi || ""))
+				|| b.soni - a.soni)
+			.map((g) => `
 			<tr><td>${g.student ? `<a href="/app/student/${encodeURIComponent(g.student)}" target="_blank">${this.esc(g.nomi)}</a>`
 					: this.esc(g.nomi)}<div class="tz-sub">${this.esc(g.sinf || "")}</div></td>
 				<td class="r">${this.fmt(g.soni)}</td>
@@ -364,7 +450,7 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 						title="Qarzdorlik panelida ochish">qarzdorlik ↗</a>` : ""}</td></tr>`).join("");
 		return `<div class="tbl-wrap"><table class="tz-sotuv-tbl">
 			<thead><tr><th>Kim bilan</th><th class="r">Qo'ng'iroq</th><th class="r">Gaplashdi</th>
-				<th class="r">Daqiqa</th><th>Oxirgi</th><th>Nima haqida (AI)</th>
+				<th class="r">Daqiqa</th><th>Oxirgi ↓</th><th>Nima haqida (AI)</th>
 				<th class="r">Taklif</th><th></th></tr></thead>
 			<tbody>${rows || `<tr><td colspan="8" class="empty-hint">Suhbat yo'q</td></tr>`}</tbody></table></div>`;
 	}
@@ -425,12 +511,14 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 
 		return `<div class="card">
 			<div class="hd"><div><h3>O'quvchilar — kim bilan nima haqida gaplashildi</h3>
-				<div class="meta">Qatorni bosing: shu oila bilan bo'lgan hamma suhbat (ovoz, matn, AI tahlil)
+				<div class="meta">Oxirgi gaplashilgan sana bo'yicha tartiblangan: eng yaqinda
+					gaplashilganlar tepada, undan oldin gaplashilganlar pastda.
+					Qatorni bosing: shu oila bilan bo'lgan hamma suhbat (ovoz, matn, AI tahlil)
 					va menejer kommentlari ochiladi</div></div>
 				<div class="tz-nach-tools"><button class="tz-seg-opt" data-csv="oquvchi">⬇ CSV</button></div></div>
 			<div class="tbl-wrap"><table class="tz-sotuv-tbl sn-master">
 				<thead><tr><th>O'quvchi</th><th class="r">Gaplashildi</th><th class="r">Suhbat</th>
-					<th>Menejer(lar)</th><th>Oxirgi</th><th>Nima haqida (AI)</th>
+					<th>Menejer(lar)</th><th>Oxirgi ↓</th><th>Nima haqida (AI)</th>
 					<th class="r">Qarz</th><th class="r">Taklif</th></tr></thead>
 				<tbody>${rows || `<tr><td colspan="8" class="empty-hint">Qo'ng'iroqlar o'quvchilarga bog'lanmadi</td></tr>`}</tbody>
 			</table></div></div>`;
@@ -455,7 +543,7 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 					tadbir, sharoit). To'lov bo'yicha e'tirozlar bu yerga kirmaydi.</div></div>
 				<div class="tz-nach-tools"><button class="tz-seg-opt" data-csv="taklif">⬇ CSV</button></div></div>
 			<div class="tbl-wrap"><table class="tz-sotuv-tbl">
-				<thead><tr><th>Sana</th><th>O'quvchi</th><th>Menejer</th><th>Taklif / shikoyat</th>
+				<thead><tr><th>Sana ↓</th><th>O'quvchi</th><th>Menejer</th><th>Taklif / shikoyat</th>
 					<th>Mijoz holati</th><th></th></tr></thead>
 				<tbody>${rows || `<tr><td colspan="6" class="empty-hint">Bu davrda taklif/shikoyat qayd etilmagan</td></tr>`}</tbody>
 			</table></div></div>`;

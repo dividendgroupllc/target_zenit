@@ -30,7 +30,7 @@ app_license = "mit"
 app_include_css = [
 	"/assets/target_zenit/css/dars_audio.css?v=20261015",
 	# Sotuv nazorati ko'rinishi (sahifa + investor dashboard bo'limi)
-	"/assets/target_zenit/css/sotuv_nazorati_view.css?v=20261028",
+	"/assets/target_zenit/css/sotuv_nazorati_view.css?v=20261030",
 ]
 # ?v= — brauzer keshini yangilash uchun (fayl o'zgarganda raqamni oshiring)
 app_include_js = [
@@ -45,7 +45,7 @@ app_include_js = [
 	"/assets/target_zenit/js/dars_audio.js?v=20261015",
 	# Sotuv nazorati: bitta ko'rinish — /app/sotuv-nazorati sahifasi ham,
 	# investor dashboardning "Sotuv nazorati" bo'limi ham shuni ishlatadi
-	"/assets/target_zenit/js/sotuv_nazorati_view.js?v=20261028b",
+	"/assets/target_zenit/js/sotuv_nazorati_view.js?v=20261030",
 ]
 
 # include js, css files in header of web template

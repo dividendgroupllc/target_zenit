@@ -1561,6 +1561,93 @@ def test_sotuv_telefon_kesimi(case="QI-2026-145130"):
 		print(f"({len(yaratilgan)} sinov qo'ng'irog'i o'chirildi)")
 
 
+def test_sotuv_sana_filtri(case="QI-2026-145130"):
+	"""«Gaplashilgan sana» filtri: bitta kun, bir nechta kun va tartib.
+
+	Tekshiradi: tanlangan kun(lar)dan boshqa suhbat tushmasligi, davr
+	avtomatik shu kunlarga sozlanishi, `mavjud_kunlar` filtrdan qat'iy nazar
+	to'liq qolishi (tanlagich yo'qolib qolmasin) va o'quvchilar oxirgi
+	gaplashilgan sana bo'yicha (yangi tepada) tartiblanishi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_sotuv_sana_filtri
+	"""
+	from frappe.utils import add_days, add_to_date, now_datetime, today
+
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+	from target_zenit.target_zenit.page.sotuv_nazorati import sotuv_nazorati as sn
+
+	frappe.set_user("Administrator")
+	qi = frappe.db.get_value("Qarz Ishi", case, ["student", "payer_phone"], as_dict=True)
+	if not qi:      # sinov bazasida aniq ish bo'lmasa — telefoni bor birinchisi
+		qi = frappe.db.get_value(
+			"Qarz Ishi", {"payer_phone": ["is", "set"]},
+			["name", "student", "payer_phone"], as_dict=True)
+		assert qi, "telefoni bor Qarz Ishi topilmadi"
+		case = qi.name
+	raqam = next(iter(panel._case_raqamlar(qi.student, qi.payer_phone)))
+	print(f"sinov ishi: {case}")
+	user = frappe.db.get_value("User", {"enabled": 1, "name": ["like", "%menejer%"]}, "name") or "Administrator"
+
+	# Uch xil kunga bittadan suhbat: kecha, 3 kun oldin, 5 kun oldin
+	kunlar = [add_days(today(), -1), add_days(today(), -3), add_days(today(), -5)]
+	yaratilgan = []
+	try:
+		for i, kun in enumerate(kunlar):
+			d = frappe.get_doc({
+				"doctype": "Telefon Qongirogi", "manba": "Android",
+				"asterisk_uniqueid": f"dev-sana-{i}-{frappe.generate_hash(length=6)}",
+				"yonalish": "Chiquvchi",
+				"boshlandi": add_to_date(now_datetime(), days=-(2 * i + 1), hours=-1),
+				"tashqi_raqam": raqam, "tugash_sababi": "Javob berildi",
+				"suhbat_vaqti": 60 + i, "yozuv_bor": 1, "fayl_yoli": "dev/sinov.mp3",
+				"holat": "Tahlil qilindi", "foydalanuvchi": user,
+				"ai_xulosa": f"MAVZU: Sinov {i}\nNATIJA: Gaplashildi\n"
+				             "TAKLIF VA SHIKOYAT: Taklif yo'q\nMIJOZ HOLATI: Neytral",
+			}).insert(ignore_permissions=True)
+			yaratilgan.append(d.name)
+		frappe.db.commit()
+
+		xom = {"from_date": add_days(today(), -30), "to_date": today()}
+
+		# 1) Bitta kun
+		bir = sn.get_telefon(**xom, sanalar=[kunlar[1]])
+		olingan = {str(q["boshlandi"])[:10] for q in bir["qongiroqlar"]}
+		print(f"1 KUN {kunlar[1]}: qo'ng'iroq={bir['jami']['qongiroq']} "
+		      f"kunlar={sorted(olingan)} davr={bir['from_date']}..{bir['to_date']}")
+		assert olingan == {kunlar[1]}, f"boshqa kun tushdi: {olingan}"
+		assert bir["from_date"] == bir["to_date"] == kunlar[1], "davr kunga sozlanmadi"
+		assert bir["sanalar"] == [kunlar[1]], "sanalar qaytmadi"
+		assert len(bir["mavjud_kunlar"]) >= 3, "tanlagich kunlari filtrda qisqarib qoldi"
+
+		# 2) Ikki kun (teskari tartibda berilsa ham)
+		ikki = sn.get_telefon(**xom, sanalar=f'["{kunlar[0]}", "{kunlar[2]}"]')
+		olingan = {str(q["boshlandi"])[:10] for q in ikki["qongiroqlar"]}
+		print(f"2 KUN: kunlar={sorted(olingan)} davr={ikki['from_date']}..{ikki['to_date']}")
+		assert olingan == {kunlar[0], kunlar[2]}, f"kunlar noto'g'ri: {olingan}"
+		assert kunlar[1] not in olingan, "tanlanmagan kun ham tushdi"
+
+		# 3) Tartib: oxirgi gaplashilgan tepada
+		hammasi = sn.get_telefon(**xom)
+		tartib = [str(o["oxirgi"]) for o in hammasi["oquvchilar"]]
+		assert tartib == sorted(tartib, reverse=True), "o'quvchilar sana bo'yicha tartiblanmadi"
+		print(f"TARTIB: {len(tartib)} o'quvchi, eng tepada {tartib[0][:16]}")
+
+		# 4) Panel yozuvlari (get_data) ham shu filtrni tushunadi
+		a = sn.get_data(**xom, sanalar=[kunlar[1]])
+		a_kunlar = {str(x["creation"])[:10] for x in a["aloqalar"]}
+		assert not a_kunlar or a_kunlar == {kunlar[1]}, f"get_data filtri ishlamadi: {a_kunlar}"
+		print(f"GET_DATA 1 kun: yozuv={a['jami']['qongiroq']} kunlar={sorted(a_kunlar)}")
+
+		# 5) Axlat kiritish sahifani buzmasin
+		assert sn._sanalar('["salom", "", "2026-10-06", "2026-10-06"]') == ["2026-10-06"]
+		assert sn._sanalar(None) == [] and sn._sanalar("[]") == []
+		print("\nOK — sana filtri bitta/bir nechta kunda ham to'g'ri ishlayapti")
+	finally:
+		for n in yaratilgan:
+			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print(f"({len(yaratilgan)} sinov qo'ng'irog'i o'chirildi)")
+
+
 def test_suhbat_matni(user="investor@gmail.com"):
 	"""Suhbat matni talab bo'yicha ochiladimi (ro'yxatda yuborilmaydi)."""
 	from frappe.utils import add_to_date, now_datetime

@@ -7,8 +7,10 @@
 # Manbalar: Aloqa Yozuvi, Qarz Ishi, Tolov Vadasi, Payment Entry.
 from __future__ import annotations
 
+import json
+
 import frappe
-from frappe.utils import add_days, cint, flt, today
+from frappe.utils import add_days, cint, flt, getdate, today
 
 # Sahifani ocha oladigan rollar: rahbariyat/nazorat + sotuv bo'limi.
 # Sotuv menejeri o'z statistikasini ko'radi (`_oz_ishini_korsin`), qolganlar —
@@ -38,6 +40,50 @@ def _guard():
 SOTUV_YOPIQ = ("Yopildi - To'landi", "Yopildi - Boshqa")
 
 
+def _sanalar(sanalar) -> list[str]:
+    """"Gaplashilgan sana" filtri — tanlangan kunlar ro'yxati.
+
+    Investor bir yoki bir nechta kun tanlashi mumkin (masalan 06.10 va 07.10) —
+    shunda sahifaning HAMMA bo'limi (menejerlar, o'quvchilar, takliflar) faqat
+    o'sha kunlarda bo'lgan gaplashishlarni ko'rsatadi. JSON ro'yxat yoki
+    vergul bilan ajratilgan matn qabul qilinadi; noto'g'ri qiymat tashlanadi."""
+    if not sanalar:
+        return []
+    if isinstance(sanalar, str):
+        matn = sanalar.strip()
+        if not matn:
+            return []
+        try:
+            sanalar = json.loads(matn) if matn.startswith("[") else matn.split(",")
+        except ValueError:
+            sanalar = matn.split(",")
+    if not isinstance(sanalar, (list, tuple, set)):
+        sanalar = [sanalar]
+    out = []
+    for x in sanalar:
+        x = str(x or "").strip()[:10]
+        if not x:
+            continue
+        try:
+            kun = str(getdate(x))
+        except Exception:
+            continue
+        if kun not in out:
+            out.append(kun)
+    return sorted(out)
+
+
+def _davr(from_date, to_date, kunlar):
+    """Hisob davri. Tanlangan kunlar bo'lsa davr AYNAN o'sha kunlar oralig'i —
+    shunda investor avval davr oralig'ini to'g'rilashi shart emas, tanlagan kuni
+    oraliqdan tashqarida bo'lsa ham ko'rinadi."""
+    to_date = to_date or today()
+    from_date = from_date or add_days(to_date, -30)
+    if kunlar:
+        return kunlar[0], kunlar[-1]
+    return from_date, to_date
+
+
 def _oz_ishini_korsin() -> bool:
     """Sotuv menejeri faqat o'z statistikasini ko'radi; rahbar/investor — hammani."""
     roles = {r.lower() for r in frappe.get_roles()}
@@ -47,11 +93,13 @@ def _oz_ishini_korsin() -> bool:
 
 
 @frappe.whitelist()
-def get_data(from_date=None, to_date=None, masul=None, limit=500):
-    """Menejerlar kesimi (leaderboard) + qo'ng'iroqlar lentasi (kontrol-list)."""
+def get_data(from_date=None, to_date=None, masul=None, limit=500, sanalar=None):
+    """Menejerlar kesimi (leaderboard) + qo'ng'iroqlar lentasi (kontrol-list).
+
+    `sanalar` — "gaplashilgan sana" filtri (bir yoki bir nechta kun)."""
     _guard()
-    to_date = to_date or today()
-    from_date = from_date or add_days(to_date, -30)
+    kunlar_f = _sanalar(sanalar)
+    from_date, to_date = _davr(from_date, to_date, kunlar_f)
 
     faqat_ozi = _oz_ishini_korsin()
     if faqat_ozi:
@@ -59,6 +107,9 @@ def get_data(from_date=None, to_date=None, masul=None, limit=500):
 
     shart, params = ["ay.creation BETWEEN %(f)s AND %(t)s"], {
         "f": f"{from_date} 00:00:00", "t": f"{to_date} 23:59:59"}
+    if kunlar_f:
+        shart.append("DATE(ay.creation) IN %(kunlar)s")
+        params["kunlar"] = tuple(kunlar_f)
     if masul:
         shart.append("ay.masul = %(m)s")
         params["m"] = masul
@@ -93,7 +144,7 @@ def get_data(from_date=None, to_date=None, masul=None, limit=500):
         a["kech_kiritilgan"] = 1 if flt(a.kechikish_min) >= 120 else 0
 
     # --- menejerlar kesimi ---
-    jadval = _sotuv_leaderboard(from_date, to_date, masul)
+    jadval = _sotuv_leaderboard(from_date, to_date, masul, kunlar_f)
 
     jami = {
         "qongiroq": len(aloqalar),
@@ -107,6 +158,7 @@ def get_data(from_date=None, to_date=None, masul=None, limit=500):
     }
     return {
         "from_date": from_date, "to_date": to_date,
+        "sanalar": kunlar_f,
         "faqat_ozi": faqat_ozi,
         "jami": jami,
         "menejerlar": jadval,
@@ -116,10 +168,16 @@ def get_data(from_date=None, to_date=None, masul=None, limit=500):
     }
 
 
-def _sotuv_leaderboard(from_date, to_date, masul=None):
-    """Menejerlar kesimi: faollik + natija yonma-yon (jahon amaliyoti)."""
+def _sotuv_leaderboard(from_date, to_date, masul=None, kunlar_f=None):
+    """Menejerlar kesimi: faollik + natija yonma-yon (jahon amaliyoti).
+
+    `kunlar_f` berilsa — faqat o'sha kunlardagi gaplashishlar, va'dalar va
+    to'lovlar hisobga olinadi (sahifadagi yagona "gaplashilgan sana" filtri)."""
+    kunlar_f = kunlar_f or []
+    kun_shart = " AND DATE(ay.creation) IN %(kunlar)s" if kunlar_f else ""
     m_shart = " AND ay.masul = %(m)s" if masul else ""
-    params = {"f": f"{from_date} 00:00:00", "t": f"{to_date} 23:59:59", "m": masul}
+    params = {"f": f"{from_date} 00:00:00", "t": f"{to_date} 23:59:59", "m": masul,
+              "kunlar": tuple(kunlar_f)}
 
     # 1) Faollik: qo'ng'iroqlar, ulanish, noyob ota-onalar, sifat
     faollik = frappe.db.sql(
@@ -135,7 +193,7 @@ def _sotuv_leaderboard(from_date, to_date, masul=None):
                    MAX(ay.creation) oxirgi_faollik
             FROM `tabAloqa Yozuvi` ay
             LEFT JOIN `tabQarz Ishi` qi ON qi.name = ay.qarz_ishi
-            WHERE ay.creation BETWEEN %(f)s AND %(t)s {m_shart}
+            WHERE ay.creation BETWEEN %(f)s AND %(t)s {kun_shart} {m_shart}
             GROUP BY ay.masul""",
         params, as_dict=True)
 
@@ -162,9 +220,11 @@ def _sotuv_leaderboard(from_date, to_date, masul=None):
                    SUM(tv.holat = 'Buzildi') buzildi
             FROM `tabTolov Vadasi` tv
             WHERE tv.vada_sana BETWEEN %(f)s AND %(t)s
+              {' AND tv.vada_sana IN %(kunlar)s' if kunlar_f else ''}
               AND tv.holat != 'Bekor' {' AND tv.masul = %(m)s' if masul else ''}
             GROUP BY tv.masul""",
-        {"f": from_date, "t": to_date, "m": masul}, as_dict=True)
+        {"f": from_date, "t": to_date, "m": masul, "kunlar": tuple(kunlar_f)},
+        as_dict=True)
 
     # 4) Yig'ilgan to'lov — ishning JORIY mas'uliga yoziladi (kelishilgan qoida)
     yigildi = frappe.db.sql(
@@ -177,9 +237,11 @@ def _sotuv_leaderboard(from_date, to_date, masul=None):
             WHERE pe.docstatus = 1 AND pe.payment_type = 'Receive'
               AND pe.party_type = 'Customer'
               AND pe.posting_date BETWEEN %(f)s AND %(t)s
+              {' AND pe.posting_date IN %(kunlar)s' if kunlar_f else ''}
               {' AND qi.masul = %(m)s' if masul else ''}
             GROUP BY qi.masul""",
-        {"f": from_date, "t": to_date, "m": masul}, as_dict=True)
+        {"f": from_date, "t": to_date, "m": masul, "kunlar": tuple(kunlar_f)},
+        as_dict=True)
 
     user_nomlari = {u.name: (u.full_name or u.name) for u in frappe.get_all(
         "User", fields=["name", "full_name", "enabled"], limit_page_length=0)}
@@ -318,17 +380,24 @@ def _raqam_xarita() -> dict:
 
 
 @frappe.whitelist()
-def get_telefon(from_date=None, to_date=None, masul=None, limit=1200):
+def get_telefon(from_date=None, to_date=None, masul=None, limit=1200, sanalar=None):
     """Telefon suhbatlari: menejer kesimi, kunlik faollik, o'quvchilar kesimi,
-    suhbatlar ro'yxati (ovoz + matn + AI) va ota-onalar takliflari."""
+    suhbatlar ro'yxati (ovoz + matn + AI) va ota-onalar takliflari.
+
+    `sanalar` — "gaplashilgan sana" filtri: faqat o'sha kun(lar)da bo'lgan
+    suhbatlar olinadi. Tanlagich uchun davrdagi hamma kun `mavjud_kunlar` da
+    (filtrdan QAT'IY NAZAR) qaytadi."""
     _guard()
-    to_date = to_date or today()
-    from_date = from_date or add_days(to_date, -30)
+    kunlar_f = _sanalar(sanalar)
+    davr_from, davr_to = _davr(from_date, to_date, kunlar_f)
     if _oz_ishini_korsin():
         masul = frappe.session.user
 
     shart = ["tq.boshlandi BETWEEN %(f)s AND %(t)s"]
-    params = {"f": f"{from_date} 00:00:00", "t": f"{to_date} 23:59:59", "m": masul}
+    params = {"f": f"{davr_from} 00:00:00", "t": f"{davr_to} 23:59:59", "m": masul}
+    if kunlar_f:
+        shart.append("DATE(tq.boshlandi) IN %(kunlar)s")
+        params["kunlar"] = tuple(kunlar_f)
     if masul:
         shart.append("tq.foydalanuvchi = %(m)s")
 
@@ -343,6 +412,19 @@ def get_telefon(from_date=None, to_date=None, masul=None, limit=1200):
             ORDER BY tq.boshlandi DESC
             LIMIT {int(limit)}""",
         params, as_dict=True)
+
+    # Tanlagich uchun: xom davr oralig'idagi hamma kun va qo'ng'iroq soni.
+    xom_to = to_date or today()
+    xom_from = from_date or add_days(xom_to, -30)
+    mavjud_kunlar = frappe.db.sql(
+        f"""SELECT DATE(tq.boshlandi) kun, COUNT(*) soni,
+                   SUM(tq.tugash_sababi = 'Javob berildi' AND tq.suhbat_vaqti > 0) gaplashildi
+            FROM `tabTelefon Qongirogi` tq
+            WHERE tq.boshlandi BETWEEN %(f)s AND %(t)s
+              {' AND tq.foydalanuvchi = %(m)s' if masul else ''}
+            GROUP BY kun ORDER BY kun DESC""",
+        {"f": f"{xom_from} 00:00:00", "t": f"{xom_to} 23:59:59", "m": masul},
+        as_dict=True)
 
     xarita = _raqam_xarita()
     userlar = {u.name: (u.full_name or u.name) for u in frappe.get_all(
@@ -449,11 +531,18 @@ def get_telefon(from_date=None, to_date=None, masul=None, limit=1200):
         o["masul"] = qi.masul if qi else ""
 
     menejerlar = sorted(menejer.values(), key=lambda x: (-x["qongiroq"], -x["daqiqa"]))
-    oquvchilar = sorted(oquvchi.values(), key=lambda x: (-x["qongiroq"], -x["daqiqa"]))
+    # O'quvchilar: OXIRGI gaplashilgan sana bo'yicha — eng yaqinda gaplashilgani
+    # tepada, undan oldin gaplashilganlar pastda (kelishilgan tartib).
+    oquvchilar = sorted(oquvchi.values(),
+                        key=lambda x: (str(x["oxirgi"] or ""), x["qongiroq"]),
+                        reverse=True)
     kunlar = sorted(kunlik)
 
     return {
-        "from_date": from_date, "to_date": to_date,
+        "from_date": davr_from, "to_date": davr_to,
+        "sanalar": kunlar_f,
+        "mavjud_kunlar": [{"kun": str(k.kun), "soni": cint(k.soni),
+                           "gaplashildi": cint(k.gaplashildi)} for k in mavjud_kunlar],
         "faqat_ozi": bool(masul),
         "jami": {
             "qongiroq": len(qongiroqlar),
