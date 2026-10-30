@@ -1591,7 +1591,7 @@ def test_sotuv_sana_filtri(case="QI-2026-145130"):
 	kunlar = [add_days(today(), -1), add_days(today(), -3), add_days(today(), -5)]
 	yaratilgan = []
 	try:
-		for i, kun in enumerate(kunlar):
+		for i in range(len(kunlar)):
 			d = frappe.get_doc({
 				"doctype": "Telefon Qongirogi", "manba": "Android",
 				"asterisk_uniqueid": f"dev-sana-{i}-{frappe.generate_hash(length=6)}",
