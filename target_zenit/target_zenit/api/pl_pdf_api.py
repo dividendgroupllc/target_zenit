@@ -143,7 +143,7 @@ def generate_pl_pdf(filters):
         if c["fieldname"] not in skip
         and c.get("fieldtype") == "Currency"
         and c["fieldname"] != "total"
-    ][:MAX_COLS]
+    ][-MAX_COLS:]
     n_cols = len(col_keys)
 
     vals = extract_values(rows, col_keys, abbr)

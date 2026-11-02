@@ -18,3 +18,4 @@ target_zenit.patches.instructor_naming_series #2026-10-13 Instructor ID ism satr
 target_zenit.patches.qarz_masul_sotuvga
 target_zenit.patches.ism_sync_backfill #2026-10-21 Instructor va barcha ism nusxalari Employee'dan
 target_zenit.patches.backfill_qarz_ishi_oxirgi_komment #2026-10-21 ishga oxirgi aloqa izohi
+target_zenit.patches.qarz_grace_nol #2026-11-02 nachisleniya kunidan qarzdorlik

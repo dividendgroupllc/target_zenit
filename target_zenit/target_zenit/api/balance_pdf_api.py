@@ -207,7 +207,7 @@ def generate_balance_pdf(filters):
         if c["fieldname"] not in skip_fields
         and c.get("fieldtype") == "Currency"
         and c["fieldname"] != "total"
-    ][:MAX_COLS]
+    ][-MAX_COLS:]
     n_cols = len(col_keys)
 
     vals = extract_values(rows, col_keys, abbr)

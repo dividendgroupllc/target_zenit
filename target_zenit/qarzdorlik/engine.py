@@ -37,7 +37,9 @@ def _settings():
 	istisno = s.istisno_itemlar if s.istisno_itemlar is not None else "O'qitish xizmati"
 	kuni = int(s.tolov_kuni or 0) or 5
 	return frappe._dict(
-		grace_days=s.grace_days if s.grace_days is not None else 3,
+		# 0 = imtiyoz yo'q: nachisleniya kuni kelgan zahoti qarzdorlik
+		# paneliga tushadi (operatorlar yig'ishni darhol boshlaydi)
+		grace_days=s.grace_days if s.grace_days is not None else 0,
 		tolov_kuni=min(max(kuni, 1), 28),
 		tolerance=flt(s.tolerance) or 1000,
 		min_threshold=flt(s.min_threshold) or 10000,
@@ -420,9 +422,10 @@ def sync_tuition(tr, cfg) -> bool:
 		a = acc.pop(oy, None)
 		for i, r in enumerate(qatorlar):
 			vals = {}
-			# Muddat hamma oyda bir xil qoidada — shartnomadagi to'lov kuni
-			# (kelgusi oylarda ham ko'rinib tursin).
-			muddat = _oy_muddati(oy, cfg)
+			# Muddat: nachisleniya QILINGAN KUNdan boshlab qarz hisoblanadi
+			# (operatorlar yig'ishni darhol boshlasin); nachisleniya hali
+			# yo'q oylarda — shartnomadagi to'lov kuni (reja ko'rinishi uchun).
+			muddat = getdate(a["sana"]) if (a and i == 0) else _oy_muddati(oy, cfg)
 			if getdate(r.due_date) != muddat:
 				vals["due_date"] = muddat
 			# Shartnomadagi taxminiy summa bir marta saqlanadi (keyin o'zgarmaydi)
@@ -456,12 +459,13 @@ def sync_tuition(tr, cfg) -> bool:
 				changed = True
 
 	# Rejada qatori yo'q nachisleniyalar -> yangi oylik qator
+	# (muddat — nachisleniya qilingan kun)
 	for oy, a in sorted(acc.items()):
 		tr.append(
 			"oylar",
 			{
 				"oy_label": _oy_label(oy),
-				"due_date": _oy_muddati(oy, cfg),
+				"due_date": getdate(a["sana"]),
 				"amount": flt(a["amount"]),
 				"holat": "Kutilmoqda",
 				"nachisleniya": ", ".join(sorted(a["sis"])),
@@ -1218,10 +1222,11 @@ def _sync_case(tr, qarz: float, eng_eski):
 		)
 		return
 
-	# 3) Yangi ish ochish: threshold + grace
+	# 3) Yangi ish ochish: threshold + grace (grace 0 = kutish yo'q,
+	# muddati kelgan kuniyoq ish ochiladi)
 	if qarz < cfg.min_threshold:
 		return
-	if eng_eski and date_diff(nowdate(), eng_eski) <= cfg.grace_days:
+	if cfg.grace_days and eng_eski and date_diff(nowdate(), eng_eski) <= cfg.grace_days:
 		return
 
 	student = frappe.db.get_value(
@@ -1451,14 +1456,15 @@ def _charge_rows_for(customer: str, cfg) -> list[dict]:
 		}
 		for r in rows
 	]
-	# O'quv to'lovi nachisleniyasi — oylik qator (keyin sync_tuition yuritadi)
+	# O'quv to'lovi nachisleniyasi — oylik qator (keyin sync_tuition yuritadi);
+	# muddat — nachisleniya qilingan kun
 	for oy, a in sorted(
 		_tuition_accruals(customer, f"{_joriy_oquv_yili().split('-')[0]}-07-01", cfg).items()
 	):
 		out.append(
 			{
 				"oy_label": _oy_label(oy),
-				"due_date": _oy_muddati(oy, cfg),
+				"due_date": getdate(a["sana"]),
 				"amount": flt(a["amount"]),
 				"nachisleniya": ", ".join(sorted(a["sis"])),
 				"izoh": "O'quv to'lovi",
