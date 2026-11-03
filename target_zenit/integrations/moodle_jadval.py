@@ -16,8 +16,10 @@
 
 from __future__ import annotations
 
+import html
+
 import frappe
-from frappe.utils import now_datetime
+from frappe.utils import cstr, now_datetime, strip_html
 
 from target_zenit.integrations.moodle import _call, _settings
 from target_zenit.integrations.moodle_kurs import _oquv_yili
@@ -89,6 +91,24 @@ def _darslar(yil):
 	return darslar
 
 
+def _toza_nom(matn, zaxira="Bayram"):
+	"""Bayram nomini Moodle qabul qiladigan SOF MATNGA aylantiradi.
+
+	NEGA KERAK: `Holiday.description` — `Text Editor` maydoni, ichida HTML
+	bo'ladi (`<div class="ql-editor"><p>...</p></div>`). Moodle web-servisi
+	`PARAM_TEXT` ni QAT'IY tekshiradi:
+
+	    if ((string) $param !== (string) $cleaned) throw invalid_parameter_exception
+
+	ya'ni HTML tozalangach qiymat o'zgaradi va BUTUN sinxron
+	`invalidparameter` bilan yiqiladi (2026-11-03 da shunday bo'lgan).
+	"""
+	matn = strip_html(cstr(matn or ""))
+	matn = html.unescape(matn).replace("\xa0", " ")
+	matn = " ".join(matn.split())          # ko'p bo'shliq va qator uzilishlari
+	return (matn or zaxira)[:255]
+
+
 def _kalendar(yil, holiday_list=None):
 	"""Chorak oraliqlari + bayramlar. Sahifa sanalarni shular asosida hisoblaydi."""
 	kalendar = []
@@ -119,7 +139,7 @@ def _kalendar(yil, holiday_list=None):
 			if h.holiday_date:
 				kalendar.append({
 					"entrytype": "holiday",
-					"name": (h.description or "Bayram")[:255],
+					"name": _toza_nom(h.description),
 					"startdate": str(h.holiday_date),
 					"enddate": str(h.holiday_date),
 				})
