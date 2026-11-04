@@ -326,6 +326,9 @@ scheduler_events = {
 		"target_zenit.qarzdorlik.engine.nightly",
 		# Telefoniya: saqlash muddati o'tgan ovoz yozuvlarini o'chirish
 		"target_zenit.telefoniya.api.eski_yozuvlarni_ochir",
+		# Murojaat: mas'ulsiz qolgan ochiq murojaatlarni rahbarga biriktirish
+		# (rol keyin tayinlangan hollar uchun o'z-o'zini tuzatish)
+		"target_zenit.murojaat.api.biriktirilmaganlarni_biriktir",
 	],
 	"cron": {
 		# Telefoniya: transkript qilinmay qolgan qo'ng'iroq yozuvlarini yig'ib olish.

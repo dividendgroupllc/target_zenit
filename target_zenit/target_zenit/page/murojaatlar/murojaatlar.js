@@ -33,6 +33,7 @@ class TZMurojaatPanel {
 		this.fYonalish = "";
 		this.fKategoriya = "";
 		this.fTuri = "";
+		this.fMasul = "";
 		this.q = "";
 		this.havola = this.havola_oqi();
 		this.skeleton();
@@ -77,6 +78,17 @@ class TZMurojaatPanel {
 	}
 	rol() { return (this.data && this.data.rol) || {}; }
 	rahbarmi() { const r = this.rol(); return !!(r.ceo || r.direktor); }
+	// Faqat kuzatuvchi (investor, operator, moliya): ko'radi, yozmaydi.
+	// Server ham to'xtatadi — bu shunchaki tugmalarni yashirish uchun.
+	yozamanmi() { return !!this.rol().yozish; }
+	// User ismi: ro'yxat/karta hech qachon email ko'rsatmasligi kerak
+	masul_nomi(user) {
+		if (!user) return "";
+		const royxat = (this.data && this.data.masullar) || [];
+		const rahbar = (this.data && this.data.rahbarlar) || [];
+		const topildi = royxat.find((m) => m.user === user) || rahbar.find((m) => m.user === user);
+		return (topildi && topildi.nomi) || user;
+	}
 
 	// ================= skeleton =================
 	skeleton() {
@@ -100,6 +112,7 @@ class TZMurojaatPanel {
 				yonalish: this.fYonalish || null,
 				kategoriya: this.fKategoriya || null,
 				turi: this.fTuri || null,
+				masul: this.fMasul || null,
 				qidiruv: this.q || null,
 			},
 			freeze: !!birinchi,
@@ -127,8 +140,9 @@ class TZMurojaatPanel {
 	render_kpi() {
 		const s = (this.data.stats) || {};
 		const r = this.rol();
-		const kim = r.hammasi ? __("CEO + Direktor")
+		let kim = r.hammasi ? __("CEO + Direktor")
 			: (r.yonalishlar || []).join(" / ") || __("Yuborganlarim");
+		if (r.kuzatuv) kim = __("hammasi — faqat ko'rish");
 		const k = (lab, val, sub, cls) => `
 			<div class="card kpi ${cls || ""}">
 				<div class="lab">${lab}</div>
@@ -140,6 +154,7 @@ class TZMurojaatPanel {
 				${k(__("Ochiq murojaat"), this.fmt(s.ochiq), kim)}
 				${k(__("Ko'rilmagan"), this.fmt(s.korilmagan), __("hali ochilmagan"), s.korilmagan ? "warn" : "")}
 				${k(__("Muddati o'tdi"), this.fmt(s.muddati), __("javob kechikdi"), s.muddati ? "bad" : "")}
+				${k(__("Biriktirilmagan"), this.fmt(s.biriktirilmagan), __("mas'ul rahbar tayinlanmagan"), s.biriktirilmagan ? "warn" : "")}
 				${k(__("Ota-onaga javob"), this.fmt(s.xabar_kutilmoqda), __("menejer qo'ng'iroq qilishi kerak"), s.xabar_kutilmoqda ? "warn" : "")}
 				${k(__("Bu oy yopildi"), this.fmt(s.oy_yopildi), __("{0} taklif inobatga olindi", [this.fmt(s.oy_inobat)]), "ok")}
 				${k(__("O'rtacha hal qilish"), `${s.ort_kun || 0} ${__("kun")}`, __("ochilgandan yopilgangacha"))}
@@ -203,6 +218,12 @@ class TZMurojaatPanel {
 				<select class="mur-sel" id="mur-f-kat">
 					<option value="">${__("Kategoriya: hammasi")}</option>${kats}
 				</select>
+				<select class="mur-sel" id="mur-f-masul">
+					<option value="">${__("Kim biriktirilgan: hammasi")}</option>
+					${(this.data.masullar || []).map((m) => `
+						<option value="${this.esc(m.user)}" ${this.fMasul === m.user ? "selected" : ""}>${
+							this.esc(m.nomi)} (${this.fmt(m.soni)})</option>`).join("")}
+				</select>
 				<input class="mur-search" id="mur-q" type="search"
 					placeholder="${__("O'quvchi, ota-ona, matn, MR-…")}" value="${this.esc(this.q)}">
 			</div>`);
@@ -213,6 +234,7 @@ class TZMurojaatPanel {
 		$("#mur-f-yonalish").off().on("change", (e) => { this.fYonalish = e.target.value; this.load(); });
 		$("#mur-f-turi").off().on("change", (e) => { this.fTuri = e.target.value; this.load(); });
 		$("#mur-f-kat").off().on("change", (e) => { this.fKategoriya = e.target.value; this.load(); });
+		$("#mur-f-masul").off().on("change", (e) => { this.fMasul = e.target.value; this.load(); });
 		let t = null;
 		$("#mur-q").off().on("input", (e) => {
 			clearTimeout(t); const v = e.target.value;
@@ -261,10 +283,19 @@ class TZMurojaatPanel {
 				<div class="mur-item-matn">${this.esc(x.matn || "")}</div>
 				<div class="mur-item-pod">
 					<span class="mut">${this.esc(x.kategoriya || __("kategoriya yo'q"))}</span>
-					<span class="mut">· ${this.esc(x.menejer_nomi || x.menejer || "—")}</span>
+					<span class="mut">· ${__("yubordi")}: ${this.esc(x.menejer_nomi || x.menejer || "—")}</span>
 					<span class="mut">· ${this.dt(x.suhbat_vaqti || x.ochilgan)}</span>
 					${muddat}
 					${x.yechim_turi ? `<span class="mur-pill ${QAROR_RANG[x.yechim_turi] || "mut"}">${this.esc(x.yechim_turi)}</span>` : ""}
+				</div>
+				<div class="mur-item-masul">
+					${x.masul
+						? `<span class="mur-pill ${x.holat === "Yopildi" ? "mut" : "blue"}">${
+							__("mas'ul")}: ${this.esc(x.masul_nomi || x.masul)}</span>`
+						: `<span class="mur-pill orange">${__("biriktirilmagan")} — ${
+							this.esc(x.yonaltirildi)} ${__("ko'radi")}</span>`}
+					${x.yechim_kim_nomi
+						? `<span class="mut">${__("qaror")}: ${this.esc(x.yechim_kim_nomi)}</span>` : ""}
 				</div>
 			</div>`;
 	}
@@ -275,6 +306,8 @@ class TZMurojaatPanel {
 				<div class="mur-bosh-ico">📋</div>
 				<h3>${__("Murojaatni tanlang")}</h3>
 				<p>${__("Chapdagi ro'yxatdan murojaatni bosing — ota-onaning gapi, ovoz yozuvi, oldingi suhbatlar tarixi va qaror oynasi shu yerda ochiladi.")}</p>
+				${this.rol().kuzatuv ? `<p class="mut small">${
+					__("Sizda faqat ko'rish ruxsati: barcha murojaatlarni va yechimlarni ko'rasiz, lekin yozmaysiz.")}</p>` : ""}
 			</div>`);
 	}
 
@@ -345,7 +378,11 @@ class TZMurojaatPanel {
 					<span>${__("Gaplashgan menejer")}: <b>${this.esc(m.menejer_nomi || m.menejer || "—")}</b></span>
 					<span>${__("Suhbat")}: <b>${this.dt(m.suhbat_vaqti)}</b></span>
 					<span>${__("Manba")}: <b>${this.esc(m.manba)}</b></span>
-					${m.masul ? `<span>${__("Mas'ul")}: <b>${this.esc(m.masul)}</b></span>` : ""}
+					<span>${__("Mas'ul rahbar")}: <b>${m.masul
+						? this.esc(this.masul_nomi(m.masul))
+						: __("biriktirilmagan")}</b></span>
+					${m.yechim_kim ? `<span>${__("Qaror")}: <b>${
+						this.esc(this.masul_nomi(m.yechim_kim))}</b></span>` : ""}
 				</div>
 			</div>`;
 	}
@@ -368,7 +405,7 @@ class TZMurojaatPanel {
 		const qaror_bor = !!m.yechim_turi;
 
 		let amal = "";
-		if (rahbar && !qaror_bor) {
+		if (rahbar && !qaror_bor && this.yozamanmi()) {
 			amal = `
 				<div class="mur-qaror-form">
 					<div class="mur-qaror-tugmalar">
@@ -377,11 +414,11 @@ class TZMurojaatPanel {
 					</div>
 					<div class="mut small">${__("«Inobatga olindi» — taklif o'rinli, amalga oshiriladi. «Ahamiyatsiz» — AI xato topgan, ota-onaga qo'ng'iroq qilish shart emas.")}</div>
 				</div>`;
-		} else if (!rahbar && !qaror_bor) {
+		} else if (!qaror_bor) {
 			amal = `<div class="mut">${__("Rahbar qarori kutilmoqda.")}</div>`;
 		}
 
-		const xabar_tugma = (m.holat === "Ota-onaga xabar berish")
+		const xabar_tugma = (m.holat === "Ota-onaga xabar berish" && this.yozamanmi())
 			? `<button class="mur-btn primary" id="mur-xabar">${__("Ota-onaga javob berdim → yopish")}</button>`
 			: "";
 
@@ -400,10 +437,10 @@ class TZMurojaatPanel {
 				` : amal}
 				<div class="mur-amallar">
 					${xabar_tugma}
-					${this.rahbarmi() && !yopiq ? `
+					${rahbar && this.yozamanmi() && !yopiq ? `
 						<button class="mur-btn" id="mur-uzat">${__("Boshqa rahbarga uzatish")}</button>
 						<button class="mur-btn" id="mur-masul">${__("O'zimga biriktirish")}</button>` : ""}
-					${qaror_bor && this.rahbarmi() && !yopiq
+					${qaror_bor && rahbar && this.yozamanmi() && !yopiq
 						? `<button class="mur-btn" id="mur-qaror-tahrir">${__("Qarorni tahrirlash")}</button>` : ""}
 					<button class="mur-btn ghost" id="mur-och-doc">${__("Hujjatni ochish")}</button>
 				</div>
@@ -425,11 +462,13 @@ class TZMurojaatPanel {
 				<div class="hd"><h3>${__("Izohlar — kim nima qildi")}</h3></div>
 				<div class="mur-izoh-list">${qatorlar
 					|| `<div class="mut">${__("Hali izoh yo'q")}</div>`}</div>
-				<div class="mur-izoh-yoz">
-					<textarea id="mur-izoh-matn" rows="2"
-						placeholder="${__("Izoh yozing: nima aniqlandi, kim bilan gaplashildi, nima qilinadi…")}"></textarea>
-					<button class="mur-btn primary" id="mur-izoh-btn">${__("Izoh qo'shish")}</button>
-				</div>
+				${this.yozamanmi() ? `
+					<div class="mur-izoh-yoz">
+						<textarea id="mur-izoh-matn" rows="2"
+							placeholder="${__("Izoh yozing: nima aniqlandi, kim bilan gaplashildi, nima qilinadi…")}"></textarea>
+						<button class="mur-btn primary" id="mur-izoh-btn">${__("Izoh qo'shish")}</button>
+					</div>`
+					: `<div class="mut small">${__("Sizda faqat ko'rish ruxsati bor — izoh yozish uchun rahbar yoki sotuv roli kerak.")}</div>`}
 			</div>`;
 	}
 

@@ -39,18 +39,20 @@ def rolim() -> dict:
 	ceo = admin or ROL_CEO.lower() in roles
 	direktor = admin or ROL_DIREKTOR.lower() in roles
 	sotuv = bool(roles & SOTUV_ROLLAR)
-	kuzatuv = bool(roles & KUZATUV_ROLLAR)
+	kuzatuv_rol = bool(roles & KUZATUV_ROLLAR)
+	yozish = bool(ceo or direktor or sotuv)
 	return {
 		"admin": 1 if admin else 0,
 		"ceo": 1 if ceo else 0,
 		"direktor": 1 if direktor else 0,
 		"sotuv": 1 if sotuv else 0,
-		# Faqat kuzatuvchi (yozish huquqisiz) — UI tugmalarni yashiradi
-		"kuzatuv": 1 if (kuzatuv and not (ceo or direktor or sotuv)) else 0,
-		"yozish": 1 if (ceo or direktor or sotuv) else 0,
-		# Ikki yo'nalishni ham ko'radigan odam: admin, ikki rol birga yoki
-		# kuzatuvchi (nazorat butun manzarani ko'rishi kerak)
-		"hammasi": 1 if (admin or (ceo and direktor) or (kuzatuv and not sotuv)) else 0,
+		# `kuzatuv` — UI uchun: FAQAT ko'radi (yozish roli yo'q). Ikki rol
+		# birga bo'lsa (masalan investor + sotuv menejeri) yozish ustun.
+		"kuzatuv": 1 if (kuzatuv_rol and not yozish) else 0,
+		"yozish": 1 if yozish else 0,
+		# Butun manzarani ko'radiganlar: admin, ikki rahbar roli birga yoki
+		# nazorat roli (investor/operator/moliya) — ularning ishi kuzatish
+		"hammasi": 1 if (admin or (ceo and direktor) or kuzatuv_rol) else 0,
 		"yonalishlar": [y for y, bor in (("CEO", ceo), ("Direktor", direktor)) if bor],
 		"user": frappe.session.user,
 	}
@@ -204,6 +206,18 @@ def murojaat_yarat(
 	)
 	doc.insert(ignore_permissions=ignore_permissions)
 
+	# Mas'ul `validate` ichida avtomatik qo'yiladi (murojaat.avto_masul) —
+	# timeline'da ham izi qolsin, "kim qachon biriktirildi" savoliga javob
+	if doc.masul:
+		izoh_qosh(
+			doc,
+			f"Avtomatik biriktirildi: {doc.yonaltirildi} — "
+			f"{frappe.db.get_value('User', doc.masul, 'full_name') or doc.masul}",
+			turi="Yo'naltirish",
+			kim=menejer or frappe.session.user,
+		)
+		doc.save(ignore_permissions=True)
+
 	# Qarz ishida ham iz qolsin: menejer kartani ochganda ko'rinadi
 	if qarz_ishi:
 		frappe.get_doc("Qarz Ishi", qarz_ishi).add_comment(
@@ -217,7 +231,7 @@ def murojaat_yarat(
 @frappe.whitelist()
 def yonaltir(payload):
 	"""Qarzdorlik panelidan «Rahbarga yo'naltirish»."""
-	_guard()
+	_yozish_guard(_guard())
 	if isinstance(payload, str):
 		payload = json.loads(payload)
 
@@ -244,14 +258,13 @@ def kategoriya_royxati():
 
 # ================================================================== amallar
 def _ol(name: str, yozish: bool = False):
+	"""Hujjatni ko'rish ruxsati bilan oladi. `yozish=True` bo'lsa — faqat
+	kuzatuvchi rollar (investor/operator) shu yerda to'xtatiladi."""
 	r = _guard()
+	if yozish:
+		_yozish_guard(r)
 	doc = frappe.get_doc("Murojaat", name)
-	if r["hammasi"]:
-		return doc, r
-	if (r["ceo"] or r["direktor"]) and doc.yonaltirildi in r["yonalishlar"]:
-		return doc, r
-	# Sotuvchi o'zi yuborganini ko'radi; yozish faqat "ota-onaga xabar" qadami
-	if doc.menejer == frappe.session.user:
+	if _koradi(doc, r):
 		return doc, r
 	frappe.throw(_("Bu murojaat sizga yo'naltirilmagan."), frappe.PermissionError)
 
@@ -260,7 +273,8 @@ def _ol(name: str, yozish: bool = False):
 def korildi(name: str):
 	"""Rahbar kartani ochdi — "ko'rib chiqildimi" savoliga javob shu."""
 	doc, r = _ol(name)
-	if not (r["ceo"] or r["direktor"]):
+	# Kuzatuvchi (investor/operator) ochgani "rahbar ko'rib chiqdi" degani emas
+	if not (r["ceo"] or r["direktor"]) or r["kuzatuv"]:
 		return {"ok": 0}
 	ozgardi = False
 	if not doc.korildi_vaqti:
@@ -278,7 +292,7 @@ def korildi(name: str):
 @frappe.whitelist()
 def izoh_yoz(name: str, matn: str):
 	"""Komment — rahbar ham, menejer ham yozadi (timeline bitta)."""
-	doc, _r = _ol(name)
+	doc, _r = _ol(name, yozish=True)
 	matn = (matn or "").strip()
 	if not matn:
 		frappe.throw(_("Izoh bo'sh."))
@@ -294,7 +308,7 @@ def izoh_yoz(name: str, matn: str):
 def qaror_ber(name: str, yechim_turi: str, yechim: str, muhimlik: str | None = None):
 	"""Rahbar qarori. Bu qadamdan keyin ish MENEJERGA qaytadi (ota-onaga javob),
 	«Ahamiyatsiz» bo'lsa darhol yopiladi."""
-	doc, r = _ol(name)
+	doc, r = _ol(name, yozish=True)
 	if not (r["ceo"] or r["direktor"]):
 		frappe.throw(_("Qarorni faqat CEO yoki Direktor qabul qiladi."), frappe.PermissionError)
 	yechim = (yechim or "").strip()
@@ -330,7 +344,7 @@ def qaror_ber(name: str, yechim_turi: str, yechim: str, muhimlik: str | None = N
 @frappe.whitelist()
 def uzat(name: str, yonaltirildi: str, kategoriya: str | None = None, izoh: str | None = None):
 	"""«Direktorga uzatish» / «CEO'ga uzatish» — masala boshqa rahbarga tegishli."""
-	doc, r = _ol(name)
+	doc, r = _ol(name, yozish=True)
 	if not (r["ceo"] or r["direktor"]):
 		frappe.throw(_("Uzatishni faqat rahbar qiladi."), frappe.PermissionError)
 	if yonaltirildi not in ("CEO", "Direktor"):
@@ -344,21 +358,29 @@ def uzat(name: str, yonaltirildi: str, kategoriya: str | None = None, izoh: str 
 	elif frappe.db.get_value("Murojaat Kategoriyasi", doc.kategoriya, "yonaltirish") != yonaltirildi:
 		doc.kategoriya = None
 	doc.yonaltirildi = yonaltirildi
-	doc.masul = None
+	doc.masul = None      # yangi yo'nalish rahbari `validate` ichida qo'yiladi
 	izoh_qosh(
 		doc,
 		f"{eski} -> {yonaltirildi}" + (f": {izoh}" if izoh else ""),
 		turi="Yo'naltirish",
 	)
 	doc.save(ignore_permissions=True)
+	if doc.masul:
+		izoh_qosh(
+			doc,
+			f"Yangi mas'ul: {frappe.db.get_value('User', doc.masul, 'full_name') or doc.masul}",
+			turi="Yo'naltirish",
+		)
+		doc.save(ignore_permissions=True)
 	frappe.db.commit()
-	return {"ok": 1, "yonaltirildi": doc.yonaltirildi, "kategoriya": doc.kategoriya}
+	return {"ok": 1, "yonaltirildi": doc.yonaltirildi, "kategoriya": doc.kategoriya,
+	        "masul": doc.masul}
 
 
 @frappe.whitelist()
 def xabar_berdim(name: str, matn: str | None = None):
 	"""Menejer ota-onaga javobni aytdi — halqa yopiladi."""
-	doc, _r = _ol(name)
+	doc, _r = _ol(name, yozish=True)
 	if doc.holat != "Ota-onaga xabar berish":
 		frappe.throw(_("Avval rahbar qarori kerak — hozir bu qadam emas."))
 	doc.xabar_berildi = 1
@@ -381,7 +403,7 @@ def xabar_berdim(name: str, matn: str | None = None):
 @frappe.whitelist()
 def masul_biriktir(name: str, masul: str):
 	"""Rahbar murojaatni o'ziga (yoki boshqa rahbarga) biriktiradi."""
-	doc, r = _ol(name)
+	doc, r = _ol(name, yozish=True)
 	if not (r["ceo"] or r["direktor"]):
 		frappe.throw(_("Biriktirishni faqat rahbar qiladi."), frappe.PermissionError)
 	doc.masul = masul
@@ -398,6 +420,45 @@ def _izohlar(doc) -> list[dict]:
 		 "turi": i.turi, "matn": i.matn}
 		for i in doc.izohlar
 	]
+
+
+# =============================================== biriktirishni o'z-o'zidan tuzatish
+def biriktirilmaganlarni_biriktir(limit: int = 200) -> dict:
+	"""Mas'ulsiz ochiq murojaatlarga rahbar biriktiradi (kunlik zaxira).
+
+	Nega kerak: rollar hali hech kimga tayinlanmagan vaqtda ochilgan murojaat
+	egasiz qolib ketadi — keyin rol berilsa ham o'zi biriktirilmaydi. Bu
+	funksiya har kuni o'tib, yo'nalish rahbari paydo bo'lgan murojaatlarni
+	biriktiradi va ToDo ochadi. Idempotent: mas'uli borlarga tegmaydi.
+	"""
+	from target_zenit.target_zenit.doctype.murojaat.murojaat import avto_masul, izoh_qosh
+
+	nomlar = frappe.get_all(
+		"Murojaat",
+		filters={"masul": ["is", "not set"], "holat": ["not in", list(YOPIQ)]},
+		pluck="name", order_by="ochilgan asc", limit_page_length=int(limit),
+	)
+	kesh: dict[str, str | None] = {}
+	biriktirildi = 0
+	for nom in nomlar:
+		doc = frappe.get_doc("Murojaat", nom)
+		if doc.yonaltirildi not in kesh:
+			kesh[doc.yonaltirildi] = avto_masul(doc.yonaltirildi)
+		masul = kesh[doc.yonaltirildi]
+		if not masul:
+			continue      # bu yo'nalishda hali rahbar yo'q
+		doc.masul = masul
+		izoh_qosh(
+			doc,
+			f"Avtomatik biriktirildi (kunlik tekshiruv): "
+			f"{frappe.db.get_value('User', masul, 'full_name') or masul}",
+			turi="Yo'naltirish", kim="Administrator",
+		)
+		doc.save(ignore_permissions=True)
+		biriktirildi += 1
+	if biriktirildi:
+		frappe.db.commit()
+	return {"korildi": len(nomlar), "biriktirildi": biriktirildi}
 
 
 # ====================================================== boshqa panellar uchun

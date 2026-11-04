@@ -678,6 +678,9 @@ def get_case(name: str):
 
 	murojaatlar = murojaat_api.ochiq_murojaatlar([qi.student]).get(qi.student, [])
 	kategoriyalar = murojaat_api.kategoriyalar()
+	# Investor / operator / moliya qarzdorlik panelini KO'RADI, lekin
+	# murojaat ocha olmaydi — tugma ko'rsatilmasin
+	mur_yozish = murojaat_api.rolim()["yozish"]
 
 	return {
 		"case": qi.as_dict(no_nulls=False),
@@ -694,6 +697,7 @@ def get_case(name: str):
 		"tel_hammasi": 1 if _tel_hammasini_koradi() else 0,
 		"murojaatlar": murojaatlar,
 		"mur_kategoriyalar": kategoriyalar,
+		"mur_yozish": mur_yozish,
 	}
 
 

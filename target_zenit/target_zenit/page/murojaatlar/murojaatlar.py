@@ -24,7 +24,7 @@ QARZ_YOPIQ = ("Yopildi - To'landi", "Yopildi - Boshqa")
 
 
 @frappe.whitelist()
-def get_data(holat=None, yonalish=None, kategoriya=None, turi=None,
+def get_data(holat=None, yonalish=None, kategoriya=None, turi=None, masul=None,
              from_date=None, to_date=None, qidiruv=None, limit=400):
 	"""Navbat + KPI + filtr ro'yxatlari."""
 	r = api._guard()
@@ -36,6 +36,10 @@ def get_data(holat=None, yonalish=None, kategoriya=None, turi=None,
 		filters["kategoriya"] = kategoriya
 	if turi:
 		filters["turi"] = turi
+	if masul:
+		# "biriktirilmagan" — mas'ul tayinlanmagan, ya'ni yo'nalishdagi hamma
+		# rahbar ko'radi, lekin hech kim o'ziga olmagan
+		filters["masul"] = ["is", "not set"] if masul == "__yoq__" else masul
 	if from_date and to_date:
 		filters["ochilgan"] = ["between", [f"{from_date} 00:00:00", f"{to_date} 23:59:59"]]
 
@@ -69,14 +73,25 @@ def get_data(holat=None, yonalish=None, kategoriya=None, turi=None,
 			"holat", "matn", "student", "student_name", "sinf", "payer_name",
 			"payer_phone", "manba", "menejer", "menejer_nomi", "suhbat_vaqti",
 			"ochilgan", "sla_sana", "korildi_vaqti", "yechim_turi", "yechim",
-			"yechim_vaqti", "xabar_berildi", "yopilgan_sana", "telefon_qongirogi",
-			"qarz_ishi",
+			"yechim_vaqti", "yechim_kim", "xabar_berildi", "yopilgan_sana",
+			"telefon_qongirogi", "qarz_ishi",
 		],
 		order_by="ochilgan desc",
 		limit_page_length=cint(limit),
 	)
+	# Mas'ul / qaror beruvchi ISMLARI: ro'yxatda "kim biriktirilgan" ko'rinib
+	# turishi kerak (admin, investor va operator uchun asosiy ustun)
+	userlar = {u for x in rows for u in (x.masul, x.get("yechim_kim")) if u}
+	ismlar = {
+		u.name: u.full_name or u.name
+		for u in (frappe.get_all("User", filters={"name": ["in", list(userlar)]},
+		                         fields=["name", "full_name"]) if userlar else [])
+	}
+
 	bugun = getdate(nowdate())
 	for x in rows:
+		x["masul_nomi"] = ismlar.get(x.masul) or ""
+		x["yechim_kim_nomi"] = ismlar.get(x.get("yechim_kim")) or ""
 		x["kechikdi"] = (
 			1 if (x.sla_sana and x.holat not in YOPIQ and getdate(x.sla_sana) < bugun) else 0
 		)
@@ -95,7 +110,39 @@ def get_data(holat=None, yonalish=None, kategoriya=None, turi=None,
 		"rol": r,
 		"kategoriyalar": api.kategoriyalar(),
 		"rahbarlar": _rahbarlar(r),
+		"masullar": _masullar(r),
 	}
+
+
+def _masullar(r: dict) -> list[dict]:
+	"""Filtr uchun: murojaatlarda ALLAQACHON uchraydigan mas'ullar + soni.
+
+	Rahbarlar ro'yxatidan farqi — bu yerda "kim real ishlayapti" ko'rinadi,
+	nazorat uchun aynan shu kerak."""
+	asos = api._yonalish_filtri(r)
+	rows = frappe.get_all(
+		"Murojaat",
+		filters={**asos, "masul": ["is", "set"]},
+		fields=["masul", "count(name) as soni"],
+		group_by="masul",
+		limit_page_length=0,
+	)
+	ismlar = {
+		u.name: u.full_name or u.name
+		for u in frappe.get_all(
+			"User", filters={"name": ["in", [x.masul for x in rows]]},
+			fields=["name", "full_name"],
+		)
+	} if rows else {}
+	out = [
+		{"user": x.masul, "nomi": ismlar.get(x.masul) or x.masul, "soni": cint(x.soni)}
+		for x in sorted(rows, key=lambda x: -cint(x.soni))
+	]
+	yoq = frappe.db.count("Murojaat", {**asos, "masul": ["is", "not set"],
+	                                  "holat": ["not in", list(YOPIQ)]})
+	if yoq:
+		out.append({"user": "__yoq__", "nomi": "Biriktirilmagan", "soni": yoq})
+	return out
 
 
 def _stats(r: dict) -> dict:
@@ -125,6 +172,7 @@ def _stats(r: dict) -> dict:
 		"korilmagan": soni({**ochiq, "korildi_vaqti": ["is", "not set"]}),
 		"muddati": soni({**ochiq, "sla_sana": ["<", nowdate()]}),
 		"xabar_kutilmoqda": soni({"holat": "Ota-onaga xabar berish"}),
+		"biriktirilmagan": soni({**ochiq, "masul": ["is", "not set"]}),
 		"oy_yopildi": len(yopilgan),
 		"oy_inobat": sum(1 for y in yopilgan if y.yechim_turi == "Inobatga olindi"),
 		"ort_kun": round(sum(kunlar) / len(kunlar), 1) if kunlar else 0,

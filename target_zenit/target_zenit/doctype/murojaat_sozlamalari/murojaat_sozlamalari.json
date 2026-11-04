@@ -1,0 +1,35 @@
+{
+ "actions": [],
+ "creation": "2026-11-04 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["avto_biriktir", "section_rahbarlar", "standart_ceo", "column_break_1", "standart_direktor", "section_izoh", "izoh"],
+ "fields": [
+  {"default": "1", "fieldname": "avto_biriktir", "fieldtype": "Check", "label": "Yangi murojaatni avtomatik biriktirish", "description": "Yoqilgan bo'lsa har yangi murojaat darhol aniq rahbarga biriktiriladi va unga vazifa (ToDo) ochiladi. O'chirilsa — yo'nalishdagi barcha rahbarlar ko'radi, lekin egasi bo'lmaydi."},
+  {"fieldname": "section_rahbarlar", "fieldtype": "Section Break", "label": "Standart mas'ul rahbarlar"},
+  {"fieldname": "standart_ceo", "fieldtype": "Link", "label": "CEO (tashkiliy masalalar)", "options": "User", "description": "Tashkiliy / to'lov masalalari shu foydalanuvchiga biriktiriladi. Bo'sh bo'lsa — «CEO» roli biriktirilgan yagona faol foydalanuvchi olinadi."},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "standart_direktor", "fieldtype": "Link", "label": "Direktor (o'quv masalalari)", "options": "User", "description": "O'quv-tarbiya masalalari shu foydalanuvchiga biriktiriladi. Bo'sh bo'lsa — «Direktor» roli biriktirilgan yagona faol foydalanuvchi olinadi."},
+  {"fieldname": "section_izoh", "fieldtype": "Section Break"},
+  {"fieldname": "izoh", "fieldtype": "Small Text", "label": "Izoh"}
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Murojaat Sozlamalari",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "print": 1, "email": 1, "share": 1},
+  {"role": "CEO", "read": 1, "write": 1},
+  {"role": "Direktor", "read": 1, "write": 1},
+  {"role": "Sales Manager", "read": 1},
+  {"role": "investor", "read": 1},
+  {"role": "Xojakbar_Operator", "read": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

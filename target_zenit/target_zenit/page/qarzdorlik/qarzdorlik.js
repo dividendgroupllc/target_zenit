@@ -577,7 +577,7 @@ class TZQarzPanel {
 					qlar.filter((q) => q.ai_xulosa).length
 						? ` · ${qlar.filter((q) => q.ai_xulosa).length} tahlil` : ""}</button>` : ""}
 				<button class="btn-call">📞 Qo'ng'iroq natijasi</button>
-				<button class="btn-yonaltir">⬆ Rahbarga yo'naltirish</button>
+				${this.mur_yozamanmi() ? `<button class="btn-yonaltir">⬆ Rahbarga yo'naltirish</button>` : ""}
 				<button class="btn-recalc">↻ Qayta hisoblash</button>
 				<a class="btn-doc" href="/app/qarz-ishi/${encodeURIComponent(c.name)}">Ishni ochish ↗</a>
 				${this.data.rahbar ? `<button class="btn-reassign">Mas'ulni almashtirish</button>` : ""}
@@ -794,7 +794,7 @@ class TZQarzPanel {
 							<span class="sb-t-k">${this.esc(TAKLIF)}</span>
 							<span class="sb-t-v${yoq ? " sb-t-yoq" : " sb-t-taklif"}">${
 								this.esc(yoq ? "Taklif yo'q" : qiymat)}
-								${yoq ? "" : `<button class="btn-mini sb-yonaltir-btn"
+								${yoq || !this.mur_yozamanmi() ? "" : `<button class="btn-mini sb-yonaltir-btn"
 									data-q="${this.esc(q.name)}"
 									data-matn="${this.esc(qiymat)}"
 									data-vaqt="${this.esc(q.boshlandi || "")}"
@@ -869,7 +869,7 @@ class TZQarzPanel {
 				${m.yechim ? `<div class="mur-row-yechim"><b>${this.esc(m.yechim_turi || "Qaror")}:</b>
 					${this.esc(m.yechim)}</div>` : ""}
 				<div class="mur-row-amal">
-					${m.holat === "Ota-onaga xabar berish"
+					${m.holat === "Ota-onaga xabar berish" && this.mur_yozamanmi()
 						? `<button class="btn-mini mur-xabar-btn" data-mur="${this.esc(m.name)}">
 								☎ Ota-onaga javob berdim</button>` : ""}
 					<button class="btn-mini ghost mur-ochish" data-mur="${this.esc(m.name)}">
@@ -888,6 +888,11 @@ class TZQarzPanel {
 		return (this.detail && this.detail.mur_kategoriyalar) || [];
 	}
 
+	// Murojaat ochish huquqi: investor/operator/moliya ko'radi, yozmaydi
+	mur_yozamanmi() {
+		return !!(this.detail && this.detail.mur_yozish);
+	}
+
 	// Kategoriya tanlashi uchun Select opsiyalari: nomi + kimga ketishi
 	mur_kat_options(turi) {
 		const kats = this.mur_kategoriyalar();
@@ -901,6 +906,10 @@ class TZQarzPanel {
 	yonaltir_dialog(opts) {
 		opts = opts || {};
 		const c = this.detail.case;
+		if (!this.mur_yozamanmi()) {
+			frappe.msgprint("Sizda faqat ko'rish ruxsati bor — murojaat ocha olmaysiz.");
+			return;
+		}
 		const kats = this.mur_kategoriyalar();
 		if (!kats.length) {
 			frappe.msgprint("Murojaat kategoriyalari o'rnatilmagan — administratorga aytiling.");
@@ -1007,6 +1016,7 @@ class TZQarzPanel {
 				// Shuni darhol shu modalda rahbarga yo'naltirish mumkin —
 				// menejer alohida oynani qidirib yurmaydi.
 				{ fieldtype: "Section Break", label: "Rahbarga yo'naltirish",
+					hidden: this.mur_yozamanmi() ? 0 : 1,
 					depends_on: "eval:[\"E'tiroz-nizo\",\"Rad etdi\"].includes(doc.hisob_natijasi) || doc.keyingi_harakat=='Eskalatsiya'" },
 				{ fieldname: "rahbarga", fieldtype: "Check", default: 0,
 					label: "Bu masalani CEO / direktorga yo'naltirish",

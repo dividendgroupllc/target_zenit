@@ -5,15 +5,69 @@
  "creation": "2026-11-04 10:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
- "field_order": ["nomi", "yonaltirish", "turi_tavsiya", "sla_kun", "faol", "kalit_sozlar", "izoh"],
+ "field_order": [
+  "nomi",
+  "yonaltirish",
+  "turi_tavsiya",
+  "sla_kun",
+  "faol",
+  "kalit_sozlar",
+  "izoh"
+ ],
  "fields": [
-  {"fieldname": "nomi", "fieldtype": "Data", "label": "Kategoriya", "reqd": 1, "unique": 1, "in_list_view": 1, "description": "Ta'lim sifati, O'qituvchi ustidan shikoyat, Kitob/forma to'lovi..."},
-  {"fieldname": "yonaltirish", "fieldtype": "Select", "label": "Kimga yo'naltiriladi", "options": "CEO\nDirektor", "reqd": 1, "default": "CEO", "in_list_view": 1, "in_standard_filter": 1, "description": "Shu kategoriyadagi murojaat avtomatik kimning paneliga tushadi"},
-  {"fieldname": "turi_tavsiya", "fieldtype": "Select", "label": "Odatdagi turi", "options": "\nShikoyat\nTaklif\nMuammo\nSo'rov", "description": "Qo'lda yo'naltirishda oldindan tanlanadi (majburiy emas)"},
-  {"default": "3", "fieldname": "sla_kun", "fieldtype": "Int", "label": "Muddat (kun)", "in_list_view": 1, "description": "Shuncha kun ichida javob berilishi kerak. 0 = muddat yo'q"},
-  {"default": "1", "fieldname": "faol", "fieldtype": "Check", "label": "Faol", "in_list_view": 1},
-  {"fieldname": "kalit_sozlar", "fieldtype": "Small Text", "label": "Kalit so'zlar", "description": "Vergul bilan. AI topgan shikoyat matnida shu so'zlardan biri bo'lsa kategoriya avtomatik shu bo'ladi. Masalan: o'qituvchi, dars, baho"},
-  {"fieldname": "izoh", "fieldtype": "Small Text", "label": "Izoh"}
+  {
+   "fieldname": "nomi",
+   "fieldtype": "Data",
+   "label": "Kategoriya",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Ta'lim sifati, O'qituvchi ustidan shikoyat, Kitob/forma to'lovi..."
+  },
+  {
+   "fieldname": "yonaltirish",
+   "fieldtype": "Select",
+   "label": "Kimga yo'naltiriladi",
+   "options": "CEO\nDirektor",
+   "reqd": 1,
+   "default": "CEO",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Shu kategoriyadagi murojaat avtomatik kimning paneliga tushadi"
+  },
+  {
+   "fieldname": "turi_tavsiya",
+   "fieldtype": "Select",
+   "label": "Odatdagi turi",
+   "options": "\nShikoyat\nTaklif\nMuammo\nSo'rov",
+   "description": "Qo'lda yo'naltirishda oldindan tanlanadi (majburiy emas)"
+  },
+  {
+   "default": "3",
+   "fieldname": "sla_kun",
+   "fieldtype": "Int",
+   "label": "Muddat (kun)",
+   "in_list_view": 1,
+   "description": "Shuncha kun ichida javob berilishi kerak. 0 = muddat yo'q"
+  },
+  {
+   "default": "1",
+   "fieldname": "faol",
+   "fieldtype": "Check",
+   "label": "Faol",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "kalit_sozlar",
+   "fieldtype": "Small Text",
+   "label": "Kalit so'zlar",
+   "description": "Vergul bilan. AI topgan shikoyat matnida shu so'zlardan biri bo'lsa kategoriya avtomatik shu bo'ladi. Masalan: o'qituvchi, dars, baho"
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Small Text",
+   "label": "Izoh"
+  }
  ],
  "links": [],
  "modified": "2026-11-04 10:00:00.000000",
@@ -23,12 +77,56 @@
  "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
-  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "print": 1, "share": 1},
-  {"role": "CEO", "read": 1, "write": 1, "create": 1, "report": 1, "export": 1},
-  {"role": "Direktor", "read": 1, "write": 1, "create": 1, "report": 1, "export": 1},
-  {"role": "Sales Manager", "read": 1, "report": 1},
-  {"role": "Sotuv meneger", "read": 1},
-  {"role": "Sales User", "read": 1}
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "share": 1
+  },
+  {
+   "role": "CEO",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Direktor",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "Sotuv meneger",
+   "read": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1
+  },
+  {
+   "role": "investor",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "Nigora_Moliya",
+   "read": 1,
+   "report": 1
+  }
  ],
  "sort_field": "nomi",
  "sort_order": "ASC",

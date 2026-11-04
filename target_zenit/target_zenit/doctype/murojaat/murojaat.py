@@ -43,6 +43,7 @@ class Murojaat(Document):
 
 	def validate(self):
 		self._marshrut()
+		self._masul_biriktir()
 		self._oquvchi_malumoti()
 		self._muddat()
 		self._yechim_nazorati()
@@ -70,6 +71,17 @@ class Murojaat(Document):
 				_("«{0}» — {1} roli biriktirilmagan foydalanuvchi, mas'ul bo'la olmaydi.")
 				.format(self.masul, YONALISH_ROL[self.yonaltirildi])
 			)
+
+	def _masul_biriktir(self):
+		"""Mas'ul bo'sh bo'lsa — yo'nalishdagi rahbarga avtomatik biriktiradi.
+
+		AI ochgan murojaat ham, menejer yo'naltirgani ham EGASIZ qolmaydi:
+		yo'nalish aniq bo'lgach (CEO yoki Direktor) aniq odam ham qo'yiladi,
+		unga ToDo ochiladi. Rahbarlar hali tayinlanmagan bo'lsa (rol hech kimga
+		biriktirilmagan) — bo'sh qoladi, panel «Biriktirilmagan» deb ko'rsatadi."""
+		if self.masul or self.holat == "Yopildi":
+			return
+		self.masul = avto_masul(self.yonaltirildi)
 
 	def _rahbarmi(self, user: str) -> bool:
 		rol = YONALISH_ROL.get(self.yonaltirildi)
@@ -172,6 +184,58 @@ def izoh_qosh(doc, matn: str, turi: str = "Komment", kim: str | None = None) -> 
 		"turi": turi,
 		"matn": matn,
 	})
+
+
+def avto_masul(yonalish: str) -> str | None:
+	"""Shu yo'nalish uchun MAS'UL rahbar. Tartib:
+	  1) «Murojaat Sozlamalari» dagi standart rahbar (aniq ko'rsatilgan);
+	  2) o'sha rolli YAGONA faol foydalanuvchi (sozlama shart emas);
+	  3) bir nechta bo'lsa — eng kam ochiq murojaati bori (yuk muvozanati).
+
+	Nega 3-qadam bor: "egasiz murojaat" — modulning eng xavfli holati.
+	Hamma ko'radigan, lekin hech kim javob bermaydigan navbat paydo bo'lmasligi
+	uchun tizim aniq odamni tanlaydi; rahbar keyin o'zi boshqasiga uzatadi.
+	"""
+	s = sozlamalar()
+	if not s.get("avto_biriktir"):
+		return None
+	standart = s.get("standart_ceo" if yonalish == "CEO" else "standart_direktor")
+	if standart and frappe.db.get_value("User", standart, "enabled"):
+		return standart
+
+	nomzodlar = rahbarlar(yonalish)
+	if not nomzodlar:
+		return None
+	if len(nomzodlar) == 1:
+		return nomzodlar[0]
+
+	yuk = {u: 0 for u in nomzodlar}
+	for r in frappe.get_all(
+		"Murojaat",
+		filters={"masul": ["in", nomzodlar], "holat": ["!=", "Yopildi"]},
+		fields=["masul", "count(name) as soni"],
+		group_by="masul",
+	):
+		yuk[r.masul] = r.soni
+	# Teng bo'lsa — alifbo tartibi: natija takrorlanadigan bo'lsin
+	return min(sorted(nomzodlar), key=lambda u: yuk.get(u, 0))
+
+
+def sozlamalar() -> dict:
+	"""Single hujjat, keshlanadi (har murojaatda o'qib o'tirmaslik uchun)."""
+	kesh = frappe.cache().get_value("murojaat_sozlamalari")
+	if kesh is None:
+		if frappe.db.exists("DocType", "Murojaat Sozlamalari"):
+			d = frappe.get_cached_doc("Murojaat Sozlamalari")
+			kesh = {
+				"avto_biriktir": int(d.avto_biriktir or 0),
+				"standart_ceo": d.standart_ceo,
+				"standart_direktor": d.standart_direktor,
+			}
+		else:
+			kesh = {"avto_biriktir": 1, "standart_ceo": None, "standart_direktor": None}
+		frappe.cache().set_value("murojaat_sozlamalari", kesh)
+	return kesh
 
 
 def rahbarlar(yonalish: str) -> list[str]:

@@ -15,6 +15,11 @@ from frappe.utils import cint
 
 ROLLAR = ("CEO", "Direktor")
 
+# FAQAT KO'RISH ruxsati beriladigan mavjud rollar (yangi rol yaratilmaydi).
+# Investor va operator murojaatlar panelini ko'radi — nazorat uchun; yozish
+# (izoh, qaror, yo'naltirish) ularga BERILMAYDI (2026-11-04 talabi).
+KUZATUV_ROLLAR = ("investor", "Xojakbar_Operator", "Nigora_Moliya")
+
 # Boshlang'ich marshrut jadvali: (kategoriya, kimga, muddat kun, odatdagi turi,
 # kalit so'zlar — AI topgan matnni shu so'zlar bo'yicha kategoriyaga soladi)
 KATEGORIYALAR = [
@@ -46,6 +51,7 @@ KATEGORIYALAR = [
 RAHBAR_PERMS = {
 	"Murojaat": (1, 1, 1, 0),
 	"Murojaat Kategoriyasi": (1, 1, 1, 0),
+	"Murojaat Sozlamalari": (1, 1, 0, 0),
 	# Murojaat kartasida o'quvchi, qarz holati, suhbat va ovoz yozuvi ko'rinadi
 	"Student": (1, 0, 0, 0),
 	"Guardian": (1, 0, 0, 0),
@@ -55,6 +61,13 @@ RAHBAR_PERMS = {
 	"Tolov Vadasi": (1, 0, 0, 0),
 	"Telefon Qongirogi": (1, 0, 0, 0),
 	"Employee": (1, 0, 0, 0),
+}
+
+# Kuzatuvchiga ochiladigan doctype'lar — hammasi faqat o'qish
+KUZATUV_PERMS = {
+	"Murojaat": (1, 0, 0, 0),
+	"Murojaat Kategoriyasi": (1, 0, 0, 0),
+	"Murojaat Sozlamalari": (1, 0, 0, 0),
 }
 
 SAHIFALAR = ("murojaatlar",)
@@ -67,6 +80,7 @@ def after_migrate():
 	sahifalarni_och()
 	workspace_yarat()
 	sotuvga_yorliq()
+	sozlamalarni_tola()
 	frappe.db.commit()
 
 
@@ -133,6 +147,14 @@ def ruxsatlarni_ber():
 			if not frappe.db.exists("DocType", dt):
 				continue
 			_perm(dt, rol, r, w, c, d)
+	# Kuzatuvchilar: rol allaqachon mavjud bo'lsa — faqat o'qish
+	for rol in KUZATUV_ROLLAR:
+		if not frappe.db.exists("Role", rol):
+			continue
+		for dt, (r, w, c, d) in KUZATUV_PERMS.items():
+			if not frappe.db.exists("DocType", dt):
+				continue
+			_perm(dt, rol, r, w, c, d)
 
 
 def _perm(doctype: str, rol: str, read: int, write: int, create: int, delete: int):
@@ -166,7 +188,8 @@ def sahifalarni_och():
 			continue
 		doc = frappe.get_doc("Page", sahifa)
 		bor = {r.role for r in doc.roles}
-		yangi = [r for r in ROLLAR if r not in bor]
+		kerak = list(ROLLAR) + [r for r in KUZATUV_ROLLAR if frappe.db.exists("Role", r)]
+		yangi = [r for r in kerak if r not in bor]
 		if not yangi:
 			continue
 		for rol in yangi:
@@ -174,8 +197,38 @@ def sahifalarni_och():
 		doc.save(ignore_permissions=True)
 
 
+def sozlamalarni_tola():
+	"""Standart rahbar BO'SH bo'lsa va yo'nalishda yagona rolli foydalanuvchi
+	bo'lsa — uni yozib qo'yamiz. Shunda avto-biriktirish aniq odamga tushadi,
+	rahbariyat hech narsa sozlamasa ham ishlaydi. Qo'lda tanlangan qiymatga
+	TEGMAYDI."""
+	if not frappe.db.exists("DocType", "Murojaat Sozlamalari"):
+		return
+	from target_zenit.target_zenit.doctype.murojaat.murojaat import rahbarlar
+
+	doc = frappe.get_single("Murojaat Sozlamalari")
+	ozgardi = False
+	for maydon, yonalish in (("standart_ceo", "CEO"), ("standart_direktor", "Direktor")):
+		if doc.get(maydon):
+			continue
+		nomzodlar = rahbarlar(yonalish)
+		if len(nomzodlar) == 1:
+			doc.set(maydon, nomzodlar[0])
+			ozgardi = True
+			print(f"Murojaat: standart {yonalish} -> {nomzodlar[0]}")
+	if ozgardi:
+		doc.save(ignore_permissions=True)
+	frappe.cache().delete_value("murojaat_sozlamalari")
+
+
 # ====================================================== workspace / yorliqlar
 WORKSPACE = "Rahbariyat"
+
+# Workspace kimga ko'rinadi. Kuzatuvchilar ham shu yerda: panelga kirish
+# yo'lini bilishlari kerak. Yozish huquqi API tomonda to'xtatiladi.
+WORKSPACE_ROLLAR = ("System Manager", "CEO", "Direktor", "Sales Manager",
+                    "Sotuv meneger", "investor", "Xojakbar_Operator",
+                    "Nigora_Moliya")
 
 
 def workspace_yarat():
@@ -184,7 +237,10 @@ def workspace_yarat():
 	if frappe.db.exists("Workspace", WORKSPACE):
 		_yorliq_qosh(WORKSPACE, [
 			{"label": "Murojaatlar", "type": "Page", "link_to": "murojaatlar", "color": "Red"},
+			{"label": "Murojaat sozlamalari", "type": "DocType",
+			 "link_to": "Murojaat Sozlamalari", "color": "Grey"},
 		])
+		_workspace_rollar()
 		return
 	doc = frappe.get_doc({
 		"doctype": "Workspace",
@@ -196,12 +252,13 @@ def workspace_yarat():
 		"sequence_id": 90,
 		# Workspace FAQAT rahbariyat va sotuvga ko'rinadi — aks holda "public"
 		# workspace butun maktab xodimlariga chiqib ketadi
-		"roles": [{"role": r} for r in ("System Manager", "CEO", "Direktor",
-		                                "Sales Manager", "Sotuv meneger")],
+		"roles": [{"role": r} for r in WORKSPACE_ROLLAR],
 		"shortcuts": [
 			{"label": "Murojaatlar", "type": "Page", "link_to": "murojaatlar", "color": "Red"},
 			{"label": "Murojaat kategoriyalari", "type": "DocType",
 			 "link_to": "Murojaat Kategoriyasi", "doc_view": "List", "color": "Grey"},
+			{"label": "Murojaat sozlamalari", "type": "DocType",
+			 "link_to": "Murojaat Sozlamalari", "color": "Grey"},
 		],
 		"content": json.dumps([
 			{"id": frappe.generate_hash(length=10), "type": "header",
@@ -214,6 +271,20 @@ def workspace_yarat():
 	})
 	doc.insert(ignore_permissions=True)
 	print(f"Workspace yaratildi: {WORKSPACE}")
+
+
+def _workspace_rollar():
+	"""Mavjud workspace'ga yetishmayotgan rollarni qo'shadi (o'chirmaydi)."""
+	ws = frappe.get_doc("Workspace", WORKSPACE)
+	bor = {r.role for r in ws.roles}
+	yangi = [r for r in WORKSPACE_ROLLAR
+	         if r not in bor and frappe.db.exists("Role", r)]
+	if not yangi:
+		return
+	for rol in yangi:
+		ws.append("roles", {"role": rol})
+	ws.save(ignore_permissions=True)
+	print(f"{WORKSPACE} workspace rollari: +{yangi}")
 
 
 def sotuvga_yorliq():

@@ -417,16 +417,23 @@
    "report": 1
   },
   {
-   "role": "Xojakbar_Operator",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "report": 1
-  },
-  {
    "role": "Nigora_Moliya",
    "read": 1,
    "report": 1
+  },
+  {
+   "role": "Xojakbar_Operator",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  },
+  {
+   "role": "investor",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
   }
  ],
  "search_fields": "student_name,sinf,turi,kategoriya,holat",

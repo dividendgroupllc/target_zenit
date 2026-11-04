@@ -87,6 +87,9 @@
 .mur-item-matn { font-size:12.5px; color:var(--ink-2); margin:3px 0;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .mur-item-pod { display:flex; gap:5px; flex-wrap:wrap; font-size:11.5px; align-items:center; }
+/* "Kim biriktirilgan" qatori — nazorat (admin/investor/operator) uchun asosiy ustun */
+.mur-item-masul { display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+  margin-top:4px; padding-top:4px; border-top:1px dashed var(--line); font-size:11.5px; }
 .mur-empty { padding:40px; text-align:center; color:var(--muted); background:var(--card);
   border:1px solid var(--line); border-radius:var(--radius); }
 

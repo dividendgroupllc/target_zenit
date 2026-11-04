@@ -4,20 +4,40 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-11-04 10:00:00.000000",
+ "modified": "2026-11-04 17:07:31.272081",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "murojaatlar",
  "owner": "Administrator",
  "page_name": "murojaatlar",
  "roles": [
-  {"role": "System Manager"},
-  {"role": "CEO"},
-  {"role": "Direktor"},
-  {"role": "Sales Manager"},
-  {"role": "Sotuv meneger"},
-  {"role": "Sales User"},
-  {"role": "Xojakbar_Operator"}
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "CEO"
+  },
+  {
+   "role": "Direktor"
+  },
+  {
+   "role": "Sales Manager"
+  },
+  {
+   "role": "Sotuv meneger"
+  },
+  {
+   "role": "Sales User"
+  },
+  {
+   "role": "Xojakbar_Operator"
+  },
+  {
+   "role": "investor"
+  },
+  {
+   "role": "Nigora_Moliya"
+  }
  ],
  "script": null,
  "standard": "Yes",
