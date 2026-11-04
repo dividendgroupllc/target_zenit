@@ -18,8 +18,11 @@ ROLLAR = ["System Manager", "Zavuch", "Xojakbar_Operator", "HR Manager", "HR Use
 HAFTA = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"]
 
 
-# Bu rollar istalgan (o'tgan) kunni ham tahrirlay oladi
-TOLIQ_ROLLAR = {"system manager", "xojakbar_operator", "hr manager", "hr user"}
+# Bu rollar istalgan (o'tgan) kunni ham tahrirlay oladi.
+# Zavuch ham kiradi (2026-11-04, foydalanuvchi talabi): kunlik yo'qlamani
+# o'tkazib yuborgan kunlarini keyin to'ldirishi kerak. Chegara baribir bor:
+# kelajak kunga yozilmaydi va YOPILGAN oy tahrirlanmaydi (`belgila`).
+TOLIQ_ROLLAR = {"system manager", "xojakbar_operator", "hr manager", "hr user", "zavuch"}
 
 
 def _guard(tahrir=False):
@@ -29,8 +32,10 @@ def _guard(tahrir=False):
 
 
 def _faqat_bugun() -> bool:
-	"""Zavuch kunlik yo'qlamani FAQAT bugungi kunga qiladi.
-	O'tgan kunlarni tuzatish — HR/operator/administrator vakolatida."""
+	"""Faqat bugungi kunni belgilay oladimi.
+
+	TOLIQ_ROLLAR (zavuch, HR, operator, administrator) o'tgan kunlarni ham
+	tahrirlaydi; ro'yxatda bo'lmagan rol faqat bugungi kun bilan cheklanadi."""
 	rollar = {r.lower() for r in frappe.get_roles()}
 	return not (TOLIQ_ROLLAR & rollar)
 
