@@ -41,6 +41,12 @@ o'qituvchi (masalan "falonchi o'qituvchi yaxshi edi, qaytarsangiz"), bolalar
 nazorati, dars sifati, tadbir, ovqat, transport, sinf sharoiti va h.k.
 To'lov/qarz haqidagi gap BU YERGA KIRMAYDI. Bitta satrda, mijozning o'z gapiga
 yaqin yoz. Hech qanday taklif/shikoyat bo'lmasa: Taklif yo'q>
+MUROJAAT TURI: <agar TAKLIF VA SHIKOYAT qatorida haqiqiy gap bo'lsa, uning
+turini tanla: Shikoyat / Taklif / Muammo / So'rov. Gap bo'lmasa: yo'q>
+MUROJAAT YO'NALISHI: <o'sha gap nimaga oid: O'quv (dars sifati, o'qituvchi,
+baho, uy vazifa, tarbiya, bolalar nazorati, jadval) yoki Tashkiliy (kitob-forma,
+to'lov-chegirma, shartnoma, transport, ovqat, bino-sharoit, yotoqxona, qabul).
+Gap bo'lmasa: yo'q>
 MIJOZ HOLATI: <biridan birini tanla: Ijobiy / Neytral / Qarshi / Bog'lanmadi>
 KEYINGI QADAM: <menejer nima qilishi kerak — 1 qisqa gap>
 DIQQAT: <rahbar bilishi shart bo'lgan muhim narsa bo'lsa yoz, bo'lmasa: yo'q>
@@ -54,6 +60,12 @@ Qoidalar:
   mohiyatini yo'qotmasdan yoz: bu rahbariyat uchun eng qimmatli qaytaruv aloqa.
 - To'lov bo'yicha e'tiroz/sabab E'TIROZ qatoriga, maktab bo'yicha fikr esa
   TAKLIF VA SHIKOYAT qatoriga tushsin — ikkisi aralashmasin.
+- MUROJAAT TURI shu gapning mohiyatiga qarab: norozilik -> Shikoyat, yaxshilash
+  fikri -> Taklif, hal qilinishi kerak bo'lgan holat -> Muammo, savol/iltimos ->
+  So'rov. MUROJAAT YO'NALISHI esa masala kimga tegishli ekanini aniqlaydi:
+  O'quv -> direktor, Tashkiliy -> CEO. Ikki qator ham AVTOMATIK yo'naltirish
+  uchun ishlatiladi — shuning uchun ularni hech qachon tashlab ketma. Ikkisi
+  ham o'sha bitta TAKLIF VA SHIKOYAT gapiga tegishli, yangi ma'lumot qidirma.
 - O'zbek tilida yoz.
 
 SUHBAT MATNI:
@@ -166,6 +178,13 @@ def tahlil_qil(qongiroq: str, majburiy: bool = False, qayta: bool = False) -> di
 		"xato_matni": None,
 	}, notify=True)
 	frappe.db.commit()
+
+	# Ota-ona maktab haqida shikoyat/taklif aytgan bo'lsa — rahbar paneliga
+	# avtomatik murojaat ochiladi (murojaat/ai.py). Tahlilni buzmasligi uchun
+	# xatosi faqat log'ga yoziladi.
+	from target_zenit.murojaat import ai as murojaat_ai
+
+	murojaat_ai.qongiroqdan_xavfsiz(qongiroq)
 	return {"holat": "tayyor", "model": model, "xulosa": xulosa}
 
 

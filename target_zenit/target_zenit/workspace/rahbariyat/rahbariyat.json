@@ -1,0 +1,58 @@
+{
+ "charts": [],
+ "content": "[{\"id\": \"75270aa890\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\">Rahbariyat</span>\", \"col\": 12}}, {\"id\": \"ba242212a8\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Murojaatlar\", \"col\": 4}}, {\"id\": \"e32e3bfee4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Murojaat kategoriyalari\", \"col\": 4}}]",
+ "creation": "2026-11-04 16:44:13.000995",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "crm",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Rahbariyat",
+ "links": [],
+ "modified": "2026-11-04 16:44:37.899781",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Rahbariyat",
+ "number_cards": [],
+ "owner": "Administrator",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "CEO"
+  },
+  {
+   "role": "Direktor"
+  },
+  {
+   "role": "Sales Manager"
+  },
+  {
+   "role": "Sotuv meneger"
+  }
+ ],
+ "sequence_id": 90.0,
+ "shortcuts": [
+  {
+   "color": "Red",
+   "doc_view": "",
+   "label": "Murojaatlar",
+   "link_to": "murojaatlar",
+   "type": "Page"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Murojaat kategoriyalari",
+   "link_to": "Murojaat Kategoriyasi",
+   "type": "DocType"
+  }
+ ],
+ "title": "Rahbariyat"
+}

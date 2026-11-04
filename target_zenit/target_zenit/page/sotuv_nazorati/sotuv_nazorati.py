@@ -502,6 +502,7 @@ def get_telefon(from_date=None, to_date=None, masul=None, limit=1200, sanalar=No
                 "student": q["student"], "student_name": q["student_name"],
                 "sinf": q["sinf"], "qarz_ishi": q["qarz_ishi"], "matn": taklif,
                 "holat": _xulosa_qatori(q.ai_xulosa, "MIJOZ HOLATI"),
+                "turi": _xulosa_qatori(q.ai_xulosa, "MUROJAAT TURI"),
             })
 
     for m in menejer.values():
@@ -530,6 +531,11 @@ def get_telefon(from_date=None, to_date=None, masul=None, limit=1200, sanalar=No
         o["ishlov_status"] = qi.ishlov_status if qi else ""
         o["masul"] = qi.masul if qi else ""
 
+    # Taklif/shikoyat KO'RIB CHIQILDIMI: har bir qatorga murojaat holati
+    # biriktiriladi (murojaat moduli). Nazorat sahifasining asosiy savoli shu:
+    # "aytilgan gap nima bo'ldi" — AI topdi, rahbar ko'rdimi, yechim bormi.
+    _murojaat_biriktir(takliflar)
+
     menejerlar = sorted(menejer.values(), key=lambda x: (-x["qongiroq"], -x["daqiqa"]))
     # O'quvchilar: OXIRGI gaplashilgan sana bo'yicha — eng yaqinda gaplashilgani
     # tepada, undan oldin gaplashilganlar pastda (kelishilgan tartib).
@@ -554,6 +560,10 @@ def get_telefon(from_date=None, to_date=None, masul=None, limit=1200, sanalar=No
             "yozuv": sum(q["audio"] for q in qongiroqlar),
             "tahlil": sum(1 for q in qongiroqlar if q.ai_xulosa),
             "taklif": len(takliflar),
+            # Yo'naltirilgan / hal qilingan / e'tiborsiz qolgan takliflar
+            "taklif_yonaltirildi": sum(1 for t in takliflar if t.get("murojaat")),
+            "taklif_korildi": sum(1 for t in takliflar if t.get("mur_korildi")),
+            "taklif_yechim": sum(1 for t in takliflar if t.get("mur_yechim_turi")),
             "bogllanmagan": sum(1 for q in qongiroqlar if not q["student"]),
         },
         "menejerlar": menejerlar,
@@ -563,6 +573,46 @@ def get_telefon(from_date=None, to_date=None, masul=None, limit=1200, sanalar=No
         "takliflar": takliflar,
         "qongiroqlar": qongiroqlar,
     }
+
+
+def _murojaat_biriktir(takliflar: list) -> None:
+    """Taklif/shikoyat qatorlariga murojaat holatini qo'shadi.
+
+    Ikki yo'l bilan bog'lanadi:
+      1) qo'ng'iroq bo'yicha (AI avtomatik ochgan murojaat),
+      2) o'quvchi bo'yicha (menejer qo'lda yo'naltirgan bo'lsa — qo'ng'iroq
+         bog'lanmagan bo'lishi mumkin, lekin masala bir xil).
+    """
+    if not takliflar:
+        return
+    from target_zenit.murojaat import api as murojaat_api
+
+    qong_map = murojaat_api.qongiroq_murojaatlari([t["qongiroq"] for t in takliflar])
+    st_map = murojaat_api.ochiq_murojaatlar([t["student"] for t in takliflar if t.get("student")])
+
+    for t in takliflar:
+        m = qong_map.get(t["qongiroq"])
+        if not m:
+            # O'quvchi bo'yicha: shu qo'ng'iroq sanasidan keyin ochilgan murojaat
+            uchun = st_map.get(t.get("student")) or []
+            sana = str(t.get("sana") or "")[:10]
+            mos = [x for x in uchun if str(x.get("ochilgan") or "")[:10] >= sana]
+            m = (mos or uchun or [None])[0]
+        if not m:
+            t.update({"murojaat": None, "mur_holat": "", "mur_kimga": "",
+                      "mur_masul": "", "mur_korildi": 0, "mur_yechim_turi": "",
+                      "mur_yechim": "", "mur_kategoriya": ""})
+            continue
+        t.update({
+            "murojaat": m.get("name"),
+            "mur_holat": m.get("holat") or "",
+            "mur_kimga": m.get("yonaltirildi") or "",
+            "mur_masul": m.get("masul") or "",
+            "mur_kategoriya": m.get("kategoriya") or "",
+            "mur_korildi": 1 if m.get("korildi_vaqti") else 0,
+            "mur_yechim_turi": m.get("yechim_turi") or "",
+            "mur_yechim": m.get("yechim") or "",
+        })
 
 
 @frappe.whitelist()

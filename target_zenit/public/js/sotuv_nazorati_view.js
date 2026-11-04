@@ -525,27 +525,59 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 	}
 
 	// ======================= 3) TAKLIFLAR =======================
+	// "Aytilgan gap nima bo'ldi" — har qator uchun: kimga biriktirilgan,
+	// rahbar ko'rdimi, qanday yechim berildi (murojaat modulidan).
+	murHolatChip(t) {
+		if (!t.murojaat) {
+			return `<span class="tz-chip neg" title="Hali rahbarga yo'naltirilmagan">yo'naltirilmagan</span>`;
+		}
+		const rang = { "Yangi": " neg", "Ko'rib chiqilmoqda": "",
+			"Ota-onaga xabar berish": " warn", "Yopildi": " pos" }[t.mur_holat] || "";
+		return `<span class="tz-chip${rang}">${this.esc(t.mur_holat)}</span>`
+			+ (t.mur_kimga ? ` <span class="tz-sub">${this.esc(t.mur_kimga)}</span>` : "")
+			+ (t.mur_kategoriya ? `<div class="tz-sub">${this.esc(t.mur_kategoriya)}</div>` : "")
+			+ (t.mur_korildi ? "" : `<div class="tz-sub neg">rahbar ko'rmagan</div>`);
+	}
+
+	murYechim(t) {
+		if (!t.murojaat) return "";
+		if (!t.mur_yechim_turi) return `<span class="tz-sub">qaror kutilmoqda</span>`;
+		return `<b>${this.esc(t.mur_yechim_turi)}</b>`
+			+ (t.mur_yechim ? `<div class="tz-sub">${this.esc(t.mur_yechim)}</div>` : "");
+	}
+
 	taklifJadval() {
 		const list = (this.tel && this.tel.takliflar) || [];
+		const j = (this.tel && this.tel.jami) || {};
 		const rows = list.map((t) => `
 			<tr><td class="nowrap">${this.dt(t.sana)}</td>
 				<td>${t.student ? `<a href="/app/student/${encodeURIComponent(t.student)}" target="_blank">${this.esc(t.student_name)}</a>`
 					: this.esc(t.student_name || "—")}<div class="tz-sub">${this.esc(t.sinf || "")}</div></td>
 				<td>${this.esc(t.menejer)}</td>
-				<td class="sn-taklif">${this.esc(t.matn)}</td>
+				<td class="sn-taklif">${this.esc(t.matn)}
+					${t.turi && !/^(yo'q|yoq|-|—)$/i.test(t.turi)
+						? `<div class="tz-sub">${this.esc(t.turi)}</div>` : ""}</td>
 				<td>${t.holat ? `<span class="tz-chip${/qarshi/i.test(t.holat) ? " neg" : ""}">${this.esc(t.holat)}</span>` : ""}</td>
-				<td>${t.student || t.qarz_ishi
+				<td>${this.murHolatChip(t)}</td>
+				<td>${this.murYechim(t)}</td>
+				<td>${t.murojaat
+						? `<a class="tz-sverka" href="/app/murojaatlar?murojaat=${encodeURIComponent(t.murojaat)}"
+							target="_blank" title="Rahbar panelida ochish">murojaat ↗</a><br>` : ""}
+					${t.student || t.qarz_ishi
 					? `<a class="tz-sverka" href="${this.panelUrl(t.student, t.qarz_ishi)}" target="_blank"
 						title="Qarzdorlik panelida shu o'quvchini ochish">qarzdorlik ↗</a>` : ""}</td></tr>`).join("");
 		return `<div class="card">
 			<div class="hd"><div><h3>Ota-onalarning taklif va shikoyatlari</h3>
 				<div class="meta">AI tahlilidan ajratilgan — maktab bo'yicha fikrlar (o'qituvchi, nazorat,
-					tadbir, sharoit). To'lov bo'yicha e'tirozlar bu yerga kirmaydi.</div></div>
+					tadbir, sharoit). To'lov bo'yicha e'tirozlar bu yerga kirmaydi.
+					${list.length ? `<b>${j.taklif_yonaltirildi || 0}</b> ta rahbarga yo'naltirilgan,
+						<b>${j.taklif_korildi || 0}</b> ta ko'rib chiqilgan,
+						<b>${j.taklif_yechim || 0}</b> ta yechim berilgan.` : ""}</div></div>
 				<div class="tz-nach-tools"><button class="tz-seg-opt" data-csv="taklif">⬇ CSV</button></div></div>
 			<div class="tbl-wrap"><table class="tz-sotuv-tbl">
 				<thead><tr><th>Sana ↓</th><th>O'quvchi</th><th>Menejer</th><th>Taklif / shikoyat</th>
-					<th>Mijoz holati</th><th></th></tr></thead>
-				<tbody>${rows || `<tr><td colspan="6" class="empty-hint">Bu davrda taklif/shikoyat qayd etilmagan</td></tr>`}</tbody>
+					<th>Mijoz holati</th><th>Kimga biriktirilgan</th><th>Qanday hal qilindi</th><th></th></tr></thead>
+				<tbody>${rows || `<tr><td colspan="8" class="empty-hint">Bu davrda taklif/shikoyat qayd etilmagan</td></tr>`}</tbody>
 			</table></div></div>`;
 	}
 
@@ -623,10 +655,15 @@ window.TZSotuvNazoratiView = class TZSotuvNazoratiView {
 				String(o.oxirgi || "").slice(0, 16), o.oxirgi_mavzu, o.qarz, o.ishlov_status, o.taklif]));
 		} else {
 			nom = "taklif";
-			rows = [["Sana", "O'quvchi", "Sinf", "Menejer", "Taklif / shikoyat", "Mijoz holati", "Qo'ng'iroq"]];
+			rows = [["Sana", "O'quvchi", "Sinf", "Menejer", "Taklif / shikoyat", "Turi",
+				"Mijoz holati", "Murojaat", "Kimga", "Kategoriya", "Murojaat holati",
+				"Rahbar ko'rdi", "Qaror", "Qanday hal qilindi", "Qo'ng'iroq"]];
 			((this.tel && this.tel.takliflar) || []).forEach((t) => rows.push([
 				String(t.sana || "").slice(0, 16), t.student_name, t.sinf, t.menejer,
-				(t.matn || "").replace(/\n/g, " "), t.holat, t.qongiroq]));
+				(t.matn || "").replace(/\n/g, " "), t.turi, t.holat,
+				t.murojaat || "", t.mur_kimga, t.mur_kategoriya, t.mur_holat,
+				t.mur_korildi ? "ha" : "yo'q", t.mur_yechim_turi,
+				(t.mur_yechim || "").replace(/\n/g, " "), t.qongiroq]));
 		}
 		const csv = rows.map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\n");
 		const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });

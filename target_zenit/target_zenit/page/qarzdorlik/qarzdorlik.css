@@ -266,3 +266,28 @@
 .tz-suhbatlar .sb-t-row.sb-taklif-bor { background: #eef6ff; border-left: 3px solid #1a5bb8;
 	border-radius: 5px; padding: 4px 6px; margin-left: -6px; }
 [data-theme="dark"] .tz-suhbatlar .sb-t-row.sb-taklif-bor { background: #11243a; }
+
+/* ===== Rahbarga yo'naltirilgan masalalar (murojaat moduli) ===== */
+.tz-qarz .mur-box { border-left:3px solid var(--blue); }
+.tz-qarz .mur-box .box-t { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.tz-qarz .mur-row { border:1px solid var(--line); border-radius:10px; padding:8px 10px;
+  margin-bottom:6px; background:var(--card-2); }
+.tz-qarz .mur-row:last-child { margin-bottom:0; }
+.tz-qarz .mur-row-top { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:4px; }
+.tz-qarz .mur-row-matn { font-size:13px; line-height:1.5; white-space:pre-wrap; }
+.tz-qarz .mur-row-yechim { margin-top:5px; font-size:12.5px; line-height:1.5; white-space:pre-wrap;
+  background:var(--good-wash); color:var(--good-ink); border-radius:8px; padding:6px 9px; }
+.tz-qarz .mur-row-amal { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.tz-qarz .mur-row-amal button { background:var(--card); border:1px solid var(--line-strong);
+  border-radius:8px; padding:4px 10px; font-size:12px; cursor:pointer; color:var(--ink); }
+.tz-qarz .mur-row-amal button:hover { border-color:var(--brand); }
+.tz-qarz .mur-row-amal .mur-xabar-btn { background:var(--warn-wash); border-color:var(--warn);
+  color:var(--warn-ink); font-weight:650; }
+.tz-qarz .btn-yonaltir { background:var(--blue-wash); border:1px solid var(--blue); color:var(--blue);
+  border-radius:10px; padding:7px 13px; font-size:13px; font-weight:600; cursor:pointer; }
+.tz-qarz .btn-yonaltir:hover { background:var(--blue); color:#fff; }
+/* Suhbat kartasidagi "⬆ rahbarga" tugmasi (taklif/shikoyat qatori yonida) */
+.tz-suhbatlar .sb-yonaltir-btn { margin-left:8px; background:#1a5bb8; color:#fff; border:none;
+  border-radius:6px; padding:1px 8px; font-size:11px; font-weight:600; cursor:pointer;
+  vertical-align:middle; }
+.tz-suhbatlar .sb-yonaltir-btn:hover { filter:brightness(1.12); }

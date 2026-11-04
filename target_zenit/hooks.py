@@ -30,7 +30,7 @@ app_license = "mit"
 app_include_css = [
 	"/assets/target_zenit/css/dars_audio.css?v=20261015",
 	# Sotuv nazorati ko'rinishi (sahifa + investor dashboard bo'limi)
-	"/assets/target_zenit/css/sotuv_nazorati_view.css?v=20261030",
+	"/assets/target_zenit/css/sotuv_nazorati_view.css?v=20261104",
 ]
 # ?v= — brauzer keshini yangilash uchun (fayl o'zgarganda raqamni oshiring)
 app_include_js = [
@@ -45,7 +45,7 @@ app_include_js = [
 	"/assets/target_zenit/js/dars_audio.js?v=20261015",
 	# Sotuv nazorati: bitta ko'rinish — /app/sotuv-nazorati sahifasi ham,
 	# investor dashboardning "Sotuv nazorati" bo'limi ham shuni ishlatadi
-	"/assets/target_zenit/js/sotuv_nazorati_view.js?v=20261030",
+	"/assets/target_zenit/js/sotuv_nazorati_view.js?v=20261104",
 ]
 
 # include js, css files in header of web template
@@ -292,6 +292,9 @@ has_permission = {
 # rol havolasi ishlashi uchun rol sinxronizatsiyadan OLDIN yaratiladi
 before_migrate = [
 	"target_zenit.moliya_rol.before_migrate",
+	# CEO / Direktor rollari — doctype JSON'laridagi ruxsat qatorlari
+	# migrate'dan OLDIN rol mavjud bo'lishini talab qiladi
+	"target_zenit.murojaat.setup.before_migrate",
 ]
 
 after_migrate = [
@@ -309,6 +312,8 @@ after_migrate = [
 	"target_zenit.student_tarif.after_migrate",
 	# Nigora_Moliya roli va doctype ruxsatlari (idempotent)
 	"target_zenit.moliya_rol.after_migrate",
+	# Murojaat moduli: CEO/Direktor rollari, kategoriya marshruti, ruxsatlar
+	"target_zenit.murojaat.setup.after_migrate",
 ]
 
 # Scheduled Tasks
@@ -331,6 +336,12 @@ scheduler_events = {
 			"target_zenit.telefoniya.stt.qolganlarni_qil",
 			# Transkripti bor-u qisqa tahlili yo'qlar (2-bosqich zaxirasi)
 			"target_zenit.telefoniya.analiz.qolganlarni_qil",
+		],
+		# Har kuni 08:30 — tahlili bor-u murojaati ochilmagan qo'ng'iroqlar
+		# (asosiy yo'l analiz.tahlil_qil ichida; bu zaxira: modul yoqilishidan
+		# oldin tahlil qilinganlar va worker uzilgan hollar uchun)
+		"30 8 * * *": [
+			"target_zenit.murojaat.ai.qolganlarni_qil",
 		],
 		# Har kuni 07:00 — Moodle'ga o'quvchi/o'qituvchi sinxroni (Frappe -> Moodle)
 		"0 7 * * *": [

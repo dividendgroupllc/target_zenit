@@ -109,6 +109,11 @@
   background:var(--tz-card-2,#eef1f6); border:1px solid var(--tz-line-strong,#d3dae6); white-space:nowrap; }
 .tz-sn .tz-chip.warn { background:#fbf1dc; color:#a8730b; border-color:#dd9a1f; }
 .tz-sn .tz-chip.neg { background:#fbeae9; color:#b93129; border-color:#d8443c; }
+.tz-sn .tz-chip.pos { background:#e5f5ec; color:#0b7f3f; border-color:#12a150; }
+/* Takliflar jadvalidagi "rahbar ko'rmagan" ogohlantirishi */
+.tz-sn .tz-sotuv-tbl .tz-sub.neg { color:#b93129; opacity:.85; font-weight:600; }
+[data-theme="dark"] .tz-sn .tz-chip.pos { background:#0e2c1c; color:#6fe0a0; border-color:#31c06d; }
+[data-theme="dark"] .tz-sn .tz-sotuv-tbl .tz-sub.neg { color:#ff9c95; }
 /* Sotuv nazorati — "sverka" havolasi */
 .tz-sn .tz-sverka { display:inline-block; margin-left:6px; font-size:10.5px; font-weight:600;
   padding:1px 7px; border-radius:999px; white-space:nowrap;

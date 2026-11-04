@@ -1,0 +1,438 @@
+{
+ "actions": [],
+ "autoname": "format:MR-{YYYY}-{#####}",
+ "creation": "2026-11-04 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_mazmun",
+  "turi",
+  "kategoriya",
+  "muhimlik",
+  "column_break_mazmun",
+  "yonaltirildi",
+  "masul",
+  "holat",
+  "section_matn",
+  "matn",
+  "section_kim",
+  "student",
+  "student_name",
+  "sinf",
+  "column_break_kim",
+  "payer_name",
+  "payer_phone",
+  "qarz_ishi",
+  "section_manba",
+  "manba",
+  "menejer",
+  "menejer_nomi",
+  "column_break_manba",
+  "suhbat_vaqti",
+  "telefon_qongirogi",
+  "aloqa_yozuvi",
+  "section_muddat",
+  "ochilgan",
+  "sla_sana",
+  "column_break_muddat",
+  "korildi_kim",
+  "korildi_vaqti",
+  "section_yechim",
+  "yechim_turi",
+  "yechim",
+  "column_break_yechim",
+  "yechim_kim",
+  "yechim_vaqti",
+  "section_xabar",
+  "xabar_berildi",
+  "xabar_matni",
+  "column_break_xabar",
+  "xabar_kim",
+  "xabar_vaqti",
+  "yopilgan_sana",
+  "section_izohlar",
+  "izohlar"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_mazmun",
+   "fieldtype": "Section Break",
+   "label": "Murojaat"
+  },
+  {
+   "fieldname": "turi",
+   "fieldtype": "Select",
+   "label": "Turi",
+   "options": "Shikoyat\nTaklif\nMuammo\nSo'rov",
+   "default": "Shikoyat",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "kategoriya",
+   "fieldtype": "Link",
+   "label": "Kategoriya",
+   "options": "Murojaat Kategoriyasi",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "description": "Yo'nalish (CEO / Direktor) shu kategoriyadan avtomatik aniqlanadi"
+  },
+  {
+   "fieldname": "muhimlik",
+   "fieldtype": "Select",
+   "label": "Muhimlik",
+   "options": "Past\nO'rta\nYuqori",
+   "default": "O'rta",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_mazmun",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "yonaltirildi",
+   "fieldtype": "Select",
+   "label": "Kimga",
+   "options": "CEO\nDirektor",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "masul",
+   "fieldtype": "Link",
+   "label": "Mas'ul rahbar",
+   "options": "User",
+   "in_standard_filter": 1,
+   "description": "Bo'sh bo'lsa — shu yo'nalishdagi barcha rahbarlar ko'radi"
+  },
+  {
+   "default": "Yangi",
+   "fieldname": "holat",
+   "fieldtype": "Select",
+   "label": "Holat",
+   "options": "Yangi\nKo'rib chiqilmoqda\nOta-onaga xabar berish\nYopildi",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "section_matn",
+   "fieldtype": "Section Break",
+   "label": "Muammo nimada"
+  },
+  {
+   "fieldname": "matn",
+   "fieldtype": "Text",
+   "label": "Ota-ona nima dedi",
+   "reqd": 1,
+   "description": "Ota-onaning o'z gapiga yaqin yozilsin — rahbar shuni o'qiydi"
+  },
+  {
+   "fieldname": "section_kim",
+   "fieldtype": "Section Break",
+   "label": "Kim murojaat qildi"
+  },
+  {
+   "fieldname": "student",
+   "fieldtype": "Link",
+   "label": "O'quvchi",
+   "options": "Student",
+   "search_index": 1
+  },
+  {
+   "fieldname": "student_name",
+   "fieldtype": "Data",
+   "label": "O'quvchi F.I.Sh.",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sinf",
+   "fieldtype": "Data",
+   "label": "Sinf",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_kim",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "payer_name",
+   "fieldtype": "Data",
+   "label": "Ota-ona / to'lovchi"
+  },
+  {
+   "fieldname": "payer_phone",
+   "fieldtype": "Data",
+   "label": "Telefon"
+  },
+  {
+   "fieldname": "qarz_ishi",
+   "fieldtype": "Link",
+   "label": "Qarz ishi",
+   "options": "Qarz Ishi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_manba",
+   "fieldtype": "Section Break",
+   "label": "Manba — kim qachon gaplashgan"
+  },
+  {
+   "fieldname": "manba",
+   "fieldtype": "Select",
+   "label": "Manba",
+   "options": "Menejer\nAI qo'ng'iroq tahlili\nYuzma-yuz\nTelegram\nBoshqa",
+   "default": "Menejer",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "menejer",
+   "fieldtype": "Link",
+   "label": "Menejer (kim gaplashdi)",
+   "options": "User",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "menejer_nomi",
+   "fieldtype": "Data",
+   "label": "Menejer ismi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_manba",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "suhbat_vaqti",
+   "fieldtype": "Datetime",
+   "label": "Suhbat vaqti"
+  },
+  {
+   "fieldname": "telefon_qongirogi",
+   "fieldtype": "Link",
+   "label": "Qo'ng'iroq (ovoz + transkript)",
+   "options": "Telefon Qongirogi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "aloqa_yozuvi",
+   "fieldtype": "Link",
+   "label": "Aloqa yozuvi",
+   "options": "Aloqa Yozuvi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_muddat",
+   "fieldtype": "Section Break",
+   "label": "Muddat"
+  },
+  {
+   "fieldname": "ochilgan",
+   "fieldtype": "Datetime",
+   "label": "Ochilgan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sla_sana",
+   "fieldtype": "Date",
+   "label": "Javob muddati",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_muddat",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "korildi_kim",
+   "fieldtype": "Link",
+   "label": "Kim ko'rdi",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "korildi_vaqti",
+   "fieldtype": "Datetime",
+   "label": "Ko'rilgan vaqt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_yechim",
+   "fieldtype": "Section Break",
+   "label": "Rahbar qarori"
+  },
+  {
+   "fieldname": "yechim_turi",
+   "fieldtype": "Select",
+   "label": "Qaror",
+   "options": "\nHal qilindi\nInobatga olindi\nKeyinroq ko'riladi\nRad etildi\nAhamiyatsiz",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Taklif uchun: «Inobatga olindi» — amalga oshiriladi, «Rad etildi» — o'rinli emas"
+  },
+  {
+   "fieldname": "yechim",
+   "fieldtype": "Text",
+   "label": "Qanday hal qilindi",
+   "description": "Aniq yozilsin: nima qilindi, kim bajaradi, qachon. Ota-onaga aytiladigan javob ham shu yerda"
+  },
+  {
+   "fieldname": "column_break_yechim",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "yechim_kim",
+   "fieldtype": "Link",
+   "label": "Qaror kim tomonidan",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "yechim_vaqti",
+   "fieldtype": "Datetime",
+   "label": "Qaror vaqti",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_xabar",
+   "fieldtype": "Section Break",
+   "label": "Ota-onaga javob"
+  },
+  {
+   "default": "0",
+   "fieldname": "xabar_berildi",
+   "fieldtype": "Check",
+   "label": "Ota-onaga xabar berildi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "xabar_matni",
+   "fieldtype": "Small Text",
+   "label": "Ota-ona reaksiyasi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_xabar",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "xabar_kim",
+   "fieldtype": "Link",
+   "label": "Kim xabar berdi",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "xabar_vaqti",
+   "fieldtype": "Datetime",
+   "label": "Xabar vaqti",
+   "read_only": 1
+  },
+  {
+   "fieldname": "yopilgan_sana",
+   "fieldtype": "Date",
+   "label": "Yopilgan sana",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_izohlar",
+   "fieldtype": "Section Break",
+   "label": "Izohlar (timeline)"
+  },
+  {
+   "fieldname": "izohlar",
+   "fieldtype": "Table",
+   "label": "Izohlar",
+   "options": "Murojaat Izohi",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-04 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Murojaat",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  },
+  {
+   "role": "CEO",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "share": 1
+  },
+  {
+   "role": "Direktor",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "share": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Sotuv meneger",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  },
+  {
+   "role": "Xojakbar_Operator",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  },
+  {
+   "role": "Nigora_Moliya",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "search_fields": "student_name,sinf,turi,kategoriya,holat",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "student_name",
+ "track_changes": 1
+}

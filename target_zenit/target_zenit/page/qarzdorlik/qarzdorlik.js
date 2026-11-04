@@ -6,6 +6,8 @@ frappe.pages["qarzdorlik"].on_page_load = function (wrapper) {
 };
 
 const QARZ_M = "target_zenit.target_zenit.page.qarzdorlik.qarzdorlik";
+// Rahbarga yo'naltirish (shikoyat/taklif) — murojaat moduli
+const MUR_API = "target_zenit.murojaat.api";
 
 class TZQarzPanel {
 	constructor(wrapper) {
@@ -575,6 +577,7 @@ class TZQarzPanel {
 					qlar.filter((q) => q.ai_xulosa).length
 						? ` · ${qlar.filter((q) => q.ai_xulosa).length} tahlil` : ""}</button>` : ""}
 				<button class="btn-call">📞 Qo'ng'iroq natijasi</button>
+				<button class="btn-yonaltir">⬆ Rahbarga yo'naltirish</button>
 				<button class="btn-recalc">↻ Qayta hisoblash</button>
 				<a class="btn-doc" href="/app/qarz-ishi/${encodeURIComponent(c.name)}">Ishni ochish ↗</a>
 				${this.data.rahbar ? `<button class="btn-reassign">Mas'ulni almashtirish</button>` : ""}
@@ -583,11 +586,19 @@ class TZQarzPanel {
 						? `<button class="btn-ketgan back">↩ Ketgan belgisini olish</button>`
 						: `<button class="btn-ketgan">🚪 O'quvchi ketdi</button>`) : ""}
 			</div>
+			${this.murojaat_bloki(d.murojaatlar)}
 			${sibs}${xulosa}${months}${pays}${tl}
 		`);
 
 		this.body.find(".btn-suhbat").on("click", () => this.suhbat_dialog());
 		this.body.find(".btn-call").on("click", () => this.call_dialog());
+		this.body.find(".btn-yonaltir").on("click", () => this.yonaltir_dialog());
+		this.body.find(".mur-xabar-btn").on("click", (e) =>
+			this.mur_xabar_dialog($(e.currentTarget).data("mur")));
+		this.body.find(".mur-ochish").on("click", (e) => {
+			frappe.route_options = { murojaat: $(e.currentTarget).data("mur") };
+			frappe.set_route("murojaatlar");
+		});
 		this.body.find(".btn-recalc").on("click", () => {
 			frappe.call({
 				method: `${QARZ_M}.qayta_hisobla`,
@@ -729,6 +740,17 @@ class TZQarzPanel {
 			});
 		});
 
+		// Taklif/shikoyatni rahbarga yo'naltirish — AI topgan matn bilan
+		dlg.$wrapper.on("click", ".sb-yonaltir-btn", (e) => {
+			const $b = $(e.currentTarget);
+			dlg.hide();
+			this.yonaltir_dialog({
+				matn: String($b.data("matn") || ""),
+				telefon_qongirogi: String($b.data("q") || ""),
+				suhbat_vaqti: String($b.data("vaqt") || "") || null,
+			});
+		});
+
 		// Matnni yig'ish/ochish
 		dlg.$wrapper.on("click", ".sb-matn-tgl", (e) => {
 			const $b = $(e.currentTarget);
@@ -766,10 +788,18 @@ class TZQarzPanel {
 					const bosh = m[1].trim(), qiymat = (m[2] || "").trim();
 					const yoq = /^(yo'q|yoq|taklif yo'q|—|-|)$/i.test(qiymat);
 					if (bosh === TAKLIF || bosh === ESKI_TAKLIF) {
+						// Haqiqiy taklif/shikoyat bo'lsa — shu yerdan rahbarga
+						// yo'naltirish mumkin (matn oldindan to'ldiriladi)
 						return `<div class="sb-t-row${yoq ? "" : " sb-taklif-bor"}">
 							<span class="sb-t-k">${this.esc(TAKLIF)}</span>
 							<span class="sb-t-v${yoq ? " sb-t-yoq" : " sb-t-taklif"}">${
-								this.esc(yoq ? "Taklif yo'q" : qiymat)}</span></div>`;
+								this.esc(yoq ? "Taklif yo'q" : qiymat)}
+								${yoq ? "" : `<button class="btn-mini sb-yonaltir-btn"
+									data-q="${this.esc(q.name)}"
+									data-matn="${this.esc(qiymat)}"
+									data-vaqt="${this.esc(q.boshlandi || "")}"
+									title="Bu masalani CEO yoki direktorga yo'naltirish">⬆ rahbarga</button>`}
+							</span></div>`;
 					}
 					if (yoq) return "";
 					const holat = bosh === "MIJOZ HOLATI"
@@ -812,6 +842,149 @@ class TZQarzPanel {
 		</div>`;
 	}
 
+	// ====================== Rahbarga yo'naltirish ======================
+	// Sotuvchi hal qila olmaydigan masala (ta'lim sifati, o'qituvchi, tashkiliy
+	// ishlar, kitob-forma…) CEO yoki direktorga uzatiladi. Yo'nalishni
+	// KATEGORIYA belgilaydi — menejer "kimga yuboraman" deb o'ylab o'tirmaydi.
+	MUR_HOLAT_RANG() {
+		return { "Yangi": "st-bad", "Ko'rib chiqilmoqda": "st-blue",
+		         "Ota-onaga xabar berish": "st-warn", "Yopildi": "st-ok" };
+	}
+
+	murojaat_bloki(murojaatlar) {
+		murojaatlar = murojaatlar || [];
+		if (!murojaatlar.length) return "";
+		const rang = this.MUR_HOLAT_RANG();
+		const qatorlar = murojaatlar.map((m) => `
+			<div class="mur-row">
+				<div class="mur-row-top">
+					<span class="pill ${rang[m.holat] || "st-mut"}">${this.esc(m.holat)}</span>
+					<span class="pill ${m.yonaltirildi === "CEO" ? "st-blue" : "st-mut"}">${this.esc(m.yonaltirildi)}</span>
+					<span class="mini">${this.esc(m.turi)} · ${this.esc(m.kategoriya || "—")}</span>
+					<span class="mini">${this.dmy(m.ochilgan)}</span>
+					${m.korildi_vaqti ? `<span class="mini ok-t">rahbar ko'rdi</span>`
+						: `<span class="mini warn-t">hali ko'rilmagan</span>`}
+				</div>
+				<div class="mur-row-matn">${this.esc(m.matn || "")}</div>
+				${m.yechim ? `<div class="mur-row-yechim"><b>${this.esc(m.yechim_turi || "Qaror")}:</b>
+					${this.esc(m.yechim)}</div>` : ""}
+				<div class="mur-row-amal">
+					${m.holat === "Ota-onaga xabar berish"
+						? `<button class="btn-mini mur-xabar-btn" data-mur="${this.esc(m.name)}">
+								☎ Ota-onaga javob berdim</button>` : ""}
+					<button class="btn-mini ghost mur-ochish" data-mur="${this.esc(m.name)}">
+						Murojaat kartasi ↗</button>
+				</div>
+			</div>`).join("");
+		const kutilmoqda = murojaatlar.filter((m) => m.holat === "Ota-onaga xabar berish").length;
+		return `<div class="box mur-box">
+			<div class="box-t">Rahbarga yo'naltirilgan masalalar (${murojaatlar.length})
+				${kutilmoqda ? `<span class="pill st-warn">${kutilmoqda} ta javob kutilmoqda</span>` : ""}</div>
+			${qatorlar}</div>`;
+	}
+
+	// Kategoriya ro'yxati — birinchi ochilishda keladi, keyin keshdan
+	mur_kategoriyalar() {
+		return (this.detail && this.detail.mur_kategoriyalar) || [];
+	}
+
+	// Kategoriya tanlashi uchun Select opsiyalari: nomi + kimga ketishi
+	mur_kat_options(turi) {
+		const kats = this.mur_kategoriyalar();
+		const mos = turi ? kats.filter((k) => !k.turi_tavsiya || k.turi_tavsiya === turi) : kats;
+		const royxat = (mos.length ? mos : kats);
+		return [""].concat(royxat.map((k) => ({
+			value: k.name, label: `${k.nomi} → ${k.yonaltirish}`,
+		})));
+	}
+
+	yonaltir_dialog(opts) {
+		opts = opts || {};
+		const c = this.detail.case;
+		const kats = this.mur_kategoriyalar();
+		if (!kats.length) {
+			frappe.msgprint("Murojaat kategoriyalari o'rnatilmagan — administratorga aytiling.");
+			return;
+		}
+		const dlg = new frappe.ui.Dialog({
+			title: `Rahbarga yo'naltirish — ${c.student_name}`,
+			fields: [
+				{ fieldtype: "HTML", options: `<div class="text-muted" style="font-size:12px;margin-bottom:8px">
+					Sotuvchi hal qila olmaydigan masala CEO yoki direktorga uzatiladi.
+					<b>Kimga ketishini kategoriya belgilaydi</b>: o'quv masalalari (dars sifati,
+					o'qituvchi, tarbiya, baho) → direktor; tashkiliy va to'lov masalalari
+					(kitob-forma, chegirma, transport, ovqat, sharoit) → CEO.
+					Rahbar qaror yozgach, ota-onaga javob berish SIZGA qaytadi.</div>` },
+				{ fieldname: "turi", fieldtype: "Select", label: "Turi", reqd: 1,
+					options: "Shikoyat\nTaklif\nMuammo\nSo'rov",
+					default: opts.turi || "Shikoyat" },
+				{ fieldname: "kategoriya", fieldtype: "Select", label: "Kategoriya (kimga ketadi)",
+					reqd: 1, options: this.mur_kat_options() },
+				{ fieldname: "matn", fieldtype: "Small Text", reqd: 1,
+					label: "Ota-ona nima dedi (uning o'z gapiga yaqin yozing)",
+					default: opts.matn || "" },
+				{ fieldname: "muhimlik", fieldtype: "Select", label: "Muhimlik",
+					options: "Past\nO'rta\nYuqori", default: opts.muhimlik || "O'rta" },
+			],
+			primary_action_label: "Yo'naltirish",
+			primary_action: (v) => {
+				frappe.call({
+					method: `${MUR_API}.yonaltir`,
+					args: {
+						payload: {
+							qarz_ishi: c.name, student: c.student,
+							turi: v.turi, kategoriya: v.kategoriya, matn: v.matn,
+							muhimlik: v.muhimlik,
+							aloqa_yozuvi: opts.aloqa_yozuvi || null,
+							telefon_qongirogi: opts.telefon_qongirogi || null,
+							suhbat_vaqti: opts.suhbat_vaqti || null,
+						},
+					},
+					freeze: true,
+					callback: (r) => {
+						const m = r.message || {};
+						dlg.hide();
+						frappe.show_alert({
+							message: `${m.name || "Murojaat"} — ${m.yonaltirildi || "rahbar"} ga yo'naltirildi`,
+							indicator: "blue",
+						}, 7);
+						this.load_detail(c.name, true);
+					},
+				});
+			},
+		});
+		dlg.show();
+	}
+
+	// Rahbar qaror yozdi — menejer ota-onaga aytib, halqani yopadi
+	mur_xabar_dialog(name) {
+		const m = (this.detail.murojaatlar || []).find((x) => x.name === name);
+		if (!m) return;
+		const dlg = new frappe.ui.Dialog({
+			title: "Ota-onaga javob berdim",
+			fields: [
+				{ fieldtype: "HTML", options: `<div class="box" style="margin-bottom:8px">
+					<div class="box-t">${frappe.utils.escape_html(m.yechim_turi || "Rahbar qarori")}</div>
+					<div style="white-space:pre-wrap">${frappe.utils.escape_html(m.yechim || "")}</div></div>` },
+				{ fieldname: "matn", fieldtype: "Small Text", label: "Ota-ona reaksiyasi",
+					description: "Javobni qanday qabul qildi, qo'shimcha gapi bo'ldimi" },
+			],
+			primary_action_label: "Yopish",
+			primary_action: (v) => {
+				frappe.call({
+					method: `${MUR_API}.xabar_berdim`,
+					args: { name, matn: v.matn || null }, freeze: true,
+					callback: () => {
+						dlg.hide();
+						frappe.show_alert({ message: "Murojaat yopildi", indicator: "green" }, 5);
+						this.load_detail(this.detail.case.name, true);
+					},
+				});
+			},
+		});
+		dlg.show();
+	}
+
 	call_dialog() {
 		const c = this.detail.case;
 		const dlg = new frappe.ui.Dialog({
@@ -829,6 +1002,30 @@ class TZQarzPanel {
 				{ fieldname: "vada_sana", fieldtype: "Date", label: "Va'da sanasi",
 					depends_on: 'eval:doc.hisob_natijasi=="Va\'da berdi"' },
 				{ fieldname: "komment", fieldtype: "Small Text", label: "Komment" },
+				// E'tiroz / rad etish — ko'pincha pul masalasi EMAS: ota-ona
+				// o'qituvchidan, sharoitdan yoki tashkiliy ishdan norozi.
+				// Shuni darhol shu modalda rahbarga yo'naltirish mumkin —
+				// menejer alohida oynani qidirib yurmaydi.
+				{ fieldtype: "Section Break", label: "Rahbarga yo'naltirish",
+					depends_on: "eval:[\"E'tiroz-nizo\",\"Rad etdi\"].includes(doc.hisob_natijasi) || doc.keyingi_harakat=='Eskalatsiya'" },
+				{ fieldname: "rahbarga", fieldtype: "Check", default: 0,
+					label: "Bu masalani CEO / direktorga yo'naltirish",
+					description: "Sotuvchi o'zi hal qila olmaydigan masala bo'lsa belgilang" },
+				{ fieldname: "mur_turi", fieldtype: "Select", label: "Murojaat turi",
+					options: "Shikoyat\nTaklif\nMuammo\nSo'rov", default: "Shikoyat",
+					depends_on: "eval:doc.rahbarga" },
+				{ fieldname: "mur_kategoriya", fieldtype: "Select",
+					label: "Kategoriya (kimga ketadi)", options: this.mur_kat_options(),
+					depends_on: "eval:doc.rahbarga",
+					mandatory_depends_on: "eval:doc.rahbarga",
+					description: "O'quv masalalari → direktor, tashkiliy va to'lov masalalari → CEO" },
+				{ fieldname: "mur_matn", fieldtype: "Small Text",
+					label: "Ota-ona nima dedi (rahbar shuni o'qiydi)",
+					depends_on: "eval:doc.rahbarga",
+					description: "Bo'sh qoldirsangiz yuqoridagi komment ishlatiladi" },
+				{ fieldname: "mur_muhimlik", fieldtype: "Select", label: "Muhimlik",
+					options: "Past\nO'rta\nYuqori", default: "O'rta",
+					depends_on: "eval:doc.rahbarga" },
 				{ fieldtype: "Section Break" },
 				{ fieldname: "keyingi_harakat", fieldtype: "Select", label: "Keyingi harakat", reqd: 1,
 					options: "Qayta qo'ng'iroq\nVa'dani kutish\nEskalatsiya\nRaqam aniqlash\nBoshqa", default: "Qayta qo'ng'iroq" },
@@ -843,13 +1040,46 @@ class TZQarzPanel {
 				if (v.hisob_natijasi === "Va'da berdi" && v.vada_sana && v.keyingi_sana === dflt) {
 					v.keyingi_sana = frappe.datetime.add_days(v.vada_sana, 1);
 				}
+				const mur_matn = (v.mur_matn || v.komment || "").trim();
+				if (v.rahbarga && !mur_matn) {
+					frappe.msgprint("Rahbarga yo'naltirish uchun ota-onaning gapini yozing (komment yoki alohida maydon).");
+					return;
+				}
 				frappe.call({
 					method: `${QARZ_M}.save_call`,
 					args: { payload: Object.assign({ qarz_ishi: c.name }, v) },
 					freeze: true,
-					callback: () => {
+					callback: (r) => {
 						dlg.hide();
 						frappe.show_alert({ message: "Saqlandi", indicator: "green" });
+						// Aloqa yozuvi saqlangandan KEYIN yo'naltiriladi: murojaat
+						// o'sha suhbatga bog'lanib qoladi, rahbar "qachon, kim
+						// bilan gaplashilgan" ni ko'radi
+						if (v.rahbarga) {
+							frappe.call({
+								method: `${MUR_API}.yonaltir`,
+								args: {
+									payload: {
+										qarz_ishi: c.name, student: c.student,
+										turi: v.mur_turi || "Shikoyat",
+										kategoriya: v.mur_kategoriya,
+										matn: mur_matn,
+										muhimlik: v.mur_muhimlik || "O'rta",
+										aloqa_yozuvi: (r.message || {}).ay || null,
+									},
+								},
+								callback: (r2) => {
+									const m = r2.message || {};
+									frappe.show_alert({
+										message: `${m.name || "Murojaat"} — ${m.yonaltirildi || "rahbar"} ga yo'naltirildi`,
+										indicator: "blue",
+									}, 7);
+									this.load();
+									this.load_detail(c.name, true);
+								},
+							});
+							return;
+						}
 						this.load();
 						this.load_detail(c.name, true);
 					},

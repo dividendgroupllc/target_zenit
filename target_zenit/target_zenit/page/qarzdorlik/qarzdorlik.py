@@ -671,6 +671,14 @@ def get_case(name: str):
 	qongiroqlar = _qongiroqlar(qi.student, qi.payer_phone, qi.payer_name)
 	_komment_biriktir(qongiroqlar, ays)
 
+	# Rahbarga yo'naltirilgan murojaatlar: menejer "bu masala allaqachon
+	# CEO/direktorda" ekanini ko'rib, ikkinchi marta yo'naltirmasligi va
+	# rahbar qarorini ota-onaga aytishi uchun
+	from target_zenit.murojaat import api as murojaat_api
+
+	murojaatlar = murojaat_api.ochiq_murojaatlar([qi.student]).get(qi.student, [])
+	kategoriyalar = murojaat_api.kategoriyalar()
+
 	return {
 		"case": qi.as_dict(no_nulls=False),
 		"months": months,
@@ -684,6 +692,8 @@ def get_case(name: str):
 		"student_phone": student_phone,
 		"qongiroqlar": qongiroqlar,
 		"tel_hammasi": 1 if _tel_hammasini_koradi() else 0,
+		"murojaatlar": murojaatlar,
+		"mur_kategoriyalar": kategoriyalar,
 	}
 
 

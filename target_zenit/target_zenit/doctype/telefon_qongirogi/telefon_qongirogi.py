@@ -98,6 +98,10 @@ HAMMASINI_KORADI = {
 	"Sotuv meneger",
 	"Sales User",
 	"Operator",
+	# Rahbariyat: murojaat kartasida ota-onaning o'z ovozini eshitib, AI
+	# xulosasi bilan solishtirishi kerak — matn ba'zan mohiyatni yo'qotadi
+	"CEO",
+	"Direktor",
 }
 
 
