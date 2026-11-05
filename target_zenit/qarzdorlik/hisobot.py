@@ -239,23 +239,45 @@ def pdf(case: str) -> dict:
 	kontent = frappe.render_template(SHABLON, {
 		**d, "son": son, "sana_f": sana, "oy_nomi": oy_nomi, "logo": logo_uri(),
 	})
+	nom = _fayl_nomi(d)
+	return {"file_url": _saqla(_pdf_bayt(kontent), nom, case), "file_name": nom}
 
+
+# Mijozga ketadigan hujjat: brauzer sarlavhasi/URL'i turmasligi kerak,
+# shuning uchun `no-outline` va chekkalar qo'lda beriladi.
+PDF_OPTS = {
+	"page-size": "A4",
+	"margin-top": "12mm",
+	"margin-bottom": "14mm",
+	"margin-left": "10mm",
+	"margin-right": "10mm",
+	"encoding": "UTF-8",
+	"no-outline": None,
+	"disable-smart-shrinking": None,
+}
+
+
+def _pdf_bayt(kontent: str) -> bytes:
+	"""HTML -> PDF. wkhtmltopdf yo'q bo'lsa TUSHUNARLI xato beradi.
+
+	pdfkit'ning o'z xabari ("please install wkhtmltopdf ... check README") —
+	ingliz tilidagi texnik matn, menejerga hech narsa demaydi va u buni
+	hisobotdagi nuqson deb o'ylaydi. Aslida bu serverning sozlamasi: Frappe
+	PDF'ni wkhtmltopdf bilan chizadi va u o'rnatilmagan."""
 	from frappe.utils.pdf import get_pdf
 
-	baytlar = get_pdf(kontent, options={
-		"page-size": "A4",
-		"margin-top": "12mm",
-		"margin-bottom": "14mm",
-		"margin-left": "10mm",
-		"margin-right": "10mm",
-		"encoding": "UTF-8",
-		# Mijozga ketadigan hujjatda brauzer sarlavhasi/URL'i turmasligi kerak
-		"no-outline": None,
-		"disable-smart-shrinking": None,
-	})
-
-	nom = _fayl_nomi(d)
-	return {"file_url": _saqla(baytlar, nom, case), "file_name": nom}
+	try:
+		return get_pdf(kontent, options=dict(PDF_OPTS))
+	except OSError as e:
+		# pdfkit dasturni topa olmaganda OSError beradi
+		if "wkhtmltopdf" in str(e).lower():
+			frappe.throw(
+				_("PDF yasash dasturi (wkhtmltopdf) serverda o'rnatilmagan — "
+				  "hisobot tayyorlanmadi. Administrator serverga wkhtmltopdf "
+				  "o'rnatishi kerak, shundan keyin tugma ishlaydi."),
+				title=_("Server sozlamasi yetishmayapti"),
+			)
+		raise
 
 
 def _fayl_nomi(d: dict) -> str:

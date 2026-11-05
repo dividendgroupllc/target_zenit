@@ -1474,26 +1474,52 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
             # 2) Belgilanmagan kunlar 0 (kelmagan) — yozuv yaratilmaydi,
             # hisobda baribir 0 bo'lib qoladi
 
-        # 3) Oydagi barcha qoralama Attendance'larni submit qilish
-        for nom in frappe.get_all(
+        # 3) Qoralama Attendance'larni submit qilish — FAQAT TABELDAGI xodimlar.
+        #
+        # NEGA FILTR (2026-11-05): avval oydagi HAMMA qoralama olinardi va
+        # tabelga umuman kirmaydigan odamning bitta yozuvi butun oyni yopishni
+        # to'xtatib qo'yardi. Real holat: ishdan ketgan (Inactive) ikki xodimga
+        # ketganidan KEYINGI kunga davomat yozilib qolgan edi — HRMS nofaol
+        # xodimga hujjat yaratishga ruxsat bermaydi
+        # (InactiveEmployeeStatusError) va yopish "jurnalni ko'ring" degan
+        # tushunarsiz xabar bilan yiqilardi.
+        #
+        # Tabelda yo'q odamning yozuvi O'CHIRILMAYDI ham: u qoralama bo'lib
+        # qoladi (oylikka kirmaydi) va kadrlar bo'limi o'zi hal qiladi —
+        # oylik hisob-kitobida ma'lumotni jimgina o'chirish mumkin emas.
+        tabel_xodimlar = {q["xodim"] for q in natija["qatorlar"]}
+        otkazilgan = []
+        for nom, emp in frappe.get_all(
             "Attendance",
             filters={"docstatus": 0, "attendance_date": ["between", [oy_boshi, oy_oxiri]]},
-            pluck="name",
+            fields=["name", "employee"],
+            as_list=True,
         ):
+            if emp not in tabel_xodimlar:
+                otkazilgan.append(emp)
+                continue
             doc = frappe.get_doc("Attendance", nom)
             doc.flags.ignore_permissions = True
             doc.submit()
+        if otkazilgan:
+            _jurnal(None, "", f"{yil}-{oy:02d}", "Davomat o'tkazib yuborildi", "",
+                    f"{len(otkazilgan)} yozuv — tabelda yo'q xodimlar: "
+                    + ", ".join(sorted(set(otkazilgan))[:10]))
 
         # 4) Bonus/jarima qoralamalarini submit qilish
-        for nom in frappe.get_all(
+        for nom, emp in frappe.get_all(
             "Additional Salary",
             filters={
                 "docstatus": 0,
                 "salary_component": ["in", [BONUS_KOMPONENT, JARIMA_KOMPONENT]],
                 "payroll_date": ["between", [oy_boshi, oy_oxiri]],
             },
-            pluck="name",
+            fields=["name", "employee"],
+            as_list=True,
         ):
+            # Davomat bilan bir xil qoida: tabelda yo'q xodim oyni to'xtatmaydi
+            if emp not in tabel_xodimlar:
+                continue
             doc = frappe.get_doc("Additional Salary", nom)
             doc.flags.ignore_permissions = True
             doc.submit()
@@ -1514,15 +1540,21 @@ def _oy_yop_job(yil, oy, foydalanuvchi):
             {"yil": yil, "oy": oy, "holat": "Yopiq", "je": je_nom,
              "xabar": f"{OY_NOMLARI[oy]} {yil} tabeli yopildi ✅ {je_xabar}"},
         )
-    except Exception:
+    except Exception as e:
         frappe.db.rollback()
         tabel = _tabel_doc(yil, oy)
         tabel.db_set("holat", "Ochiq")
         frappe.db.commit()
         frappe.log_error(title="Oylik tabel yopishda xato", message=frappe.get_traceback())
+        # XABARDA SABAB BO'LSIN (2026-11-05): avval faqat "tizim jurnalini
+        # ko'ring" deyilardi va foydalanuvchi Error Log'ni qayerdan izlashni
+        # bilmay, Journal Entry'ni ochib bo'sh ekanini ko'rardi. Endi xatoning
+        # o'zi ko'rinadi — ko'p holatda shuning o'zi yetarli.
+        sabab = frappe.utils.strip_html(str(e) or type(e).__name__).strip()
         frappe.publish_realtime(
             "tabel_update",
-            {"yil": yil, "oy": oy, "holat": "Ochiq", "xabar": "Oy yopishda xato — tizim jurnalini ko'ring ❌"},
+            {"yil": yil, "oy": oy, "holat": "Ochiq",
+             "xabar": f"Oy yopilmadi ❌ Sabab: {sabab[:300]}"},
         )
 
 
