@@ -60,7 +60,8 @@ def logo_uri() -> str:
 
 def son(qiymat) -> str:
 	"""1234567.0 -> "1 234 567". Mijoz o'qiydigan hujjatda tiyin keraksiz."""
-	n = int(round(flt(qiymat)))
+	# `round()` butun son qaytaradi — qo'shimcha `int()` ortiqcha (ruff RUF046)
+	n = round(flt(qiymat))
 	belgi = "−" if n < 0 else ""
 	return belgi + f"{abs(n):,}".replace(",", " ")
 
