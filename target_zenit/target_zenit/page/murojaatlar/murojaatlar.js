@@ -405,7 +405,13 @@ class TZMurojaatPanel {
 		const qaror_bor = !!m.yechim_turi;
 
 		let amal = "";
-		if (rahbar && !qaror_bor && this.yozamanmi()) {
+		// QAROR MOODLE'DA YOZILADI (2026-11-04 arxitektura qarori): CEO,
+		// direktor va zavuch murojaatni Moodle'da yoki mobil ilovada hal
+		// qiladi, javob ota-onaga bolasining ilovasiga boradi. Frappe bu
+		// yerda NUSXANI ko'rsatadi — ikki joyda yozish ziddiyat tug'dirardi.
+		// Administrator uchun zaxira yo'l qoladi: Moodle ishlamay qolsa
+		// masala muallaqda qolmasligi kerak.
+		if (rahbar && !qaror_bor && this.rol().admin) {
 			amal = `
 				<div class="mur-qaror-form">
 					<div class="mur-qaror-tugmalar">
@@ -415,7 +421,8 @@ class TZMurojaatPanel {
 					<div class="mut small">${__("«Inobatga olindi» — taklif o'rinli, amalga oshiriladi. «Ahamiyatsiz» — AI xato topgan, ota-onaga qo'ng'iroq qilish shart emas.")}</div>
 				</div>`;
 		} else if (!qaror_bor) {
-			amal = `<div class="mut">${__("Rahbar qarori kutilmoqda.")}</div>`;
+			amal = `<div class="mur-moodle">${
+				__("Qaror Moodle'da yoziladi — CEO va direktor murojaatni Moodle panelida yoki mobil ilovada hal qiladi. Javob ota-onaga farzandining ilovasiga boradi, natija esa shu yerda ko'rinadi.")}</div>`;
 		}
 
 		const xabar_tugma = (m.holat === "Ota-onaga xabar berish" && this.yozamanmi())
@@ -429,18 +436,28 @@ class TZMurojaatPanel {
 				${qaror_bor ? `
 					<div class="mur-yechim">${this.esc(m.yechim || "")}</div>
 					<div class="mut small">${__("Qaror: {0} · {1}", [this.esc(m.yechim_kim || "—"), this.dt(m.yechim_vaqti)])}</div>
-					${m.xabar_berildi ? `
+					${m.moodle_qaror_kim
+						? `<div class="mut small">${__("Moodle'da hal qilindi")}: ${
+							this.esc(m.moodle_qaror_kim)}${m.moodle_izoh_soni
+								? ` · ${__("{0} izoh", [m.moodle_izoh_soni])}` : ""}</div>` : ""}
+					${m.moodle_otaona_kordi
+						? `<div class="mur-xabar ok">${__("Ota-ona javobni ilovada o'qidi")}: ${
+							this.dt(m.moodle_otaona_kordi)}</div>`
+						: (m.moodle_qaror_kim
+							? `<div class="mur-xabar warn">${__("Ota-ona javobni hali ilovada ochmagan")}</div>`
+							: "")}
+					${m.xabar_berildi && m.xabar_kim ? `
 						<div class="mur-xabar ok">${__("Ota-onaga xabar berildi")}:
-							${this.esc(m.xabar_kim || "—")} · ${this.dt(m.xabar_vaqti)}
+							${this.esc(m.xabar_kim)} · ${this.dt(m.xabar_vaqti)}
 							${m.xabar_matni ? `<div class="mur-quote small">${this.esc(m.xabar_matni)}</div>` : ""}</div>`
-						: (yopiq ? "" : `<div class="mur-xabar warn">${__("Ota-onaga hali xabar berilmagan — halqa yopilmagan")}</div>`)}
+						: ""}
 				` : amal}
 				<div class="mur-amallar">
 					${xabar_tugma}
-					${rahbar && this.yozamanmi() && !yopiq ? `
+					${rahbar && this.rol().admin && !yopiq ? `
 						<button class="mur-btn" id="mur-uzat">${__("Boshqa rahbarga uzatish")}</button>
 						<button class="mur-btn" id="mur-masul">${__("O'zimga biriktirish")}</button>` : ""}
-					${qaror_bor && rahbar && this.yozamanmi() && !yopiq
+					${qaror_bor && rahbar && this.rol().admin && !yopiq
 						? `<button class="mur-btn" id="mur-qaror-tahrir">${__("Qarorni tahrirlash")}</button>` : ""}
 					<button class="mur-btn ghost" id="mur-och-doc">${__("Hujjatni ochish")}</button>
 				</div>
@@ -469,6 +486,7 @@ class TZMurojaatPanel {
 						<button class="mur-btn primary" id="mur-izoh-btn">${__("Izoh qo'shish")}</button>
 					</div>`
 					: `<div class="mut small">${__("Sizda faqat ko'rish ruxsati bor — izoh yozish uchun rahbar yoki sotuv roli kerak.")}</div>`}
+				<div class="mut small">${__("Rahbar izohlari Moodle'da yuritiladi — ularning soni yuqorida ko'rsatiladi.")}</div>
 			</div>`;
 	}
 

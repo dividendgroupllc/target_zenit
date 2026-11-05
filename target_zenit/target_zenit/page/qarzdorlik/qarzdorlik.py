@@ -727,6 +727,19 @@ def save_call(payload):
 
 
 @frappe.whitelist()
+def hisobot_pdf(case: str):
+	"""Mijozga yuboriladigan hisob-kitob ma'lumotnomasi (PDF).
+
+	Panel bilan AYNI sonlardan tuziladi (`engine.plan_xulosa` /
+	`get_payments`) — aks holda ota-onaga yuborilgan hujjat panel bilan farq
+	qilib, ishonchni yo'qotardi."""
+	_guard()
+	from target_zenit.qarzdorlik import hisobot
+
+	return hisobot.pdf(case)
+
+
+@frappe.whitelist()
 def reassign(case: str, masul: str):
 	"""Mas'ulni almashtirish — faqat rahbar, faqat SOTUV MENEJERIGA."""
 	_guard()

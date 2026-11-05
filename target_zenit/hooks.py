@@ -192,6 +192,11 @@ doc_events = {
 	"Comment": {
 		"after_insert": "target_zenit.qarzdorlik.engine.komment_masul",
 	},
+	# Yangi murojaat darhol Moodle'ga uzatiladi: rahbar uni ilovada 15
+	# daqiqa kutib o'tirmasligi kerak. Kunlik sinxron — zaxira.
+	"Murojaat": {
+		"after_insert": "target_zenit.integrations.moodle_murojaat.on_murojaat_insert",
+	},
 	"Telefon Qongirogi": {
 		"after_insert": "target_zenit.telefoniya.stt.qongiroq_on_update",
 		"on_update": "target_zenit.telefoniya.stt.qongiroq_on_update",
@@ -339,6 +344,9 @@ scheduler_events = {
 			"target_zenit.telefoniya.stt.qolganlarni_qil",
 			# Transkripti bor-u qisqa tahlili yo'qlar (2-bosqich zaxirasi)
 			"target_zenit.telefoniya.analiz.qolganlarni_qil",
+			# Moodle'dagi rahbar qarorlarini olib kelish (Frappe panellarida
+			# ko'rsatish uchun; Moodle Frappeni hech qachon chaqirmaydi)
+			"target_zenit.integrations.moodle_murojaat.pull_cron",
 		],
 		# Har kuni 08:30 — tahlili bor-u murojaati ochilmagan qo'ng'iroqlar
 		# (asosiy yo'l analiz.tahlil_qil ichida; bu zaxira: modul yoqilishidan

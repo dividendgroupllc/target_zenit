@@ -1,0 +1,347 @@
+{#
+	MIJOZ UCHUN HISOB-KITOB HISOBOTI — sotuv menejeri ota-onaga yuboradi.
+
+	DIZAYN QOIDASI: bu buxgalteriya hisoboti EMAS, mijozga tushunarli bo'lishi
+	kerak. Shuning uchun: katta sonlar oldinda, holat so'z bilan (rangga
+	tayanmaydi — ota-ona qora-oq chop etishi mumkin), izohlar odam tilida.
+
+	wkhtmltopdf 0.12.6 uchun: layout TABLE bilan (flexbox/grid ishonchsiz),
+	ranglar inline-ga yaqin, `page-break-inside: avoid` jadval qatorlarida.
+#}
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<style>
+	* { box-sizing: border-box; }
+	body {
+		font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+		font-size: 10.5px; color: #1a2230; margin: 0; line-height: 1.45;
+		-webkit-print-color-adjust: exact;
+	}
+	h1, h2, h3 { margin: 0; }
+	table { border-collapse: collapse; width: 100%; }
+	.mut { color: #70798c; }
+	.r { text-align: right; }
+	.c { text-align: center; }
+	.nowrap { white-space: nowrap; }
+	.money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+	/* ---------- sarlavha ---------- */
+	.hd { border-bottom: 2.5px solid #0e7c86; padding-bottom: 9px; margin-bottom: 14px; }
+	.hd .maktab { font-size: 17px; font-weight: 700; color: #0a5c64; letter-spacing: .2px; }
+	/* Logotip: balandligi qat'iy, kengligi mutanosib — sarlavha qatori
+	   har doim bir xil balandlikda qoladi */
+	.hd .logo { height: 34px; width: auto; display: block; margin-bottom: 4px; }
+	.hd .nom { font-size: 12.5px; font-weight: 600; margin-top: 2px; }
+	.hd .meta { font-size: 9.5px; color: #70798c; }
+
+	/* ---------- o'quvchi kartasi ---------- */
+	.karta { background: #f4f8f9; border: 1px solid #d8e5e7; border-radius: 7px;
+		padding: 9px 12px; margin-bottom: 12px; }
+	.karta td { padding: 2px 10px 2px 0; vertical-align: top; }
+	.karta .lab { font-size: 8.5px; text-transform: uppercase; letter-spacing: .4px;
+		color: #70798c; font-weight: 700; }
+	.karta .val { font-size: 11.5px; font-weight: 600; }
+
+	/* ---------- yakuniy plitalar ---------- */
+	.tiles { margin-bottom: 14px; }
+	.tiles td { width: 25%; padding: 0 4px; vertical-align: top; }
+	.tile { border: 1px solid #dde3ec; border-radius: 7px; padding: 8px 10px; }
+	.tile .lab { font-size: 8.5px; text-transform: uppercase; letter-spacing: .4px;
+		color: #70798c; font-weight: 700; }
+	.tile .num { font-size: 15px; font-weight: 700; margin-top: 1px; }
+	.tile .sub { font-size: 8.5px; color: #8a93a6; }
+	.tile.ok { background: #eef8f1; border-color: #bfe3cb; }
+	.tile.ok .num { color: #0b7f3f; }
+	.tile.bad { background: #fdf0ef; border-color: #f2c7c3; }
+	.tile.bad .num { color: #b93129; }
+	.tile.brand { background: #eaf4f5; border-color: #bfdcdf; }
+	.tile.brand .num { color: #0a5c64; }
+
+	/* ---------- bo'lim ---------- */
+	.sec { margin-bottom: 14px; page-break-inside: avoid; }
+	.sec > h2 { font-size: 11.5px; font-weight: 700; color: #0a5c64;
+		border-bottom: 1px solid #d8e5e7; padding-bottom: 3px; margin-bottom: 6px; }
+	.sec .hint { font-size: 8.5px; color: #8a93a6; margin-bottom: 5px; }
+
+	/* ---------- jadvallar ---------- */
+	.tbl th { font-size: 8.5px; text-transform: uppercase; letter-spacing: .3px;
+		color: #5d6676; font-weight: 700; text-align: left;
+		background: #f2f5f8; border-bottom: 1px solid #cfd7e2; padding: 4px 6px; }
+	/* Sarlavha qiymat bilan bir tekisda tursin — `.r`/`.c` dan KEYIN
+	   e'lon qilinadi, aks holda yuqoridagi `text-align: left` ustun bo'ladi */
+	.tbl th.r { text-align: right; }
+	.tbl th.c { text-align: center; }
+	.tbl td { padding: 4px 6px; border-bottom: 1px solid #e8ecf2; font-size: 10px; }
+	.tbl tr { page-break-inside: avoid; }
+	.tbl tr.zebra td { background: #fafbfd; }
+	.tbl tfoot td { font-weight: 700; background: #f2f5f8; border-top: 1.5px solid #cfd7e2;
+		border-bottom: none; font-size: 10.5px; }
+	.tbl td.neg { color: #b93129; font-weight: 600; }
+	.tbl td.pos { color: #0b7f3f; }
+
+	.pill { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 8.5px;
+		font-weight: 700; white-space: nowrap; }
+	.p-ok { background: #e4f3e9; color: #0b7f3f; }
+	.p-bad { background: #fbe9e7; color: #b93129; }
+	.p-warn { background: #fdf3e0; color: #8a5a0b; }
+	.p-mut { background: #eef1f6; color: #5d6676; }
+
+	/* ---------- izoh / footer ---------- */
+	.izoh { background: #fbf8ee; border-left: 3px solid #d9a93a; border-radius: 5px;
+		padding: 7px 10px; font-size: 9px; color: #6a5a2a; margin-bottom: 12px; }
+	.ft { border-top: 1px solid #d8e5e7; padding-top: 7px; margin-top: 6px;
+		font-size: 8.5px; color: #8a93a6; }
+	.ft td { vertical-align: top; }
+</style>
+</head>
+<body>
+
+{# =============================== SARLAVHA =============================== #}
+<table class="hd"><tr>
+	<td>
+		{% if logo %}
+			<img src="{{ logo }}" class="logo" alt="{{ kompaniya }}">
+		{% else %}
+			<div class="maktab">{{ kompaniya or "Target Zenit" }}</div>
+		{% endif %}
+		<div class="nom">O'quvchi bilan hisob-kitob ma'lumotnomasi</div>
+	</td>
+	<td class="r meta">
+		<div>Hisobot sanasi: <b>{{ sana_f(sana) }}</b></div>
+		{% if oquvchi.oquv_yili %}<div>O'quv yili: {{ oquvchi.oquv_yili }}</div>{% endif %}
+		<div>Hujjat: {{ case }}</div>
+	</td>
+</tr></table>
+
+{# ============================ O'QUVCHI KARTASI ========================== #}
+<table class="karta"><tr>
+	<td style="width:40%">
+		<div class="lab">O'quvchi</div>
+		<div class="val">{{ oquvchi.ism or "—" }}</div>
+	</td>
+	<td style="width:20%">
+		<div class="lab">Sinf</div>
+		<div class="val">{{ oquvchi.sinf or "—" }}</div>
+	</td>
+	<td style="width:22%">
+		<div class="lab">To'lovchi</div>
+		<div class="val">{{ oquvchi.tolovchi or "—" }}</div>
+	</td>
+	<td style="width:18%">
+		<div class="lab">Telefon</div>
+		<div class="val">{{ oquvchi.telefon or "—" }}</div>
+	</td>
+</tr></table>
+
+{% if not xulosa %}
+	<div class="izoh">Bu o'quvchida to'lov rejasi shakllanmagan — hisob-kitob
+		ma'lumotnomasi tuzilmadi. Iltimos, sotuv bo'limiga murojaat qiling.</div>
+{% else %}
+{% set j = xulosa.jami %}
+
+{# ============================ YAKUNIY PLITALAR ========================== #}
+<table class="tiles"><tr>
+	<td><div class="tile brand">
+		<div class="lab">Hisoblandi</div>
+		<div class="num money">{{ son(j.nachislangan) }}</div>
+		<div class="sub">bugungi kungacha, so'm</div>
+	</div></td>
+	<td><div class="tile ok">
+		<div class="lab">To'langan</div>
+		<div class="num money">{{ son(j.tolangan) }}</div>
+		<div class="sub">{% if j.qaytim %}qaytim: {{ son(j.qaytim) }}{% else %}so'm{% endif %}</div>
+	</div></td>
+	<td><div class="tile {% if j.qarz > 1 %}bad{% endif %}">
+		<div class="lab">Muddati kelgan qarz</div>
+		<div class="num money">{{ son(j.qarz) }}</div>
+		<div class="sub">to'lash kerak</div>
+	</div></td>
+	{% if j.avans > 1 %}
+	<td><div class="tile brand">
+		<div class="lab">Avans (oldindan to'lov)</div>
+		<div class="num money">{{ son(j.avans) }}</div>
+		<div class="sub">kelgusi oylar hisobiga o'tadi</div>
+	</div></td>
+	{% else %}
+	<td><div class="tile">
+		<div class="lab">Jami to'lanmagan</div>
+		<div class="num money">{{ son(j.qoldiq) }}</div>
+		<div class="sub">muddati kelmagani bilan</div>
+	</div></td>
+	{% endif %}
+</tr></table>
+
+{# ============================ O'QUV TO'LOVI ============================= #}
+{% set o = xulosa.oquv %}
+<div class="sec">
+	<h2>O'quv to'lovi — oyma-oy</h2>
+	<div class="hint">Shartnoma summasi: <b>{{ son(o.shartnoma) }}</b> so'm.
+		Shundan bugungi kungacha hisoblangan: <b>{{ son(o.nachislangan) }}</b> so'm
+		({{ o.nachislangan_oy }} oy){% if o.nachislanmagan > 1 %}, hali hisoblanmagan:
+		{{ son(o.nachislanmagan) }} so'm{% endif %}.</div>
+	<table class="tbl">
+		<thead><tr>
+			<th style="width:22%">Oy</th>
+			<th style="width:14%">To'lov muddati</th>
+			<th class="r" style="width:16%">Hisoblandi</th>
+			<th class="r" style="width:16%">To'landi</th>
+			<th class="r" style="width:16%">Qoldi</th>
+			<th style="width:16%">Holat</th>
+		</tr></thead>
+		<tbody>
+		{% for m in oylar %}
+			<tr class="{% if loop.index0 % 2 %}zebra{% endif %}">
+				<td>{{ oy_nomi(m.oy_label) }}</td>
+				<td class="nowrap">{{ sana_f(m.due_date) }}</td>
+				<td class="r money">{{ son(m.nachislangan) if m.nachislangan else "—" }}</td>
+				<td class="r money {% if m.tolangan %}pos{% endif %}">{{ son(m.tolangan) if m.tolangan else "—" }}</td>
+				<td class="r money {% if m.qoldiq > 1 %}neg{% endif %}">{{ son(m.qoldiq) if m.qoldiq > 1 else "—" }}</td>
+				<td>
+					{% if m.holat == "To'landi" %}<span class="pill p-ok">To'landi</span>
+					{% elif m.holat == "Muddati keldi" %}<span class="pill p-bad">To'lanmadi</span>
+					{% elif m.holat == "Qisman" %}<span class="pill p-warn">Qisman</span>
+					{% elif m.holat == "Rejada" %}<span class="pill p-mut">Kutilmoqda</span>
+					{% elif m.holat == "Nachisleniya yo'q" %}<span class="pill p-mut">Hisoblanmagan</span>
+					{% else %}<span class="pill p-mut">{{ m.holat }}</span>{% endif %}
+					{% if m.kechikish %}<span class="mut"> {{ m.kechikish }} kun</span>{% endif %}
+				</td>
+			</tr>
+		{% endfor %}
+		</tbody>
+		<tfoot><tr>
+			<td colspan="2">JAMI (o'quv to'lovi)</td>
+			<td class="r money">{{ son(o.nachislangan) }}</td>
+			<td class="r money">{{ son(o.tolangan) }}</td>
+			<td class="r money">{{ son(o.qoldiq) }}</td>
+			<td></td>
+		</tr></tfoot>
+	</table>
+</div>
+
+{# ======================= QO'SHIMCHA TO'LOVLAR ========================== #}
+{% if xulosa.qoshimcha %}
+{% set q = xulosa.qoshimcha_jami %}
+<div class="sec">
+	<h2>Qo'shimcha to'lovlar</h2>
+	<div class="hint">Kitob, forma, yotoqxona va boshqa xizmatlar — har biri
+		alohida hisoblanadi.</div>
+	<table class="tbl">
+		<thead><tr>
+			<th style="width:36%">Nima uchun</th>
+			<th class="c" style="width:12%">Soni</th>
+			<th class="r" style="width:17%">Hisoblandi</th>
+			<th class="r" style="width:17%">To'landi</th>
+			<th class="r" style="width:18%">Qoldi</th>
+		</tr></thead>
+		<tbody>
+		{% for x in xulosa.qoshimcha %}
+			<tr class="{% if loop.index0 % 2 %}zebra{% endif %}">
+				<td>{{ x.nom }}</td>
+				<td class="c">{{ x.soni }}</td>
+				<td class="r money">{{ son(x.nachislangan) }}</td>
+				<td class="r money {% if x.tolangan %}pos{% endif %}">{{ son(x.tolangan) }}</td>
+				<td class="r money {% if x.qoldiq > 1 %}neg{% endif %}">{{ son(x.qoldiq) if x.qoldiq > 1 else "—" }}</td>
+			</tr>
+		{% endfor %}
+		</tbody>
+		<tfoot><tr>
+			<td colspan="2">JAMI (qo'shimcha)</td>
+			<td class="r money">{{ son(q.nachislangan) }}</td>
+			<td class="r money">{{ son(q.tolangan) }}</td>
+			<td class="r money">{{ son(q.qoldiq) }}</td>
+		</tr></tfoot>
+	</table>
+</div>
+{% endif %}
+
+{# ========================== TO'LOVLAR TARIXI =========================== #}
+<div class="sec">
+	<h2>To'lovlar tarixi</h2>
+	<div class="hint">Kassaga tushgan va bank orqali o'tgan barcha to'lovlar
+		{% if davr %}({{ sana_f(davr) }} dan){% endif %}. Yangisi tepada.
+		«Qaysi oy uchun» ustuni to'lov qaysi oy hisobiga yozilganini ko'rsatadi;
+		chiziqcha — to'lov umumiy hisobga tushgan.</div>
+	{% if tolovlar %}
+	<table class="tbl">
+		<thead><tr>
+			<th style="width:13%">Sana</th>
+			<th class="r" style="width:17%">Summa</th>
+			<th style="width:20%">To'lov usuli</th>
+			<th style="width:17%">Qaysi oy uchun</th>
+			<th style="width:16%">Nima uchun</th>
+			<th style="width:17%">Hujjat raqami</th>
+		</tr></thead>
+		<tbody>
+		{% for p in tolovlar %}
+			<tr class="{% if loop.index0 % 2 %}zebra{% endif %}">
+				<td class="nowrap">{{ sana_f(p.posting_date) }}</td>
+				<td class="r money {% if p.qaytim %}neg{% else %}pos{% endif %}">
+					{{ son(p.amount_uzs) }}{% if p.qaytim %} <span class="mut">qaytim</span>{% endif %}</td>
+				<td>{{ p.usul }}{% if p.currency and p.currency != "UZS" %}
+					<span class="mut">({{ p.currency }})</span>{% endif %}</td>
+				<td>
+					{%- if p.taqsimot -%}
+						{%- for t in p.taqsimot -%}
+							<div class="nowrap">{{ oy_nomi(t.oy) }}
+								{%- if p.taqsimot | length > 1 %}
+									<span class="mut">{{ son(t.summa) }}</span>{% endif %}</div>
+						{%- endfor -%}
+					{%- else -%}—{%- endif -%}
+				</td>
+				<td>{{ p.kassa_kategoriya or "—" }}</td>
+				<td class="mut nowrap" style="font-size:8.5px">{{ p.kassa or p.name }}</td>
+			</tr>
+		{% endfor %}
+		</tbody>
+		{% set jami_tolov = tolovlar | sum(attribute='amount_uzs') %}
+		<tfoot>
+			<tr>
+				<td>JAMI TO'LANGAN</td>
+				<td class="r money">{{ son(jami_tolov) }}</td>
+				<td colspan="4" class="mut" style="font-weight:400">
+					{% if j.avans > 1 %}shundan {{ son(j.avans) }} so'm — avans:
+						hali hisoblanmagan oylar uchun saqlanmoqda{% endif %}</td>
+			</tr>
+		</tfoot>
+	</table>
+	{% else %}
+		<div class="hint">Bu davrda to'lov qayd etilmagan.</div>
+	{% endif %}
+</div>
+
+{# ============================== IZOHLAR ================================= #}
+{% if j.qarz > 1 %}
+	<div class="izoh"><b>To'lanmagan summa: {{ son(j.qarz) }} so'm.</b>
+		Iltimos, to'lovni yaqin kunlarda amalga oshirishingizni so'raymiz.
+		Savollar bo'lsa sotuv bo'limiga murojaat qiling — to'lovni bo'lib to'lash
+		imkoniyati ham mavjud.
+		{% if j.avans > 1 %}<br>Eslatma: oldindan to'langan <b>{{ son(j.avans) }}</b> so'm
+		hali hisoblanmagan oylar uchun saqlanmoqda va ular hisoblangach avtomatik
+		yopiladi.{% endif %}</div>
+{% elif j.qoldiq > 1 %}
+	<div class="izoh">Muddati kelgan qarzdorlik yo'q. Keyingi to'lovlar
+		yuqoridagi jadvalda ko'rsatilgan muddatlarda amalga oshiriladi.</div>
+{% else %}
+	<div class="izoh">Hisob-kitob to'liq yopilgan — qarzdorlik yo'q.
+		{% if j.avans > 1 %}Oldindan to'langan <b>{{ son(j.avans) }}</b> so'm
+		kelgusi oylar hisobiga o'tadi.{% endif %}
+		Hamkorligingiz uchun rahmat.</div>
+{% endif %}
+{% endif %}
+
+{# =============================== FOOTER ================================= #}
+<table class="ft"><tr>
+	<td>
+		Ma'lumotnoma {{ sana_f(sana) }} holatiga tuzilgan.<br>
+		Tayyorladi: {{ tayyorlagan }}
+	</td>
+	<td class="r">
+		Savol va takliflar uchun sotuv bo'limiga murojaat qiling.<br>
+		{{ kompaniya or "Target Zenit" }}
+	</td>
+</tr></table>
+
+</body>
+</html>

@@ -294,7 +294,13 @@ def _tuition_si_months(customer: str, from_date, cfg) -> dict:
 
 def get_payments(customer: str, from_date) -> list[dict]:
 	"""To'lovlar ro'yxati UZS'da — Payment Entry va Journal Entry birgalikda,
-	qaytimlar manfiy summa bilan (panelda ko'rsatish uchun)."""
+	qaytimlar manfiy summa bilan (panelda ko'rsatish uchun).
+
+	Har qatorga KASSA hujjati biriktiriladi: menejer "bu pul qachon, qaysi
+	kassaga, kim tomonidan kiritilgan" savolini buxgalteriyaga bermasdan
+	o'zi ko'rishi kerak."""
+	qatorlar = _tolov_qatorlari(customer, from_date)
+	kassa = _kassa_havolalari(qatorlar)
 	return [
 		{
 			"name": r["name"],
@@ -305,9 +311,50 @@ def get_payments(customer: str, from_date) -> list[dict]:
 			"currency": r["currency"],
 			"mode_of_payment": r["mode"],
 			"remarks": r["remarks"],
+			**(kassa.get((r["doctype"], r["name"])) or
+			   {"kassa": None, "kassa_oy": None, "kassa_kategoriya": None}),
 		}
-		for r in _tolov_qatorlari(customer, from_date)
+		for r in qatorlar
 	]
+
+
+def _kassa_havolalari(qatorlar) -> dict:
+	"""(doctype, name) -> {kassa, kassa_oy, kassa_kategoriya}.
+
+	Kassa submit bo'lganda Payment Entry yoki Journal Entry yaratadi va
+	`linked_doctype`/`linked_entry` ga yozib qo'yadi (kassa.py
+	`set_linked_document`). Bog'lanish SHU maydonlar bo'yicha qidiriladi:
+	`Payment Entry.reference_no` ham kassa nomini tutadi, lekin u oddiy Data
+	maydoni — qo'lda tahrirlansa yoki buxgalter PE'ni o'zi yaratgan bo'lsa
+	noto'g'ri ko'rsatardi.
+
+	Har to'lovda kassa bo'lishi SHART EMAS: buxgalter ba'zi provodkalarni
+	(bank ko'chirmasi, o'zaro hisob) to'g'ridan-to'g'ri yozadi — ularda
+	havola bo'lmaydi va panel shunchaki ko'rsatmaydi."""
+	if not qatorlar:
+		return {}
+	out = {}
+	for dt in ("Payment Entry", "Journal Entry"):
+		nomlar = [r["name"] for r in qatorlar if r["doctype"] == dt]
+		if not nomlar:
+			continue
+		for k in frappe.get_all(
+			"Kassa",
+			filters={"linked_doctype": dt, "linked_entry": ["in", nomlar], "docstatus": 1},
+			# `payment_month` ("За какой месяц") va `payment_category` —
+			# mijozga beriladigan hisobotdagi "qaysi oy uchun / nima uchun"
+			# ustunlari shu maydonlardan to'ladi
+			fields=["name", "linked_entry", "payment_month", "payment_category"],
+			limit_page_length=0,
+		):
+			# Bitta hujjatga ikki kassa to'g'ri kelsa birinchisi qoladi —
+			# amalda bo'lmaydi, lekin jimgina almashib ketmasligi uchun
+			out.setdefault((dt, k.linked_entry), {
+				"kassa": k.name,
+				"kassa_oy": k.payment_month or None,
+				"kassa_kategoriya": k.payment_category or None,
+			})
+	return out
 
 
 def _usd_uzs_rate(date) -> float:

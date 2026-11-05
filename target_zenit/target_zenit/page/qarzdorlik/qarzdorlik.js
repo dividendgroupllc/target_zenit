@@ -517,7 +517,8 @@ class TZQarzPanel {
 						   target="_blank">${this.dmy(p.posting_date)}</a>
 						${p.qaytim ? `<div class="mini">qaytim</div>` : ""}</td>
 					<td class="r money ${p.qaytim ? "neg" : ""}">${this.fmt(p.amount_uzs)}</td>
-					<td class="mini">${p.doctype === "Journal Entry" ? `<span class="tag-je">provodka</span> ` : ""}${this.esc(p.mode_of_payment || "")} ${p.currency !== "UZS" ? "(" + this.esc(p.currency) + ")" : ""}</td></tr>`).join("")}
+					<td class="mini">${this.esc(p.mode_of_payment || "")} ${p.currency !== "UZS" ? "(" + this.esc(p.currency) + ")" : ""}</td>
+					<td class="mini nowrap">${this.tolov_havola(p)}</td></tr>`).join("")}
 			</tbody></table>` : `<div class="mini">To'lov yo'q</div>`}</div>`;
 
 		const qlar = d.qongiroqlar || [];
@@ -578,6 +579,7 @@ class TZQarzPanel {
 						? ` · ${qlar.filter((q) => q.ai_xulosa).length} tahlil` : ""}</button>` : ""}
 				<button class="btn-call">📞 Qo'ng'iroq natijasi</button>
 				${this.mur_yozamanmi() ? `<button class="btn-yonaltir">⬆ Rahbarga yo'naltirish</button>` : ""}
+				<button class="btn-pdf">📄 Hisobot (PDF)</button>
 				<button class="btn-recalc">↻ Qayta hisoblash</button>
 				<a class="btn-doc" href="/app/qarz-ishi/${encodeURIComponent(c.name)}">Ishni ochish ↗</a>
 				${this.data.rahbar ? `<button class="btn-reassign">Mas'ulni almashtirish</button>` : ""}
@@ -593,6 +595,7 @@ class TZQarzPanel {
 		this.body.find(".btn-suhbat").on("click", () => this.suhbat_dialog());
 		this.body.find(".btn-call").on("click", () => this.call_dialog());
 		this.body.find(".btn-yonaltir").on("click", () => this.yonaltir_dialog());
+		this.body.find(".btn-pdf").on("click", () => this.pdf_hisobot());
 		this.body.find(".mur-xabar-btn").on("click", (e) =>
 			this.mur_xabar_dialog($(e.currentTarget).data("mur")));
 		this.body.find(".mur-ochish").on("click", (e) => {
@@ -840,6 +843,71 @@ class TZQarzPanel {
 				<div class="sb-ong">${tahlil}</div>
 			</div>
 		</div>`;
+	}
+
+	// To'lov qatoridagi hujjat havolalari: KASSA va manba hujjati.
+	//
+	// NEGA IKKISI HAM: kassa — menejer tushunadigan hujjat ("kim qachon qabul
+	// qildi"), provodka esa buxgalteriya tomoni. Kassa orqali kiritilmagan
+	// to'lov ham bor (bank ko'chirmasi, o'zaro hisob — buxgalter Journal
+	// Entry bilan yozadi), unda faqat provodka havolasi qoladi.
+	tolov_havola(p) {
+		const h = [];
+		if (p.kassa) {
+			h.push(`<a class="tag-kassa" target="_blank"
+				href="/app/kassa/${encodeURIComponent(p.kassa)}"
+				title="Kassa hujjati: ${this.esc(p.kassa)}">kassa ↗</a>`);
+		}
+		const dt = p.doctype || "Payment Entry";
+		const je = dt === "Journal Entry";
+		h.push(`<a class="${je ? "tag-je" : "tag-pe"}" target="_blank"
+			href="/app/${frappe.router.slug(dt)}/${encodeURIComponent(p.name)}"
+			title="${this.esc(dt)}: ${this.esc(p.name)}">${je ? "provodka" : "to'lov"} ↗</a>`);
+		return h.join(" ");
+	}
+
+	// Mijozga yuboriladigan hisob-kitob ma'lumotnomasi (PDF).
+	//
+	// NEGA MODAL: fayl tayyor bo'lgach menejer uni (1) ochib ko'radi,
+	// (2) telefoniga yuklab olib Telegramga tashlaydi yoki (3) havolasini
+	// nusxalaydi. Darhol yuklab olish bu uch yo'lning faqat bittasi edi.
+	pdf_hisobot() {
+		const c = this.detail.case;
+		frappe.call({
+			method: `${QARZ_M}.hisobot_pdf`,
+			args: { case: c.name },
+			freeze: true, freeze_message: "Hisobot tayyorlanmoqda…",
+			callback: (r) => {
+				const m = r.message || {};
+				if (!m.file_url) {
+					frappe.msgprint("Hisobot tayyorlanmadi.");
+					return;
+				}
+				const url = window.location.origin + m.file_url;
+				const dlg = new frappe.ui.Dialog({
+					title: `Hisobot tayyor — ${c.student_name}`,
+					fields: [{
+						fieldtype: "HTML",
+						options: `
+							<div class="text-muted" style="font-size:12px;margin-bottom:10px">
+								Ota-onaga yuborish uchun tayyor hujjat: hisoblangan summa,
+								to'langan to'lovlar (qaysi oy uchun) va qolgan qarz.
+							</div>
+							<div style="display:flex;gap:8px;flex-wrap:wrap">
+								<a class="btn btn-primary btn-sm" href="${m.file_url}" target="_blank">Ochish</a>
+								<a class="btn btn-default btn-sm" href="${m.file_url}" download="${frappe.utils.escape_html(m.file_name || "hisobot.pdf")}">Yuklab olish</a>
+								<button class="btn btn-default btn-sm tz-pdf-copy">Havolani nusxalash</button>
+							</div>
+							<div class="text-muted" style="font-size:11px;margin-top:8px;word-break:break-all">${frappe.utils.escape_html(url)}</div>`,
+					}],
+				});
+				dlg.$wrapper.on("click", ".tz-pdf-copy", () => {
+					frappe.utils.copy_to_clipboard(url);
+					frappe.show_alert({ message: "Havola nusxalandi", indicator: "green" }, 4);
+				});
+				dlg.show();
+			},
+		});
 	}
 
 	// ====================== Rahbarga yo'naltirish ======================

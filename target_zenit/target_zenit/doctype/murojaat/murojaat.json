@@ -50,6 +50,11 @@
   "xabar_kim",
   "xabar_vaqti",
   "yopilgan_sana",
+  "section_moodle",
+  "moodle_qaror_kim",
+  "moodle_izoh_soni",
+  "column_break_moodle",
+  "moodle_otaona_kordi",
   "section_izohlar",
   "izohlar"
  ],
@@ -352,6 +357,35 @@
    "label": "Izohlar",
    "options": "Murojaat Izohi",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_moodle",
+   "fieldtype": "Section Break",
+   "label": "Moodle (rahbar shu yerda yuritadi)",
+   "description": "Bu bo'lim Moodle'dan olib kelinadi — Frappe'da tahrirlanmaydi"
+  },
+  {
+   "fieldname": "moodle_qaror_kim",
+   "fieldtype": "Data",
+   "label": "Qaror kim tomonidan (Moodle)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "moodle_izoh_soni",
+   "fieldtype": "Int",
+   "label": "Moodle izohlari soni",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_moodle",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "moodle_otaona_kordi",
+   "fieldtype": "Datetime",
+   "label": "Ota-ona javobni ko'rdi",
+   "read_only": 1,
+   "description": "Ota-ona bolasining ilovasida javobni ochgan vaqti"
   }
  ],
  "links": [],

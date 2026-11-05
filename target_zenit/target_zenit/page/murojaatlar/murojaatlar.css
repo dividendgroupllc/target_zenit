@@ -192,3 +192,7 @@
 /* modal ichidagi kontekst */
 .mur-modal-info { background:var(--card-2,#f7f9fc); border-left:3px solid #0e7c86; border-radius:8px;
   padding:10px 12px; font-size:13px; line-height:1.5; margin-bottom:6px; white-space:pre-wrap; }
+
+/* Qaror Moodle'da yoziladi — Frappe nusxani ko'rsatadi */
+.mur-moodle { background:var(--blue-wash); border:1px solid var(--blue); color:var(--blue-ink);
+  border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.5; }
