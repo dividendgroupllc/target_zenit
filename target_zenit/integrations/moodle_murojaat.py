@@ -23,8 +23,10 @@
 
 from __future__ import annotations
 
+import json
+
 import frappe
-from frappe.utils import cint, get_datetime, getdate, now_datetime
+from frappe.utils import cint, flt, get_datetime, getdate
 
 from target_zenit.integrations.moodle import MoodleError, _call, _settings
 
@@ -63,6 +65,68 @@ def _idnumber(user: str | None) -> str:
 
 
 # =============================================================== YUBORISH
+def _qarz_holati(studentlar) -> dict:
+	"""student -> {summa, holat, kechikish}. Ochiq qarz ishidan.
+
+	Rahbar qaror qabul qilishdan oldin oilaning qarzini ko'rishi kerak:
+	chegirma yoki bo'lib to'lash haqidagi qaror shunga bog'liq."""
+	studentlar = [s for s in studentlar if s]
+	if not studentlar:
+		return {}
+	out = {}
+	for r in frappe.get_all(
+		"Qarz Ishi",
+		filters={"student": ["in", studentlar],
+		         "ishlov_status": ["not in", ("Yopildi - To'landi", "Yopildi - Boshqa")]},
+		fields=["student", "qarz_summa", "ishlov_status", "aging_bucket"],
+		order_by="qarz_summa desc",
+	):
+		# Bir o'quvchida bir nechta ochiq ish bo'lsa — kattasi (birinchi keladi)
+		out.setdefault(r.student, {
+			"summa": flt(r.qarz_summa),
+			"holat": r.ishlov_status or "",
+			"kechikish": r.aging_bucket or "",
+		})
+	return out
+
+
+def _suhbatlar(studentlar, limit_har: int = 15) -> dict:
+	"""student -> aloqa tarixi (Aloqa Yozuvi), yangisi tepada.
+
+	«Kim qachon gaplashdi» — foydalanuvchi aynan shuni Moodle'ga ko'chirishni
+	so'ragan. Rahbar buni ko'rmasa ota-onaga ikkinchi marta bir xil javob
+	beriladi."""
+	studentlar = [s for s in studentlar if s]
+	if not studentlar:
+		return {}
+	rows = frappe.db.sql(
+		"""SELECT COALESCE(NULLIF(ay.student, ''), qi.student) student,
+		          ay.vaqt, ay.kanal, ay.aloqa_natijasi, ay.hisob_natijasi,
+		          ay.komment, u.full_name menejer
+		     FROM `tabAloqa Yozuvi` ay
+		     LEFT JOIN `tabQarz Ishi` qi ON qi.name = ay.qarz_ishi
+		     LEFT JOIN `tabUser` u ON u.name = ay.masul
+		    WHERE COALESCE(NULLIF(ay.student, ''), qi.student) IN %(st)s
+		 ORDER BY ay.vaqt DESC""",
+		{"st": tuple(studentlar)},
+		as_dict=True,
+	)
+	out: dict[str, list] = {}
+	for r in rows:
+		qator = out.setdefault(r.student, [])
+		if len(qator) >= limit_har:
+			continue
+		qator.append({
+			"vaqt": _ts(r.vaqt),
+			"menejer": r.menejer or "",
+			"kanal": r.kanal or "",
+			"natija": r.aloqa_natijasi or "",
+			"suhbatnatija": r.hisob_natijasi or "",
+			"izoh": (r.komment or "")[:500],
+		})
+	return out
+
+
 def _qatorlar(nomlar=None, limit: int = 0) -> list[dict]:
 	"""Moodle'ga yuboriladigan murojaatlar (manba maydonlari)."""
 	filtr = {"holat": ["in", list(YUBORILADI_HOLAT)]}
@@ -81,8 +145,13 @@ def _qatorlar(nomlar=None, limit: int = 0) -> list[dict]:
 		order_by="ochilgan desc",
 		limit_page_length=cint(limit) or 0,
 	)
+	studentlar = {r.student for r in rows if r.student}
+	qarzlar = _qarz_holati(studentlar)
+	suhbatlar = _suhbatlar(studentlar)
+
 	out = []
 	for r in rows:
+		qarz = qarzlar.get(r.student) or {}
 		out.append({
 			"frappename": r.name,
 			"turi": r.turi or "Shikoyat",
@@ -103,6 +172,13 @@ def _qatorlar(nomlar=None, limit: int = 0) -> list[dict]:
 			"suhbatvaqti": _ts(r.suhbat_vaqti),
 			"ochilgan": _ts(r.ochilgan),
 			"slasana": _ts(r.sla_sana),
+			"qarzsumma": qarz.get("summa", 0.0),
+			"qarzholat": qarz.get("holat", ""),
+			"qarzkechikish": qarz.get("kechikish", ""),
+			# JSON satr: Moodle REST so'rovni forma maydonlari ko'rinishida
+			# oladi, ichma-ich ro'yxat bilan `max_input_vars` (5000) oshib
+			# ketardi — JSON bilan har murojaatga bitta maydon
+			"suhbatlar": json.dumps(suhbatlar.get(r.student) or [], ensure_ascii=False),
 		})
 	return out
 
