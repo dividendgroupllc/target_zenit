@@ -22,6 +22,8 @@ tekshiradi) — qayta tahlil qilinsa dublikat ochilmaydi.
 
 from __future__ import annotations
 
+import re
+
 import frappe
 from frappe.utils import cint
 
@@ -123,12 +125,29 @@ def _student_top(tq) -> str | None:
 
 	from target_zenit.telefoniya.utils import normalize_phone
 
-	tel = normalize_phone(tq.normal_telefon) or normalize_phone(tq.tashqi_raqam)
-	if not tel:
-		return None
+	xarita = _raqam_xarita()
+	for xom in (tq.normal_telefon, tq.tashqi_raqam):
+		tel = normalize_phone(xom)
+		if tel and tel in xarita:
+			return xarita[tel]["student"]
 
-	mos = _raqam_xarita().get(tel)
-	return mos.get("student") if mos else None
+	# ZAXIRA: raqam oldiga axlat yopishgan holat. Telefoniya ma'lumotida
+	# "7718905507718" kabi 13 xonali qiymatlar uchraydi — oxirgi 9 xonasi
+	# haqiqiy raqam ("905507718"), oldidagi 4 xona esa takrorlanib qolgan
+	# chiqindi (2026-11-07 da prodda topildi).
+	#
+	# Faqat 12 XONADAN UZUN qiymatlarda qo'llanadi: qisqa qiymatlarda
+	# (masalan 11 xonali "99877767228" — bitta xonasi YETISHMAYDI) oxirgi 9
+	# ni olish raqamni SURIB YUBORADI va boshqa odamga tushib qolardi.
+	for xom in (tq.normal_telefon, tq.tashqi_raqam):
+		raqamlar = re.sub(r"\D", "", str(xom or ""))
+		if len(raqamlar) <= 12:
+			continue
+		tel = normalize_phone(raqamlar[-9:])
+		if tel and tel in xarita:
+			return xarita[tel]["student"]
+
+	return None
 
 
 def _raqam_xarita() -> dict:
@@ -264,7 +283,13 @@ def oquvchini_bogla(dry_run: int = 1, limit: int = 500) -> dict:
 		)
 		student = _student_top(tq) if tq else None
 		if not student:
-			qoldi.append({"murojaat": m.name, "raqam": m.payer_phone})
+			# Xom raqam ham ko'rsatiladi: nuqson manbai telefoniyada bo'lsa
+			# (ilova buzuq raqam yuborsa) shu yerdan ko'rinadi
+			qoldi.append({
+				"murojaat": m.name,
+				"normal": tq.normal_telefon if tq else None,
+				"xom": tq.tashqi_raqam if tq else None,
+			})
 			continue
 		topildi.append({"murojaat": m.name, "student": student,
 		                "ism": frappe.db.get_value("Student", student, "student_name")})
