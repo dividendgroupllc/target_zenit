@@ -197,6 +197,11 @@ doc_events = {
 	"Murojaat": {
 		"after_insert": "target_zenit.integrations.moodle_murojaat.on_murojaat_insert",
 	},
+	# Yangi suhbat yozilsa — o'sha o'quvchining ochiq murojaatlaridagi
+	# "kim qachon gaplashdi" tarixi Moodle'da ham yangilanadi
+	"Aloqa Yozuvi": {
+		"after_insert": "target_zenit.integrations.moodle_murojaat.on_aloqa_insert",
+	},
 	"Telefon Qongirogi": {
 		"after_insert": "target_zenit.telefoniya.stt.qongiroq_on_update",
 		"on_update": "target_zenit.telefoniya.stt.qongiroq_on_update",
@@ -344,9 +349,10 @@ scheduler_events = {
 			"target_zenit.telefoniya.stt.qolganlarni_qil",
 			# Transkripti bor-u qisqa tahlili yo'qlar (2-bosqich zaxirasi)
 			"target_zenit.telefoniya.analiz.qolganlarni_qil",
-			# Moodle'dagi rahbar qarorlarini olib kelish (Frappe panellarida
-			# ko'rsatish uchun; Moodle Frappeni hech qachon chaqirmaydi)
-			"target_zenit.integrations.moodle_murojaat.pull_cron",
+			# Murojaat sinxroni: ochiq murojaatlarni yangilab yuborish +
+			# Moodle'dagi rahbar qarorlarini olib kelish (Moodle Frappeni
+			# hech qachon chaqirmaydi — token faqat Frappe tomonda)
+			"target_zenit.integrations.moodle_murojaat.sync_cron",
 		],
 		# Har kuni 08:30 — tahlili bor-u murojaati ochilmagan qo'ng'iroqlar
 		# (asosiy yo'l analiz.tahlil_qil ichida; bu zaxira: modul yoqilishidan

@@ -127,9 +127,15 @@ def _suhbatlar(studentlar, limit_har: int = 15) -> dict:
 	return out
 
 
-def _qatorlar(nomlar=None, limit: int = 0) -> list[dict]:
-	"""Moodle'ga yuboriladigan murojaatlar (manba maydonlari)."""
-	filtr = {"holat": ["in", list(YUBORILADI_HOLAT)]}
+def _qatorlar(nomlar=None, limit: int = 0, faqat_ochiq: bool = False) -> list[dict]:
+	"""Moodle'ga yuboriladigan murojaatlar (manba maydonlari).
+
+	`faqat_ochiq` — davriy sinxron uchun: yopilgan murojaatni qayta-qayta
+	yuborishning ma'nosi yo'q, Moodle tomoni ularni baribir qabul qilmaydi
+	(yopilganning manbasiga tegilmaydi)."""
+	holatlar = [h for h in YUBORILADI_HOLAT if h != "Yopildi"] if faqat_ochiq \
+		else list(YUBORILADI_HOLAT)
+	filtr = {"holat": ["in", holatlar]}
 	if nomlar:
 		filtr = {"name": ["in", list(nomlar)]}
 
@@ -183,13 +189,14 @@ def _qatorlar(nomlar=None, limit: int = 0) -> list[dict]:
 	return out
 
 
-def push(nomlar=None, limit: int = 0, trigger: str = "Qo'lda") -> dict:
+def push(nomlar=None, limit: int = 0, trigger: str = "Qo'lda",
+         faqat_ochiq: int = 0) -> dict:
 	"""Murojaatlarni Moodle'ga yuboradi (bo'laklab)."""
 	s = _settings()
 	if not cint(s.enabled):
 		return {"holat": "o'chirilgan"}
 
-	qatorlar = _qatorlar(nomlar, limit)
+	qatorlar = _qatorlar(nomlar, limit, faqat_ochiq=bool(cint(faqat_ochiq)))
 	if not qatorlar:
 		return {"holat": "yuborilmadi", "sabab": "murojaat yo'q"}
 
@@ -354,6 +361,48 @@ def on_murojaat_insert(doc, method=None):
 		job_name=f"moodle_murojaat:{doc.name}",
 		nomlar=[doc.name], trigger="Yangi murojaat",
 	)
+
+
+def on_aloqa_insert(doc, method=None):
+	"""Sotuvchi yangi suhbat yozdi -> o'sha o'quvchining ochiq murojaatlari
+	Moodle'da yangilanadi.
+
+	NEGA KERAK: rahbar kartada «kim qachon gaplashdi» ni ko'radi. Suhbat
+	faqat kunlik sinxronda ketsa, rahbar eski tarixga qarab qaror qabul
+	qilardi — ota-onaga ikkinchi marta bir xil javob berilardi."""
+	if not cint(_settings().enabled):
+		return
+	student = doc.get("student") or frappe.db.get_value(
+		"Qarz Ishi", doc.get("qarz_ishi"), "student")
+	if not student:
+		return
+	nomlar = frappe.get_all(
+		"Murojaat",
+		filters={"student": student, "holat": ["!=", "Yopildi"]},
+		pluck="name", limit_page_length=20,
+	)
+	if not nomlar:
+		return
+	frappe.enqueue(
+		"target_zenit.integrations.moodle_murojaat.push",
+		queue="short", timeout=300, enqueue_after_commit=True,
+		job_name=f"moodle_murojaat_suhbat:{student}",
+		nomlar=nomlar, trigger="Yangi suhbat",
+	)
+
+
+def sync_cron():
+	"""Har 15 daqiqada: ochiq murojaatlarni yangilab yuborish + javoblarni
+	olib kelish.
+
+	Yaratilish `after_insert` bilan darhol ketadi, bu esa KEYINGI
+	o'zgarishlar uchun: qarz summasi to'lov bilan o'zgaradi, kategoriya
+	to'g'rilanadi, muddat suriladi. Ochiq murojaatlar soni o'nlab bo'lgani
+	uchun bu arzon."""
+	if not cint(_settings().enabled):
+		return
+	push(trigger="Jadval", faqat_ochiq=1)
+	pull()
 
 
 def pull_cron():
