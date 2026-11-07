@@ -23,6 +23,7 @@ tekshiradi) — qayta tahlil qilinsa dublikat ochilmaydi.
 from __future__ import annotations
 
 import frappe
+from frappe.utils import cint
 
 from target_zenit.murojaat import api
 
@@ -108,53 +109,49 @@ def _marshrut(matn: str, xulosa: str | None) -> tuple[str | None, str | None]:
 def _student_top(tq) -> str | None:
 	"""Qo'ng'iroqdagi raqamdan o'quvchini topish.
 
-	Avval qo'ng'iroqning o'zidagi bog'lanish, keyin to'lovchi/o'quvchi raqami,
-	oxirida ota-ona (Guardian) raqami. Bir raqamga bir nechta farzand to'g'ri
-	kelsa — ochiq qarz ishi borini olamiz (sotuv qo'ng'irog'i shu bola bo'yicha)."""
+	BOG'LANISH NORMALLASHTIRILGAN RAQAM BO'YICHA (2026-11-07 tuzatishi).
+	Avval `LIKE '%<oxirgi 9 xona>'` ishlatilardi va u ishlamasdi: bazada
+	274 o'quvchidan HECH BIRIDA raqam toza "998XXXXXXXXX" ko'rinishida
+	emas — "77 377 38 58", "50 007 1618" kabi bo'sh joyli matnlar. Natijada
+	AI topgan shikoyatlar o'quvchisiz qolardi: rahbar kim shikoyat qilganini
+	bilmasdi va ota-ona javobni ilovada hech qachon ko'rmasdi.
+
+	Shuning uchun sotuv nazoratidagi bilan BIR XIL xarita ishlatiladi —
+	hamma o'quvchi/ota-ona raqami Python tomonda normallashtiriladi."""
 	if tq.student:
 		return tq.student
-	tel = tq.normal_telefon
+
+	from target_zenit.telefoniya.utils import normalize_phone
+
+	tel = normalize_phone(tq.normal_telefon) or normalize_phone(tq.tashqi_raqam)
 	if not tel:
 		return None
 
-	nomzodlar = frappe.get_all(
-		"Student",
-		or_filters=[["custom_payer_phone", "like", f"%{tel[-9:]}"],
-		            ["student_mobile_number", "like", f"%{tel[-9:]}"]],
-		filters={"enabled": 1},
-		pluck="name",
-		limit_page_length=10,
-	)
-	if not nomzodlar:
-		nomzodlar = frappe.db.sql_list(
-			"""SELECT DISTINCT sg.parent
-			   FROM `tabStudent Guardian` sg
-			   JOIN `tabGuardian` g ON g.name = sg.guardian
-			   JOIN `tabStudent` s ON s.name = sg.parent
-			   WHERE sg.parenttype = 'Student' AND s.enabled = 1
-			     AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(g.mobile_number,''),
-			         ' ',''),'-',''),'(',''),')','') LIKE %s
-			   LIMIT 10""",
-			(f"%{tel[-9:]}",),
+	mos = _raqam_xarita().get(tel)
+	return mos.get("student") if mos else None
+
+
+def _raqam_xarita() -> dict:
+	"""normal raqam -> {student, ...}. So'rov davomida bir marta quriladi.
+
+	Xarita og'ir (hamma o'quvchi + Guardian), lekin murojaat kamdan-kam
+	ochiladi — tahlil qilingan har qo'ng'iroqda bir marta."""
+	kesh = getattr(frappe.local, "_murojaat_raqam_xarita", None)
+	if kesh is None:
+		from target_zenit.target_zenit.page.sotuv_nazorati.sotuv_nazorati import (
+			_raqam_xarita as xarita,
 		)
-	if not nomzodlar:
-		return None
-	if len(nomzodlar) == 1:
-		return nomzodlar[0]
-	qarzli = frappe.get_all(
-		"Qarz Ishi",
-		filters={"student": ["in", nomzodlar],
-		         "ishlov_status": ["not in", ("Yopildi - To'landi", "Yopildi - Boshqa")]},
-		fields=["student"], order_by="qarz_summa desc", limit_page_length=1,
-	)
-	return qarzli[0].student if qarzli else nomzodlar[0]
+
+		kesh = xarita()
+		frappe.local._murojaat_raqam_xarita = kesh
+	return kesh
 
 
 def qongiroqdan(qongiroq: str) -> dict:
 	"""AI tahlili tayyor bo'lgan qo'ng'iroqdan murojaat ochadi (yoki o'tkazadi)."""
 	tq = frappe.db.get_value(
 		"Telefon Qongirogi", qongiroq,
-		["name", "ai_xulosa", "student", "normal_telefon", "foydalanuvchi",
+		["name", "ai_xulosa", "student", "normal_telefon", "tashqi_raqam", "foydalanuvchi",
 		 "xodim", "boshlandi", "aloqador_ism", "kontakt_ism"],
 		as_dict=True,
 	)
@@ -238,3 +235,55 @@ def qolganlarni_qil(limit: int = 300) -> dict:
 		if qongiroqdan(nom).get("holat") == "ochildi":
 			ochildi += 1
 	return {"korildi": len(nomlar), "ochildi": ochildi}
+
+
+@frappe.whitelist()
+def oquvchini_bogla(dry_run: int = 1, limit: int = 500) -> dict:
+	"""O'quvchisi bog'lanmagan murojaatlarni qayta bog'laydi.
+
+	NEGA KERAK: 2026-11-07 gacha raqam `LIKE` bilan qidirilardi va bazadagi
+	raqamlar bo'sh joyli matn bo'lgani uchun hech qachon topilmasdi. Natijada
+	AI topgan shikoyatlar o'quvchisiz qoldi — rahbar kim shikoyat qilganini
+	bilmaydi, ota-ona esa javobni ilovada ko'rmaydi (bog'lanish bo'lmasa
+	Moodle akkaunti ham topilmaydi).
+
+	`dry_run=1` — faqat ko'rsatadi, yozmaydi."""
+	frappe.only_for(("System Manager", "Sales Manager"))
+
+	nomlar = frappe.get_all(
+		"Murojaat",
+		filters={"student": ["in", ("", None)], "telefon_qongirogi": ["is", "set"]},
+		fields=["name", "telefon_qongirogi", "payer_phone"],
+		limit_page_length=cint(limit),
+	)
+	topildi, qoldi = [], []
+	for m in nomlar:
+		tq = frappe.db.get_value(
+			"Telefon Qongirogi", m.telefon_qongirogi,
+			["name", "student", "normal_telefon", "tashqi_raqam"], as_dict=True,
+		)
+		student = _student_top(tq) if tq else None
+		if not student:
+			qoldi.append({"murojaat": m.name, "raqam": m.payer_phone})
+			continue
+		topildi.append({"murojaat": m.name, "student": student,
+		                "ism": frappe.db.get_value("Student", student, "student_name")})
+		if not cint(dry_run):
+			doc = frappe.get_doc("Murojaat", m.name)
+			doc.student = student
+			# Qarz ishi ham bog'lanadi — rahbar qarz holatini ko'rsin
+			ochiq = frappe.get_all(
+				"Qarz Ishi",
+				filters={"student": student,
+				         "ishlov_status": ["not in", ("Yopildi - To'landi", "Yopildi - Boshqa")]},
+				pluck="name", order_by="qarz_summa desc", limit_page_length=1,
+			)
+			if ochiq and not doc.qarz_ishi:
+				doc.qarz_ishi = ochiq[0]
+			doc.save(ignore_permissions=True)
+	if not cint(dry_run) and topildi:
+		frappe.db.commit()
+	return {
+		"korildi": len(nomlar), "boglandi": len(topildi), "qoldi": len(qoldi),
+		"dry_run": cint(dry_run), "namuna": topildi[:10], "bogllanmadi": qoldi[:10],
+	}
