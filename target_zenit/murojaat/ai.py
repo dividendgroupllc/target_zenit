@@ -131,21 +131,28 @@ def _student_top(tq) -> str | None:
 		if tel and tel in xarita:
 			return xarita[tel]["student"]
 
-	# ZAXIRA: raqam oldiga axlat yopishgan holat. Telefoniya ma'lumotida
-	# "7718905507718" kabi 13 xonali qiymatlar uchraydi — oxirgi 9 xonasi
-	# haqiqiy raqam ("905507718"), oldidagi 4 xona esa takrorlanib qolgan
-	# chiqindi (2026-11-07 da prodda topildi).
+	# ZAXIRA: raqamga ortiqcha xona yopishgan holat. Telefoniya ma'lumotida
+	# 13 xonali qiymatlar uchraydi va naqsh aniq (2026-11-07, prod):
+	#
+	#   7718905507718 = 771890550 + 7718   (birinchi 4 xona oxiriga takroran)
+	#   9967388589967 = 996738858 + 9967
+	#
+	# Ya'ni HAQIQIY raqam — BIRINCHI 9 xona. Shunga qaramay ikkala uch ham
+	# sinaladi: manba ilovaning xatosi va u kelajakda boshqacha buzishi
+	# mumkin, 9 xonali moslik esa 394 raqamli xaritada tasodifan to'g'ri
+	# kelmaydi.
 	#
 	# Faqat 12 XONADAN UZUN qiymatlarda qo'llanadi: qisqa qiymatlarda
-	# (masalan 11 xonali "99877767228" — bitta xonasi YETISHMAYDI) oxirgi 9
-	# ni olish raqamni SURIB YUBORADI va boshqa odamga tushib qolardi.
+	# (masalan 11 xonali "99877767228" — bitta xonasi YETISHMAYDI) 9 xona
+	# ajratib olish raqamni SURIB YUBORADI va boshqa odamga tushib qolardi.
 	for xom in (tq.normal_telefon, tq.tashqi_raqam):
 		raqamlar = re.sub(r"\D", "", str(xom or ""))
 		if len(raqamlar) <= 12:
 			continue
-		tel = normalize_phone(raqamlar[-9:])
-		if tel and tel in xarita:
-			return xarita[tel]["student"]
+		for bolak in (raqamlar[:9], raqamlar[-9:]):
+			tel = normalize_phone(bolak)
+			if tel and tel in xarita:
+				return xarita[tel]["student"]
 
 	return None
 
