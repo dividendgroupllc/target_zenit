@@ -467,30 +467,99 @@ def import_excel(path: str, dry_run: int = 1, academic_year: str | None = None,
 
 @frappe.whitelist()
 def namuna_shablon() -> dict:
-	"""Zam direktor uchun bo'sh shablon (ustun nomlari + bitta namuna qator)."""
+	"""Zam direktor uchun namuna shablon — IKKI varaq.
+
+	«Mavzular» (asosiy) — sahifada fan va guruh tanlanadi, shuning uchun
+	faylda Fan/Sinf ustunlari YO'Q. Zavuch uchun eng sodda yo'l.
+
+	«Fan ustunli» — bitta fayl bilan bir necha fan va sinfni birdan yuklash
+	kerak bo'lganda (masalan butun yillik KTP to'plami)."""
 	frappe.only_for(("System Manager", "Zavuch", "Academics User", "Education Manager"))
 
+	import io
+
 	from openpyxl import Workbook
+	from openpyxl.styles import Alignment, Font, PatternFill
 
 	wb = Workbook()
+
+	sarlavha_fill = PatternFill("solid", fgColor="1F4E78")
+	sarlavha_font = Font(bold=True, color="FFFFFF")
+
+	def varaq(ws, ustunlar, kengliklar, qatorlar):
+		ws.append(ustunlar)
+		for c in ws[1]:
+			c.fill = sarlavha_fill
+			c.font = sarlavha_font
+			c.alignment = Alignment(horizontal="center", vertical="center")
+		for q in qatorlar:
+			ws.append(q)
+		for harf, kenglik in zip(
+			[chr(65 + i) for i in range(len(ustunlar))], kengliklar, strict=True
+		):
+			ws.column_dimensions[harf].width = kenglik
+		ws.freeze_panes = "A2"
+
+	# ---- 1-varaq: sahifa orqali yuklash (fan/sinf UI'da tanlanadi)
 	ws = wb.active
-	ws.title = "KTP"
-	ws.append(["Fan", "Sinf", "Chorak", "№", "Bo'lim", "Mavzu", "Soat", "Dars turi"])
-	ws.append(["MATH", 5, 1, 1, "Natural sonlar",
-	           "Natural sonlar va ular ustida amallar", 2, "Yangi mavzu"])
-	ws.append(["MATH", 5, 1, 2, "Natural sonlar", "Qo'shish va ayirish", 2, "Yangi mavzu"])
-	ws.append(["ENGLISH", 5, 1, 1, "Unit 1", "Greetings and introductions", 1, "Yangi mavzu"])
+	ws.title = "Mavzular"
+	varaq(
+		ws,
+		["Chorak", "№", "Bo'lim", "Mavzu", "Soat", "Dars turi"],
+		(8, 6, 26, 52, 7, 16),
+		[
+			[1, 1, "1-bob. Natural sonlar", "Natural sonlar va ular ustida amallar", 2, "Yangi mavzu"],
+			[1, 2, "1-bob. Natural sonlar", "Qo'shish va ayirish", 2, "Yangi mavzu"],
+			[1, 3, "1-bob. Natural sonlar", "Mashqlar yechish", 1, "Amaliy"],
+			[1, 4, "1-bob. Natural sonlar", "Nazorat ishi (BSB)", 1, "Nazorat"],
+			[2, 1, "2-bob. Kasrlar", "Oddiy kasr tushunchasi", 2, "Yangi mavzu"],
+			[2, 2, "2-bob. Kasrlar", "Kasrlarni qiyoslash", 1, "Yangi mavzu"],
+		],
+	)
 
-	for ustun, kenglik in zip("ABCDEFGH", (14, 8, 8, 6, 24, 46, 7, 14), strict=True):
-		ws.column_dimensions[ustun].width = kenglik
+	# ---- 2-varaq: bir necha fan/sinf bitta faylda
+	varaq(
+		wb.create_sheet("Fan ustunli"),
+		["Fan", "Sinf", "Chorak", "№", "Bo'lim", "Mavzu", "Soat", "Dars turi"],
+		(14, 8, 8, 6, 24, 48, 7, 16),
+		[
+			["MATH", 5, 1, 1, "1-bob", "Natural sonlar", 2, "Yangi mavzu"],
+			["MATH", 5, 1, 2, "1-bob", "Qo'shish va ayirish", 2, "Yangi mavzu"],
+			["MATH", 6, 1, 1, "1-bob", "Butun sonlar", 2, "Yangi mavzu"],
+			["ENGLISH", 5, 1, 1, "Unit 1", "Greetings and introductions", 1, "Yangi mavzu"],
+		],
+	)
 
-	import io
+	# ---- 3-varaq: qisqa qo'llanma
+	yoriq = wb.create_sheet("Qo'llanma")
+	for qator in (
+		["USTUN", "MAJBURIYMI", "IZOH"],
+		["Chorak", "ixtiyoriy", "1..4. Faylda qaysi choraklar bo'lsa, FAQAT o'shalar almashadi"],
+		["№", "ixtiyoriy", "Chorak ichidagi tartib. Bo'sh bo'lsa fayldagi tartib olinadi"],
+		["Bo'lim", "ixtiyoriy", "Bob/Unit nomi — mavzularni guruhlash uchun"],
+		["Mavzu", "MAJBURIY", "Mavzusiz qator o'tkazib yuboriladi"],
+		["Soat", "ixtiyoriy", "Mavzu necha darsga mo'ljallangan (bo'sh = 1)"],
+		["Dars turi", "ixtiyoriy", "Bo'sh bo'lsa mavzu matnidan aniqlanadi (Nazorat/Amaliy/Takrorlash)"],
+		["Fan", "tanlovga qarab", "Sahifada fan tanlangan bo'lsa shart emas. Kod (MATH) yoki to'liq nom"],
+		["Sinf", "tanlovga qarab", "Sahifada guruh tanlangan bo'lsa shart emas. «5» yoki «5 A(full)»"],
+		[],
+		["QOIDA", "", "Ustun TARTIBI muhim emas — sarlavha nomi bo'yicha topiladi"],
+		["QOIDA", "", "Reja parallel guruhlarga BITTA: «Matematika 5-sinf» 5A va 5B ga birdek"],
+		["QOIDA", "", "Bitta chorakni alohida ham, butun yilni birdan ham yuklash mumkin"],
+		["QOIDA", "", "Avval «Tekshirish» — hech narsa yozilmaydi, keyin «Tasdiqlash»"],
+	):
+		yoriq.append(qator)
+	for c in yoriq[1]:
+		c.fill = sarlavha_fill
+		c.font = sarlavha_font
+	for harf, kenglik in zip("ABC", (14, 16, 86), strict=True):
+		yoriq.column_dimensions[harf].width = kenglik
 
 	oqim = io.BytesIO()
 	wb.save(oqim)
 
 	fayl = frappe.get_doc({
-		"doctype": "File", "file_name": "KTP_shablon.xlsx",
+		"doctype": "File", "file_name": "KTP_namuna_shablon.xlsx",
 		"is_private": 1, "folder": "Home/Attachments",
 		"content": oqim.getvalue(),
 	})
