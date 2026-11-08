@@ -212,14 +212,35 @@ class TZRejaYuklash {
 			freeze_message: __("Moodle'ga yuborilmoqda…"),
 			callback: (r) => {
 				const m = r.message || {};
-				frappe.msgprint({
-					title: __("Moodle"),
-					indicator: m.xato ? "red" : "green",
-					message: m.xato
-						? this.esc(m.xato)
-						: __("Yuborildi: {0} mavzu, {1} dars biriktirildi.",
-							[m.qatorlar || 0, m.biriktirildi ?? "—"]),
-				});
+				// UCH XIL JAVOB: xato / yuborilmadi (sababi bilan) / tayyor.
+				// «Yuborildi: 0 mavzu» deb ko'rsatish eng yomoni edi —
+				// foydalanuvchi nima qilish kerakligini bilmaydi.
+				let xabar;
+				let rang = "green";
+				if (m.xato) {
+					rang = "red";
+					xabar = this.esc(m.xato).replace(/\n/g, "<br>");
+				} else if (m.holat === "o'chirilgan") {
+					rang = "orange";
+					xabar = __("Moodle integratsiyasi o'chirilgan (Moodle Settings -> Enabled).");
+				} else if (m.holat === "yuborilmadi" || !m.yuborildi) {
+					rang = "orange";
+					xabar = `<b>${__("Yuborilmadi — yuboriladigan mavzu topilmadi.")}</b>`
+						+ `<br><br>${__("Sababi")}: ${this.esc(m.sabab || "—")}`
+						+ (m.oquv_yili ? `<br>${__("O'quv yili")}: <b>${this.esc(m.oquv_yili)}</b>` : "")
+						+ ((m.guruhsiz_rejalar || []).length
+							? `<br>${__("Guruhsiz rejalar")}: ${m.guruhsiz_rejalar.map((x) => this.esc(x)).join(", ")}` : "")
+						+ ((m.mavzusiz_rejalar || []).length
+							? `<br>${__("Mavzusiz rejalar")}: ${m.mavzusiz_rejalar.map((x) => this.esc(x)).join(", ")}` : "");
+				} else {
+					xabar = __("Yuborildi: {0} mavzu · {1} darsga biriktirildi{2}", [
+						m.yuborildi || 0,
+						m.biriktirildi || 0,
+						m.sigmagan ? ` · ${m.sigmagan} ${__("mavzu darsga sig'madi")}` : "",
+					]) + ((m.ogohlantirish || []).length
+						? `<ul>${m.ogohlantirish.map((x) => `<li>${this.esc(x)}</li>`).join("")}</ul>` : "");
+				}
+				frappe.msgprint({ title: __("Moodle"), indicator: rang, message: xabar });
 			},
 		});
 	}

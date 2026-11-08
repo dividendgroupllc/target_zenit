@@ -132,11 +132,26 @@ def _call(wsfunction, payload=None):
 		raise MoodleError(f"JSON emas javob keldi: {r.text[:300]}") from None
 
 	if isinstance(res, dict) and res.get("exception"):
-		xabar = f"{res.get('errorcode')}: {res.get('message')}"
+		kod = res.get("errorcode") or ""
+		xabar = f"{kod}: {res.get('message')}"
 		# debuginfo ba'zan message ichida allaqachon bor — ikki marta yozmaymiz
 		debug = (res.get("debuginfo") or "").strip()
 		if debug and debug not in xabar:
 			xabar += f" ({debug[:500]})"
+		# Moodle'ning eng chalkash xatosi: funksiya `db/services.php` da bor,
+		# lekin TOKEN SERVISIGA biriktirilmagan. Xabari «Access control
+		# exception» — na funksiya nomi, na sabab ko'rinmaydi. Shuning uchun
+		# nima qilish kerakligini o'zimiz yozib beramiz.
+		if kod in ("accessexception", "invalidfunction", "accessnotallowed"):
+			xabar += (
+				f"\n\nSABABI: «{wsfunction}» funksiyasi Moodle'dagi Frappe "
+				"web service ro'yxatiga biriktirilmagan.\n"
+				"YECHIM (serverda, root bo'lib):\n"
+				"  php /opt/moodle/public/local/targetzenit/cli/"
+				"servis_funksiyalari.php\n"
+				"Yoki admin UI: Site administration -> Server -> Web services "
+				"-> External services -> (Frappe) -> Functions."
+			)
 		raise MoodleError(xabar)
 	return res
 

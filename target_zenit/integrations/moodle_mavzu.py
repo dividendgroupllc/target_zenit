@@ -56,6 +56,55 @@ def _qatorlar(academic_year: str, fan: str | None = None) -> list[dict]:
 	return out
 
 
+def _nega_bosh(yil: str, fan: str | None = None) -> dict:
+	"""Yuboriladigan qator topilmasa — sababini aniqlaydi.
+
+	Uchta tipik sabab bor va ularni ajratmasa foydalanuvchi qorong'uda qoladi:
+	reja umuman yo'q / boshqa o'quv yiliga yozilgan / guruhga biriktirilmagan /
+	holati «Faol» emas."""
+	jami = frappe.db.count("Oquv Reja")
+	if not jami:
+		return {"sabab": "Bazada bitta ham o'quv reja yo'q — avval Excel yuklang "
+		                 "(/app/oquv-reja-yuklash)"}
+
+	rejalar = frappe.get_all(
+		"Oquv Reja", fields=["name", "fan", "academic_year", "holat"],
+		limit_page_length=0)
+	shu_yil = [r for r in rejalar if r.academic_year == yil]
+	if not shu_yil:
+		yillar = sorted({r.academic_year for r in rejalar if r.academic_year})
+		return {"sabab": f"«{yil}» o'quv yiliga reja yo'q. Bazadagi rejalar: "
+		                 + ", ".join(yillar or ["(yilsiz)"]),
+		        "rejalar_jami": jami}
+
+	faol = [r for r in shu_yil if r.holat == "Faol"]
+	if not faol:
+		return {"sabab": f"«{yil}» da {len(shu_yil)} reja bor, lekin birortasi «Faol» emas "
+		                 f"(holatlar: {', '.join(sorted({r.holat or '-' for r in shu_yil}))})",
+		        "rejalar_jami": jami}
+
+	if fan and not [r for r in faol if r.fan == fan]:
+		return {"sabab": f"«{fan}» fani uchun «{yil}» da faol reja yo'q",
+		        "rejalar_jami": jami}
+
+	guruhsiz = [r.name for r in faol
+	            if not frappe.db.count("Oquv Reja Guruhi", {"parent": r.name})]
+	if len(guruhsiz) == len(faol):
+		return {"sabab": "Rejalar bor, lekin birortasiga guruh biriktirilmagan — "
+		                 "reja ichidagi «Sinflar» jadvalini tekshiring",
+		        "guruhsiz_rejalar": guruhsiz[:10], "rejalar_jami": jami}
+
+	mavzusiz = [r.name for r in faol
+	            if not frappe.db.count("Oquv Reja Qatori",
+	                                   {"parent": r.name, "parenttype": "Oquv Reja"})]
+	if len(mavzusiz) == len(faol):
+		return {"sabab": "Rejalar bor, lekin mavzu qatorlari bo'sh",
+		        "mavzusiz_rejalar": mavzusiz[:10], "rejalar_jami": jami}
+
+	return {"sabab": "Sabab aniqlanmadi — rejalarni qo'lda ko'rib chiqing",
+	        "rejalar_jami": jami}
+
+
 def push(academic_year: str | None = None, fan: str | None = None,
          trigger: str = "Qo'lda") -> dict:
 	"""Rejalarni Moodle'ga yuboradi va u yerda darslarga biriktiradi."""
@@ -71,7 +120,8 @@ def push(academic_year: str | None = None, fan: str | None = None,
 
 	qatorlar = _qatorlar(yil, fan)
 	if not qatorlar:
-		return {"holat": "yuborilmadi", "sabab": "Faol reja yo'q", "oquv_yili": yil}
+		# «0 mavzu yuborildi» eng foydasiz javob — nega bo'shligini aytamiz
+		return {"holat": "yuborilmadi", "oquv_yili": yil, **_nega_bosh(yil, fan)}
 
 	jami = {"ochirildi": 0, "qoshildi": 0, "biriktirildi": 0,
 	        "bosh_slot": 0, "sigmagan": 0}
@@ -101,7 +151,8 @@ def push(academic_year: str | None = None, fan: str | None = None,
 	          "yuborildi": len(qatorlar), **jami,
 	          "ogohlantirish": ogohlantirish[:20], "trigger": trigger}
 	if xato:
-		natija["xato"] = xato[:500]
+		# Yechim yo'riqnomasi xabar oxirida — kesib tashlamaymiz
+		natija["xato"] = xato[:1200]
 	return natija
 
 
@@ -149,3 +200,19 @@ def preview(limit: int = 10) -> dict:
 		"juftlar": len(juftlar),
 		"namuna": qatorlar[:cint(limit)],
 	}
+
+
+
+@frappe.whitelist()
+def tashxis() -> dict:
+	"""«Nega 0 mavzu yuborildi?» — sahifadagi tugma uchun."""
+	frappe.only_for(("System Manager", "Zavuch", "Academics User", "Education Manager"))
+
+	from target_zenit.oquv_reja import _joriy_yil
+
+	yil = _joriy_yil()
+	qatorlar = _qatorlar(yil) if yil else []
+	natija = {"oquv_yili": yil, "yuboriladigan_qatorlar": len(qatorlar)}
+	if not qatorlar:
+		natija.update(_nega_bosh(yil or ""))
+	return natija
