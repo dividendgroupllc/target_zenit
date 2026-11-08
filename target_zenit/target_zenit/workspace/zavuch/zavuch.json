@@ -12,7 +12,7 @@
  "is_hidden": 0,
  "label": "Zavuch",
  "links": [],
- "modified": "2026-10-12 11:00:00.000000",
+ "modified": "2026-11-08 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Zavuch",
@@ -40,12 +40,6 @@
  ],
  "sequence_id": 1.5,
  "shortcuts": [
-  {
-   "color": "Green",
-   "label": "Yo'qlama",
-   "type": "Page",
-   "link_to": "yoqlama"
-  },
   {
    "color": "Blue",
    "label": "Dars jadvali",
@@ -121,13 +115,6 @@
    "type": "DocType"
   },
   {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Dars kunlari (Course Schedule)",
-   "link_to": "Course Schedule",
-   "type": "DocType"
-  },
-  {
    "color": "Green",
    "doc_view": "List",
    "label": "O'quv rejalar (KTP)",
@@ -136,10 +123,10 @@
   },
   {
    "color": "Green",
-   "doc_view": "List",
-   "label": "Dars bajarilishi",
-   "link_to": "Dars Bajarilishi",
-   "type": "DocType"
+   "label": "Mavzularni yuklash (KTP)",
+   "type": "Page",
+   "link_to": "oquv-reja-yuklash",
+   "doc_view": ""
   },
   {
    "color": "Blue",
@@ -161,41 +148,6 @@
    "link_to": "orinbosarlik",
    "type": "Page",
    "doc_view": ""
-  },
-  {
-   "color": "Blue",
-   "label": "Kunlik jadval",
-   "link_to": "kunlik-jadval",
-   "type": "Page",
-   "doc_view": ""
-  },
-  {
-   "color": "Green",
-   "label": "Baholar hisoboti",
-   "link_to": "baholar-hisoboti",
-   "type": "Page",
-   "doc_view": ""
-  },
-  {
-   "color": "Grey",
-   "label": "Dars natijalari",
-   "link_to": "Dars Natijasi",
-   "type": "DocType",
-   "doc_view": "List"
-  },
-  {
-   "color": "Purple",
-   "label": "Baho jurnali",
-   "link_to": "baho-jurnali",
-   "type": "Page",
-   "doc_view": ""
-  },
-  {
-   "color": "Pink",
-   "label": "Uy vazifalar",
-   "link_to": "Uy Vazifa",
-   "type": "DocType",
-   "doc_view": "List"
   }
  ],
  "title": "Zavuch"

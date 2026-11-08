@@ -26,14 +26,10 @@ def test_xodim_ismi_jonli():
 		frappe.db.commit()
 		assert frappe.db.get_value("Instructor", t.ins, "instructor_name") == eski_ins, "nusxa o'zgardi"
 
-		from target_zenit import yoqlama
 		from target_zenit.dars_jadvali import jadval_tahlil, oqituvchi_jadval
 		from target_zenit.target_zenit.page.dars_jadvali import dars_jadvali as dj_page
 		from target_zenit.target_zenit.page.mening_jadvalim import mening_jadvalim
 
-		# 1) Yo'qlama
-		y = yoqlama.get_data(yil=2026, oy=10)
-		natija["yoqlama"] = any(q["ism"] == yangi for q in y["qatorlar"])
 		# 2) O'qituvchi jadvali (karta + ro'yxat)
 		k = oqituvchi_jadval.oqituvchi_tori(t.ins)
 		natija["oqituvchi_jadval"] = k.get("nomi") == yangi
@@ -69,19 +65,8 @@ def test_xodim_ismi_jonli():
 		xq = xodim_qarzdorlik.get_data()
 		natija["xodim_qarzdorlik"] = any(
 			r.get("ism") == yangi for r in (xq.get("qatorlar") or xq.get("rows") or []))
-		# 9) Dars kokpiti + baho jurnali + o'quv reja (shu o'qituvchining darsi)
-		from target_zenit import oquv_reja
-		from target_zenit.dars_jadvali import baholash, sessiya
-
-		jy = frappe.db.get_value("Jadval Yozuvi", {"oqituvchi": t.ins}, "name")
-		if jy:
-			natija["dars_kokpiti"] = (
-				sessiya.sessiya_malumot(jy)["dars"]["oqituvchi_nomi"] == yangi)
-			natija["baho_jurnali"] = (
-				baholash.dars_oquvchilari(jy)["oqituvchi_nomi"] == yangi)
-			natija["oquv_reja"] = (
-				oquv_reja.dars_detali(jy)["dars"]["oqituvchi_nomi"] == yangi)
-
+		# 9) Dars kokpiti/baho jurnali tekshiruvlari OLIB TASHLANDI (2026-11-08):
+		# ular MOODLE'ga ko'chdi (qarang: `integrations/moodle_mavzu.py`).
 		for k2, v in natija.items():
 			print(f"  {k2:<22} {'OK' if v else 'ESKI ISM!'}")
 		assert all(natija.values()), f"eski ism qolgan joylar: {[k for k,v in natija.items() if not v]}"

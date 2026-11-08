@@ -12,7 +12,7 @@
  "is_hidden": 0,
  "label": "O'qituvchi",
  "links": [],
- "modified": "2026-10-12 18:00:25.826589",
+ "modified": "2026-11-08 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "O'qituvchi",
@@ -51,38 +51,10 @@
    "type": "Page"
   },
   {
-   "color": "Blue",
-   "doc_view": "",
-   "label": "Kunlik jadval",
-   "link_to": "kunlik-jadval",
-   "type": "Page"
-  },
-  {
-   "color": "Green",
-   "doc_view": "",
-   "label": "Baholar hisoboti",
-   "link_to": "baholar-hisoboti",
-   "type": "Page"
-  },
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Dars natijalari",
-   "link_to": "Dars Natijasi",
-   "type": "DocType"
-  },
-  {
    "color": "Green",
    "doc_view": "List",
    "label": "O'quv rejalar",
    "link_to": "Oquv Reja",
-   "type": "DocType"
-  },
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Dars bajarilishi",
-   "link_to": "Dars Bajarilishi",
    "type": "DocType"
   },
   {
@@ -104,32 +76,6 @@
    "doc_view": "List",
    "label": "Sinflar",
    "link_to": "Student Group",
-   "type": "DocType"
-  },
-  {
-   "color": "Purple",
-   "doc_view": "",
-   "label": "Baho jurnali",
-   "link_to": "baho-jurnali",
-   "type": "Page"
-  },
-  {
-   "color": "Pink",
-   "doc_view": "List",
-   "label": "Uy vazifalar",
-   "link_to": "Uy Vazifa",
-   "type": "DocType"
-  },
-  {
-   "doc_view": "",
-   "label": "Chorak baholari",
-   "link_to": "Chorak Bahosi",
-   "type": "DocType"
-  },
-  {
-   "doc_view": "",
-   "label": "Uy vazifa natijalari",
-   "link_to": "Uy Vazifa Natijasi",
    "type": "DocType"
   }
  ],

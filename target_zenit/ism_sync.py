@@ -7,7 +7,7 @@ Frappe'da `fetch_from` — JOIN emas, **nusxa**: qiymat hujjat saqlangan paytda
 bir marta ko'chiriladi va keyin muzlab qoladi. Submit qilingan hujjatni qayta
 saqlab bo'lmaydi, shuning uchun Student/Employee ismi (masalan pasport bo'yicha)
 tahrirlanganda eski ism Fees, Sales Invoice, Qarz Ishi, Tolov Rejasi,
-Dars Natijasi, Instructor, Tabel ... hujjatlarida qolib ketadi. Panellar va
+Jadval Yozuvi, Instructor, Tabel ... hujjatlarida qolib ketadi. Panellar va
 hisobotlar aynan shu nusxalardan o'qiydi — natijada dashbordlarda eski ism
 ko'rinadi yoki ism bo'yicha moslashtirish (turniket, import) buziladi.
 

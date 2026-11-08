@@ -1,38 +1,32 @@
 {
  "content": null,
- "creation": "2026-10-11 10:00:00",
+ "creation": "2026-11-08 00:00:00",
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-10-11 17:00:00.000000",
+ "modified": "2026-11-08 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
- "name": "kunlik-jadval",
+ "name": "oquv-reja-yuklash",
  "owner": "Administrator",
- "page_name": "kunlik-jadval",
+ "page_name": "oquv-reja-yuklash",
  "roles": [
   {
    "role": "System Manager"
+  },
+  {
+   "role": "Zavuch"
   },
   {
    "role": "Academics User"
   },
   {
    "role": "Education Manager"
-  },
-  {
-   "role": "Zavuch"
-  },
-  {
-   "role": "Instructor"
-  },
-  {
-   "role": "O'qituvchi"
   }
  ],
  "script": null,
  "standard": "Yes",
  "style": null,
  "system_page": 0,
- "title": "Kunlik jadval"
+ "title": "Mavzularni yuklash (KTP)"
 }

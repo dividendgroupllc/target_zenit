@@ -26,9 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/target_zenit/css/target_zenit.css"
-# Dars audiosi vidjeti (dars-sessiya + mening-jadvalim)
 app_include_css = [
-	"/assets/target_zenit/css/dars_audio.css?v=20261015",
 	# Sotuv nazorati ko'rinishi (sahifa + investor dashboard bo'limi)
 	"/assets/target_zenit/css/sotuv_nazorati_view.css?v=20261104",
 ]
@@ -41,8 +39,6 @@ app_include_js = [
 	"/assets/target_zenit/js/payment_month.js?v=20260921",
 	# O'quv reja: «Chorak mavzularini biriktirish» dialogi (tz_mavzu_dialog)
 	"/assets/target_zenit/js/mavzu_import.js?v=20261012",
-	# Dars audiosini yozib olish vidjeti (dars-sessiya + mening-jadvalim)
-	"/assets/target_zenit/js/dars_audio.js?v=20261015",
 	# Sotuv nazorati: bitta ko'rinish — /app/sotuv-nazorati sahifasi ham,
 	# investor dashboardning "Sotuv nazorati" bo'limi ham shuni ishlatadi
 	"/assets/target_zenit/js/sotuv_nazorati_view.js?v=20261104",
@@ -197,6 +193,11 @@ doc_events = {
 	"Murojaat": {
 		"after_insert": "target_zenit.integrations.moodle_murojaat.on_murojaat_insert",
 	},
+	# O'quv reja saqlansa — mavzular Moodle'ga uzatiladi va u yerda dars
+	# jadvaliga biriktiriladi (zam direktor Excel yuklagandan keyin ham)
+	"Oquv Reja": {
+		"on_update": "target_zenit.integrations.moodle_mavzu.on_reja_update",
+	},
 	# Yangi suhbat yozilsa — o'sha o'quvchining ochiq murojaatlaridagi
 	# "kim qachon gaplashdi" tarixi Moodle'da ham yangilanadi
 	"Aloqa Yozuvi": {
@@ -225,8 +226,8 @@ doc_events = {
 		"on_update": [
 			"target_zenit.student_group_sync.on_student_update",
 			"target_zenit.qarzdorlik.engine.on_student_change",
-			# Ism (pasport bo'yicha) tahrirlansa — Fees/Qarz Ishi/Tolov Rejasi/
-			# Dars Natijasi/… dagi nusxalar zanjir bo'ylab yangilanadi
+			# Ism (pasport bo'yicha) tahrirlansa — Fees/Qarz Ishi/Tolov
+			# Rejasi/… dagi nusxalar zanjir bo'ylab yangilanadi
 			"target_zenit.ism_sync.student_on_update",
 		],
 	},
@@ -249,8 +250,8 @@ doc_events = {
 			"target_zenit.ism_sync.employee_on_update",
 		],
 	},
-	# Instructor nomi (yoki uning Employee'si) o'zgarsa — Jadval Yozuvi,
-	# Course Schedule, Dars Bajarilishi dagi oqituvchi_nomi nusxalari
+	# Instructor nomi (yoki uning Employee'si) o'zgarsa — Jadval Yozuvi va
+	# Jadval Ozgarishi dagi oqituvchi_nomi nusxalari
 	"Instructor": {
 		"on_update": "target_zenit.ism_sync.instructor_on_update",
 	},
@@ -372,6 +373,12 @@ scheduler_events = {
 		# 07:20 — dars jadvali va o'quv kalendarini Moodle plaginiga uzatish
 		"20 7 * * *": [
 			"target_zenit.integrations.moodle_jadval.daily_sync"
+		],
+		# 07:25 — o'quv reja mavzularini darslarga biriktirish. Jadval
+		# sinxronidan KEYIN: biriktirish dars slotlariga tayanadi, ular esa
+		# jadvaldan quriladi. Jadval o'zgargan bo'lsa qayta taqsimlanadi.
+		"25 7 * * *": [
+			"target_zenit.integrations.moodle_mavzu.daily_sync"
 		],
 		# 07:30 — oylik tabel (xodim o'z oyligini Moodle'da ko'radi).
 		# Foydalanuvchi sinxronidan KEYIN: bog'lanish `user.idnumber` orqali,

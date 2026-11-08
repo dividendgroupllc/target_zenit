@@ -1,0 +1,130 @@
+/* MAVZULARNI YUKLASH (KTP) — zam direktor sahifasi.
+   Uch qadamli forma: tanlov -> fayl -> tekshir/tasdiq. */
+
+.tz-ry {
+	--ry-bg: var(--fg-color);
+	--ry-line: var(--border-color);
+	--ry-muted: var(--text-muted);
+	max-width: 1040px;
+	margin: 0 auto;
+	padding: 4px 0 40px;
+	font-size: 13px;
+}
+
+.tz-ry .ry-load { padding: 40px; text-align: center; color: var(--ry-muted); }
+
+.tz-ry .ry-head {
+	display: flex; align-items: flex-start; gap: 16px;
+	padding: 4px 2px 18px;
+}
+.tz-ry .ry-head > div:first-child { flex: 1; }
+.tz-ry h1 { font-size: 20px; font-weight: 700; margin: 0 0 3px; }
+.tz-ry .ry-sub { color: var(--ry-muted); font-size: 12px; }
+
+/* ---- qadam karta */
+.tz-ry .ry-step {
+	display: flex; gap: 14px;
+	background: var(--ry-bg);
+	border: 1px solid var(--ry-line);
+	border-radius: 10px;
+	padding: 16px 18px;
+	margin-bottom: 12px;
+}
+.tz-ry .ry-n {
+	flex: 0 0 26px; height: 26px; border-radius: 50%;
+	background: var(--bg-light-gray, #f4f5f6);
+	border: 1px solid var(--ry-line);
+	display: flex; align-items: center; justify-content: center;
+	font-weight: 700; font-size: 12px; color: var(--ry-muted);
+}
+.tz-ry .ry-c { flex: 1; min-width: 0; }
+.tz-ry .ry-t { font-weight: 600; margin-bottom: 10px; }
+
+.tz-ry .ry-grid {
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 12px;
+}
+.tz-ry label { display: block; font-size: 11px; color: var(--ry-muted); font-weight: 500; }
+.tz-ry select {
+	width: 100%; margin-top: 4px; padding: 6px 8px; font-size: 13px;
+	border: 1px solid var(--ry-line); border-radius: 6px;
+	background: var(--control-bg, var(--ry-bg)); color: var(--text-color);
+}
+.tz-ry .ry-hint { margin-top: 10px; font-size: 11px; color: var(--ry-muted); line-height: 1.5; }
+.tz-ry .ry-hint code { font-size: 11px; }
+
+/* ---- guruhlar */
+.tz-ry .ry-guruhlar { margin-top: 14px; }
+.tz-ry .ry-gt { font-size: 11px; color: var(--ry-muted); margin-bottom: 6px; }
+.tz-ry .ry-gt a { margin-left: 4px; }
+.tz-ry .ry-gl { display: flex; flex-wrap: wrap; gap: 6px; }
+.tz-ry .ry-g {
+	display: flex; align-items: center; gap: 6px;
+	padding: 4px 10px 4px 8px;
+	border: 1px solid var(--ry-line); border-radius: 20px;
+	font-size: 12px; color: var(--text-color); font-weight: 500;
+	cursor: pointer; user-select: none;
+}
+.tz-ry .ry-g input { margin: 0; }
+.tz-ry .ry-g:has(input:checked) {
+	border-color: var(--primary, #2490ef);
+	background: var(--bg-blue, rgba(36, 144, 239, .08));
+}
+
+/* ---- fayl */
+.tz-ry .ry-file { display: flex; align-items: center; gap: 10px; }
+.tz-ry .ry-fname { font-size: 12px; color: var(--ry-muted); }
+
+/* ---- amallar */
+.tz-ry .ry-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---- natija */
+.tz-ry .ry-natija:not(:empty) { margin-top: 16px; }
+.tz-ry .ry-ok, .tz-ry .ry-err, .tz-ry .ry-warn {
+	border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px;
+	border-left: 3px solid transparent;
+}
+.tz-ry .ry-ok {
+	background: var(--bg-green, rgba(40, 167, 69, .08));
+	border-left-color: var(--green-500, #28a745);
+}
+.tz-ry .ry-ok.ry-dry {
+	background: var(--bg-light-gray, #f4f5f6);
+	border-left-color: var(--ry-muted);
+}
+.tz-ry .ry-err {
+	background: var(--bg-red, rgba(220, 53, 69, .08));
+	border-left-color: var(--red-500, #dc3545);
+}
+.tz-ry .ry-warn {
+	background: var(--bg-orange, rgba(255, 159, 10, .1));
+	border-left-color: var(--orange-500, #ff9f0a);
+}
+.tz-ry .ry-err ul, .tz-ry .ry-warn ul { margin: 6px 0 0; padding-left: 18px; }
+.tz-ry .ry-err li, .tz-ry .ry-warn li { margin-bottom: 2px; }
+
+.tz-ry .ry-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tz-ry .ry-tbl th {
+	text-align: left; font-weight: 600; font-size: 11px; color: var(--ry-muted);
+	padding: 6px 8px; border-bottom: 1px solid var(--ry-line); white-space: nowrap;
+}
+.tz-ry .ry-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--ry-line); vertical-align: top; }
+.tz-ry .ry-tbl .r { text-align: right; }
+.tz-ry .ry-tbl tr:hover td { background: var(--bg-light-gray, #f8f8f8); }
+.tz-ry .mini { font-size: 11px; color: var(--ry-muted); font-weight: 400; }
+
+.tz-ry .ry-ch {
+	display: inline-block; min-width: 18px; text-align: center;
+	padding: 1px 5px; margin-right: 3px;
+	border: 1px solid var(--ry-line); border-radius: 4px;
+	font-size: 11px; font-weight: 600;
+}
+.tz-ry .ry-new {
+	padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;
+	background: var(--bg-green, rgba(40, 167, 69, .12)); color: var(--green-600, #1e7e34);
+}
+
+@media (max-width: 640px) {
+	.tz-ry .ry-step { padding: 14px; }
+	.tz-ry .ry-n { display: none; }
+}

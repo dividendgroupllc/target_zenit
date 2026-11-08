@@ -1,6 +1,6 @@
 # Copyright (c) 2026, Target Zenit
 # O'quv reja (KTP) ishchi mantiqi: faol rejani topish, keyingi o'tilmagan mavzu,
-# "dars o'tdim" tasdig'i (Dars Bajarilishi yaratadi), qamrov hisoboti.
+# Frappe faqat REJAni saqlaydi; dars bajarilishi Moodle tarafda yuritiladi.
 # Standart ERPNext/jadval yadrosini buzmaydi — ustiga ulanadi.
 from __future__ import annotations
 
@@ -80,210 +80,16 @@ def aktiv_reja(fan: str, guruh: str | None = None, guruh_nomi: str | None = None
 	return None
 
 
-def _otilgan_qatorlar(oquv_reja: str, guruh: str) -> set[str]:
-	"""Shu guruh uchun o'tilgan (yoki qisman) reja qatorlari (ID) to'plami."""
-	rows = frappe.get_all(
-		"Dars Bajarilishi",
-		filters={"oquv_reja": oquv_reja, "guruh": guruh, "holat": ["in", ["O'tildi", "Qisman"]]},
-		fields=["reja_qatori"], limit_page_length=0,
-	)
-	return {r.reja_qatori for r in rows if r.reja_qatori}
-
-
-def keyingi_mavzu(oquv_reja: str, guruh: str) -> dict | None:
-	"""Shu guruh uchun keyingi o'tilmagan mavzu + progress."""
-	if not oquv_reja:
-		return None
-	qatorlar = frappe.get_all(
-		"Oquv Reja Qatori", filters={"parent": oquv_reja, "parenttype": "Oquv Reja"},
-		fields=["name", "tartib", "bolim", "mavzu", "soat"], order_by="idx asc",
-		limit_page_length=0,
-	)
-	otilgan = _otilgan_qatorlar(oquv_reja, guruh)
-	keyingi = None
-	for q in qatorlar:
-		if q.name not in otilgan:
-			keyingi = q
-			break
-	return {
-		"keyingi": keyingi,
-		"otildi": len(otilgan),
-		"jami": len(qatorlar),
-	}
-
-
-@frappe.whitelist()
-def dars_holati(fan: str, guruh: str, sana: str | None = None,
-                jadval_yozuvi: str | None = None, guruh_nomi: str | None = None) -> dict:
-	"""Bitta dars uchun: faol reja + keyingi mavzu + bugun o'tilganmi."""
-	sana = sana or nowdate()
-	reja = aktiv_reja(fan, guruh, guruh_nomi)
-	natija = {"oquv_reja": reja, "keyingi": None, "otildi": 0, "jami": 0, "bugun": None}
-	if reja:
-		km = keyingi_mavzu(reja, guruh) or {}
-		natija.update({"keyingi": km.get("keyingi"), "otildi": km.get("otildi", 0),
-		               "jami": km.get("jami", 0)})
-	# Shu slot bugun allaqachon tasdiqlanganmi?
-	filtr = {"guruh": guruh, "sana": sana}
-	if jadval_yozuvi:
-		filtr["jadval_yozuvi"] = jadval_yozuvi
-	natija["bugun"] = frappe.db.get_value(
-		"Dars Bajarilishi", filtr, ["name", "mavzu", "holat", "reja_qatori"], as_dict=True
-	)
-	return natija
-
-
-@frappe.whitelist()
-def dars_detali(jadval_yozuvi: str, sana: str | None = None) -> dict:
-	"""Dars ustiga bosilganda — TO'LIQ ma'lumot: dars + o'quv reja + mavzular
-	ro'yxati (shu sinf uchun o'tildi belgisi bilan) + bugungi yozuv."""
-	sana = sana or nowdate()
-	jy = frappe.get_doc("Jadval Yozuvi", jadval_yozuvi)
-	dars = {
-		"jadval_yozuvi": jy.name,
-		"fan": jy.fan,
-		"guruh": jy.guruh,
-		"guruh_nomi": jy.guruh_nomi or jy.guruh,
-		"sinflar": jy.sinflar,
-		"kun": jy.kun,
-		"dars_raqami": jy.dars_raqami,
-		"boshlanish": _vaqt_str(jy.boshlanish),
-		"tugash": _vaqt_str(jy.tugash),
-		"xona": jy.xona,
-		"oqituvchi": jy.oqituvchi,
-		"oqituvchi_nomi": oqituvchi_nomi(jy.oqituvchi) or jy.oqituvchi_nomi,
-		"sana": str(sana),
-	}
-	reja = aktiv_reja(jy.fan, jy.guruh, jy.guruh_nomi)
-	mavzular, keyingi, otildi = [], None, 0
-	if reja:
-		otilgan = _otilgan_qatorlar(reja, jy.guruh)
-		rows = frappe.get_all(
-			"Oquv Reja Qatori", filters={"parent": reja, "parenttype": "Oquv Reja"},
-			fields=["name", "tartib", "bolim", "mavzu", "soat", "dars_turi"],
-			order_by="idx asc", limit_page_length=0,
-		)
-		for q in rows:
-			done = q.name in otilgan
-			if done:
-				otildi += 1
-			elif keyingi is None:
-				keyingi = q.name
-			q["otildi"] = done
-			mavzular.append(q)
-	bugun = frappe.db.get_value(
-		"Dars Bajarilishi", {"guruh": jy.guruh, "sana": sana, "jadval_yozuvi": jy.name},
-		["name", "reja_qatori", "mavzu", "holat", "izoh"], as_dict=True,
-	)
-	return {
-		"dars": dars,
-		"oquv_reja": reja,
-		"oquv_reja_nomi": frappe.db.get_value("Oquv Reja", reja, "nomi") if reja else None,
-		"mavzular": mavzular,
-		"keyingi": keyingi,
-		"otildi": otildi,
-		"jami": len(mavzular),
-		"bugun": bugun,
-	}
-
-
-@frappe.whitelist()
-def dars_otdim(jadval_yozuvi: str | None = None, oquv_reja: str | None = None,
-               reja_qatori: str | None = None, guruh: str | None = None,
-               fan: str | None = None, sana: str | None = None,
-               holat: str = "O'tildi", izoh: str | None = None) -> dict:
-	"""O'qituvchi «shu darsni o'tdim» tasdig'i — Dars Bajarilishi yaratadi/yangilaydi.
-	Ruxsat: menejer YOKI darsning o'z o'qituvchisi."""
-	sana = sana or nowdate()
-	jy = frappe.get_doc("Jadval Yozuvi", jadval_yozuvi) if jadval_yozuvi else None
-
-	# Ruxsat: menejer yoki shu darsning o'qituvchisi
-	oqituvchi = jy.oqituvchi if jy else None
-	if not _menejermi():
-		meniki = _mening_instructorim()
-		if not meniki or (jy and jy.oqituvchi != meniki):
-			frappe.throw(_("Faqat shu darsning o'qituvchisi tasdiqlashi mumkin."), frappe.PermissionError)
-		oqituvchi = oqituvchi or meniki
-
-	guruh = guruh or (jy.guruh if jy else None)
-	fan = fan or (jy.fan if jy else None)
-	if not guruh:
-		frappe.throw(_("Guruh aniqlanmadi."))
-
-	oquv_reja = oquv_reja or aktiv_reja(fan, guruh, jy.guruh_nomi if jy else None)
-
-	# Mavzu snapshot (reja_qatori berilmagan bo'lsa — keyingi o'tilmagan)
-	tartib = mavzu = None
-	if not reja_qatori and oquv_reja:
-		km = keyingi_mavzu(oquv_reja, guruh) or {}
-		k = km.get("keyingi")
-		if k:
-			reja_qatori, tartib, mavzu = k["name"], k.get("tartib"), k.get("mavzu")
-	elif reja_qatori:
-		q = frappe.db.get_value("Oquv Reja Qatori", reja_qatori, ["tartib", "mavzu"], as_dict=True)
-		if q:
-			tartib, mavzu = q.tartib, q.mavzu
-
-	# Dublikat tekshiruvi (guruh + sana + slot) — bo'lsa yangilanadi
-	filtr = {"guruh": guruh, "sana": sana}
-	if jadval_yozuvi:
-		filtr["jadval_yozuvi"] = jadval_yozuvi
-	mavjud = frappe.db.get_value("Dars Bajarilishi", filtr, "name")
-
-	qiymat = {
-		"oquv_reja": oquv_reja, "reja_qatori": reja_qatori, "tartib": tartib, "mavzu": mavzu,
-		"guruh": guruh, "fan": fan, "oqituvchi": oqituvchi, "sana": sana,
-		"jadval_yozuvi": jadval_yozuvi, "holat": holat, "izoh": izoh,
-		"boshlanish": jy.boshlanish if jy else None,
-	}
-	if jy and jy.boshlanish and jy.tugash:
-		try:
-			b = jy.boshlanish.total_seconds() if hasattr(jy.boshlanish, "total_seconds") else 0
-			t = jy.tugash.total_seconds() if hasattr(jy.tugash, "total_seconds") else 0
-			if t > b:
-				qiymat["davomiylik_min"] = int((t - b) // 60)
-		except Exception:
-			pass
-
-	if mavjud:
-		doc = frappe.get_doc("Dars Bajarilishi", mavjud)
-		doc.update(qiymat)
-		doc.save(ignore_permissions=True)
-	else:
-		doc = frappe.get_doc(dict(doctype="Dars Bajarilishi", **qiymat))
-		doc.insert(ignore_permissions=True)
-	frappe.db.commit()
-	return {"name": doc.name, "mavzu": mavzu, "holat": holat}
-
-
-@frappe.whitelist()
-def qamrov(academic_year: str | None = None, fan: str | None = None) -> list[dict]:
-	"""Qamrov matritsasi: har Faol reja x unга tegishli guruhlar bo'yicha o'tildi/jami."""
-	if not _menejermi():
-		frappe.throw(_("Qamrov hisoboti uchun ruxsat yo'q."), frappe.PermissionError)
-	filtr = {"holat": "Faol"}
-	if academic_year:
-		filtr["academic_year"] = academic_year
-	if fan:
-		filtr["fan"] = fan
-	rejalar = frappe.get_all("Oquv Reja", filters=filtr,
-	                         fields=["name", "fan", "sinf_daraja", "jami_soat"], limit_page_length=0)
-	natija = []
-	for r in rejalar:
-		jami = frappe.db.count("Oquv Reja Qatori", {"parent": r.name, "parenttype": "Oquv Reja"})
-		# Shu reja bo'yicha dars o'tilgan guruhlar
-		guruhlar = frappe.db.sql(
-			"""SELECT guruh, guruh_nomi,
-			          COUNT(DISTINCT CASE WHEN holat IN ('O''tildi','Qisman') THEN reja_qatori END) otildi,
-			          MAX(sana) oxirgi
-			   FROM `tabDars Bajarilishi` WHERE oquv_reja=%s GROUP BY guruh, guruh_nomi""",
-			(r.name,), as_dict=True,
-		)
-		natija.append({
-			"oquv_reja": r.name, "fan": r.fan, "sinf_daraja": r.sinf_daraja,
-			"jami_mavzu": jami, "guruhlar": guruhlar,
-		})
-	return natija
+# DARS BAJARILISHI QATLAMI OLIB TASHLANDI (2026-11-08).
+#
+# `_otilgan_qatorlar`, `keyingi_mavzu`, `dars_holati`, `dars_detali`,
+# `dars_otdim`, `qamrov`, `mavzu_olib_tashla` — «shu darsni o'tdim» tasdig'i,
+# keyingi mavzu navbati va qamrov hisoboti.
+#
+# Dars BAJARILISHI endi MOODLE'da yuritiladi (mavzu dars slotiga biriktiriladi:
+# `local_targetzenit\mavzu`), Frappe esa faqat REJAni saqlaydi va Moodle'ga
+# push qiladi (`integrations/moodle_mavzu.py`). Mas'uliyat chegarasi:
+# Frappe = reja, Moodle = bajarilish.
 
 
 # ============================================================ MAVZULARNI KO'PLAB KIRITISH
@@ -454,12 +260,11 @@ def mening_fanlarim(oqituvchi: str | None = None) -> dict:
 	for (fan, guruh), nomi in sorted(korilgan.items(), key=lambda x: (x[0][0], str(x[1]))):
 		reja = aktiv_reja(fan, guruh, nomi)
 		jami = frappe.db.count("Oquv Reja Qatori", {"parent": reja, "parenttype": "Oquv Reja"}) if reja else 0
-		otilgan = len(_otilgan_qatorlar(reja, guruh)) if reja else 0
 		natija["juftliklar"].append({
 			"fan": fan, "guruh": guruh, "guruh_nomi": nomi or guruh,
 			"oquv_reja": reja,
 			"reja_nomi": frappe.db.get_value("Oquv Reja", reja, "nomi") if reja else None,
-			"mavzu_soni": jami, "otilgan": otilgan,
+			"mavzu_soni": jami,
 		})
 	return natija
 
@@ -538,20 +343,10 @@ def mavzular_saqla(fan: str, guruhlar, matn: str = "", bolim: str | None = None,
 
 	ochirildi = saqlangan = 0
 	if rejim == "almashtirish":
-		# O'tilgan (Dars Bajarilishi bor) qatorlarга tegmaymiz — tarix buzilmasin
-		band = {r.reja_qatori for r in frappe.get_all(
-			"Dars Bajarilishi", filters={"oquv_reja": reja},
-			fields=["reja_qatori"], limit_page_length=0) if r.reja_qatori}
-		qoldi = [q for q in doc.qatorlar if q.name in band]
-		ochirildi = len(doc.qatorlar) - len(qoldi)
+		# Bajarilish Moodle'da yuritilganidan beri Frappe tarafda «o'tilgan
+		# qator» tushunchasi yo'q — reja to'liq almashtiriladi.
+		ochirildi = len(doc.qatorlar)
 		doc.qatorlar = []
-		for q in qoldi:
-			doc.append("qatorlar", {
-				"tartib": q.tartib, "bolim": q.bolim, "mavzu": q.mavzu, "soat": q.soat,
-				"davomiylik_min": q.davomiylik_min, "dars_turi": q.dars_turi,
-				"tavsif": q.tavsif, "resurs": q.resurs,
-			})
-		saqlangan = len(qoldi)
 
 	oxirgi = max([(q.tartib or 0) for q in doc.qatorlar] or [0])
 	for i, q in enumerate(qatorlar, start=1):
@@ -610,24 +405,3 @@ def reja_qatorlari(reja: str) -> list[dict]:
 		"Oquv Reja Qatori", filters={"parent": reja, "parenttype": "Oquv Reja"},
 		fields=["tartib", "bolim", "mavzu", "soat", "dars_turi", "tavsif", "resurs"],
 		order_by="idx asc", limit_page_length=0)
-
-
-@frappe.whitelist()
-def mavzu_olib_tashla(jadval_yozuvi: str, sana: str) -> dict:
-	"""Shu kun (sana) uchun belgilangan mavzuni olib tashlaydi — `Dars Bajarilishi` o'chiriladi.
-	Faqat o'sha kun yozuviga ta'sir qiladi, boshqa kunlar tegilmaydi."""
-	jy = frappe.db.get_value("Jadval Yozuvi", jadval_yozuvi, ["guruh", "oqituvchi"], as_dict=True)
-	if not jy:
-		frappe.throw(_("Dars topilmadi."))
-	if not _menejermi():
-		meniki = _mening_instructorim()
-		if not meniki or jy.oqituvchi != meniki:
-			frappe.throw(_("Faqat shu darsning o'qituvchisi o'zgartira oladi."), frappe.PermissionError)
-	nom = frappe.db.get_value(
-		"Dars Bajarilishi",
-		{"guruh": jy.guruh, "sana": getdate(sana), "jadval_yozuvi": jadval_yozuvi}, "name")
-	if not nom:
-		return {"ochirildi": 0}
-	frappe.delete_doc("Dars Bajarilishi", nom, ignore_permissions=True, force=True)
-	frappe.db.commit()
-	return {"ochirildi": 1, "name": nom}

@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "tartib",
+  "chorak",
   "bolim",
   "mavzu",
   "column_break_1",
@@ -24,6 +25,15 @@
    "in_list_view": 1,
    "label": "№",
    "columns": 1
+  },
+  {
+   "fieldname": "chorak",
+   "fieldtype": "Select",
+   "label": "Chorak",
+   "options": "\n1\n2\n3\n4",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Mavzu qaysi chorakka tegishli. Bo'sh bo'lsa butun yilga taqsimlanadi."
   },
   {
    "fieldname": "bolim",
