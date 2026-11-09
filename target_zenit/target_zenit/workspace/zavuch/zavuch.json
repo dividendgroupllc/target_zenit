@@ -12,7 +12,7 @@
  "is_hidden": 0,
  "label": "Zavuch",
  "links": [],
- "modified": "2026-11-08 12:00:00.000000",
+ "modified": "2026-11-09 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Zavuch",
@@ -45,6 +45,13 @@
    "label": "Dars jadvali",
    "type": "Page",
    "link_to": "dars-jadvali"
+  },
+  {
+   "color": "Blue",
+   "label": "Yo'qlama",
+   "link_to": "yoqlama",
+   "type": "Page",
+   "doc_view": ""
   },
   {
    "color": "Grey",

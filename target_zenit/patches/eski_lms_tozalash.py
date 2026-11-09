@@ -56,8 +56,15 @@ def execute():
 		# Single doctype qiymatlari
 		frappe.db.delete("Singles", {"doctype": dt})
 
-	# Sahifalar: dars kokpiti, yo'qlama, baho jurnali, kunlik reja
-	for pg in ("dars-sessiya", "yoqlama", "baho-jurnali", "baholar-hisoboti", "kunlik-jadval"):
+	# Sahifalar: dars kokpiti, baho jurnali, kunlik reja.
+	#
+	# DIQQAT — `yoqlama` BU RO'YXATDA YO'Q (2026-11-09 da qaytarildi): u
+	# o'quvchi davomati emas, ZAVUCHNING KUNLIK XODIMLAR YO'QLAMASI. ERPNext
+	# `Attendance` ga yozadi va oylik tabel (`api/oylik_tabel.py`) aynan shu
+	# yozuvlardan oylik hisoblaydi — ya'ni jonli, har kuni ishlatiladigan
+	# sahifa. Moodle'ga ko'chgan narsa O'QUVCHI davomati edi, xodim yo'qlamasi
+	# Frappe'da qoladi (oylik Frappe'da hisoblanadi).
+	for pg in ("dars-sessiya", "baho-jurnali", "baholar-hisoboti", "kunlik-jadval"):
 		if frappe.db.exists("Page", pg):
 			frappe.delete_doc("Page", pg, force=True, ignore_missing=True,
 			                  ignore_permissions=True, delete_permanently=True)

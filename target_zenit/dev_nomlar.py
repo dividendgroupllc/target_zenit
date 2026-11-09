@@ -26,10 +26,14 @@ def test_xodim_ismi_jonli():
 		frappe.db.commit()
 		assert frappe.db.get_value("Instructor", t.ins, "instructor_name") == eski_ins, "nusxa o'zgardi"
 
+		from target_zenit import yoqlama
 		from target_zenit.dars_jadvali import jadval_tahlil, oqituvchi_jadval
 		from target_zenit.target_zenit.page.dars_jadvali import dars_jadvali as dj_page
 		from target_zenit.target_zenit.page.mening_jadvalim import mening_jadvalim
 
+		# 1) Yo'qlama (zavuchning xodimlar yo'qlamasi)
+		y = yoqlama.get_data(yil=2026, oy=10)
+		natija["yoqlama"] = any(q["ism"] == yangi for q in y["qatorlar"])
 		# 2) O'qituvchi jadvali (karta + ro'yxat)
 		k = oqituvchi_jadval.oqituvchi_tori(t.ins)
 		natija["oqituvchi_jadval"] = k.get("nomi") == yangi
