@@ -195,6 +195,15 @@ doc_events = {
 	},
 	# O'quv reja saqlansa — mavzular Moodle'ga uzatiladi va u yerda dars
 	# jadvaliga biriktiriladi (zam direktor Excel yuklagandan keyin ham)
+	# Chorak oralig'i yoki bayram o'zgarsa — Moodle kalendari DARHOL
+	# yangilanadi va mavzular qayta biriktiriladi. Avval bu faqat kunlik
+	# 07:20 sinxroni bilan ketardi, ya'ni tuzatish ertaga amal qilardi.
+	"Academic Term": {
+		"on_update": "target_zenit.integrations.moodle_jadval.on_kalendar_update",
+	},
+	"Holiday List": {
+		"on_update": "target_zenit.integrations.moodle_jadval.on_kalendar_update",
+	},
 	"Oquv Reja": {
 		"on_update": "target_zenit.integrations.moodle_mavzu.on_reja_update",
 	},

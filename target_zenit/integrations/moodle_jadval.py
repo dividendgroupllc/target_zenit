@@ -19,7 +19,7 @@ from __future__ import annotations
 import html
 
 import frappe
-from frappe.utils import cstr, now_datetime, strip_html
+from frappe.utils import cint, cstr, now_datetime, strip_html
 
 from target_zenit.integrations.moodle import _call, _settings
 from target_zenit.integrations.moodle_kurs import _oquv_yili
@@ -275,3 +275,41 @@ def daily_sync():
 	if not s.enabled:
 		return
 	push(trigger="Avto (07:00)")
+
+
+def on_kalendar_update(doc, method=None):
+	"""Chorak oralig'i yoki bayram o'zgarsa — Moodle'ga DARHOL uzatiladi.
+
+	NEGA KERAK: chorak sanasi mavzularning darslarga taqsimlanishini
+	belgilaydi (`moodle_mavzu`). Avval kalendar faqat kunlik 07:20 sinxroni
+	bilan ketardi, ya'ni zavuch sanani tuzatsa ham Moodle ERTAGA tushunardi
+	va mavzular bir kun noto'g'ri turardi (2026-11-09: 1-chorak tugashi
+	11-10 bo'lib, 2-chorak bilan ustma-ust tushib qolgan edi).
+
+	Navbatda bajariladi: Moodle sekin javob bersa saqlash to'xtamasin.
+	Kalendardan keyin mavzular ham qayta biriktiriladi — tartib muhim,
+	shuning uchun ikkinchi vazifa birinchisining ichidan chaqiriladi."""
+	if not cint(_settings().enabled):
+		return
+	frappe.enqueue(
+		"target_zenit.integrations.moodle_jadval.kalendar_va_mavzu",
+		queue="long", timeout=1800, enqueue_after_commit=True,
+		job_name=f"moodle_kalendar:{doc.doctype}:{doc.name}",
+		trigger=f"{doc.doctype} o'zgardi",
+	)
+
+
+def kalendar_va_mavzu(trigger="Kalendar"):
+	"""Jadval+kalendarni uzatadi, keyin mavzularni qayta biriktiradi.
+
+	Ketma-ketlik SHART: biriktirish chorak sanalariga tayanadi, ya'ni
+	kalendar yangilanmasdan mavzuni qayta taqsimlashning ma'nosi yo'q
+	(aynan shu sabab cron'da ham 07:20 -> 07:25 tartibi bor)."""
+	from target_zenit.integrations import moodle_mavzu
+
+	natija = {"jadval": push(trigger=trigger)}
+	try:
+		natija["mavzu"] = moodle_mavzu.push(trigger=trigger)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "Kalendardan keyin mavzu push")
+	return natija
