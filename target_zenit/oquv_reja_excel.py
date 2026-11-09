@@ -6,9 +6,13 @@ mavzularni bitta-bitta qo'lda kiritish real emas (28 fan x sinf darajalari x
 4 chorak). Zam direktor butun yillik rejani bitta Excel bilan yuklasin.
 
 QARORLAR (foydalanuvchi, 2026-11-08):
-  1. Reja PARALLEL SINFLARGA BITTA: «Matematika 5-sinf» 5A, 5B, 5C ga
-     birdek tegishli. O'tilganlik esa har sinf uchun alohida kuzatiladi
-     (bu MOODLE tomonda kuzatiladi — Frappe faqat rejani saqlaydi).
+  1. Reja TANLANGAN GURUHLARGA tegishli. Parallel sinflar birga tanlanadi:
+     «Matematika 5-sinf» 5A va 5B ga birdek. Lekin maktabda guruhlar faqat
+     raqamli sinf emas — fan oqimlari («ENGLISH Low 6-7», «MATH High 5»),
+     tanlov guruhlari («CHOICE IT 9-11»), qo'shma darslar («P.E 5A+5B») ham
+     bor. Low va High da mavzular BIR XIL EMAS, shuning uchun har oqimga
+     ALOHIDA reja yuklanadi (2026-11-09 tuzatishi). O'tilganlik Moodle
+     tomonda kuzatiladi — Frappe faqat rejani saqlaydi.
   2. Fayl — BITTA varaq, ustunlar bilan.
   3. Mavzu darsga KETMA-KET, avtomatik biriktiriladi (Moodle tomonda,
      chorakdagi darslar sanasi bo'yicha).
@@ -18,7 +22,9 @@ FAYL FORMATI (sarlavha qatori majburiy, ustun tartibi muhim emas):
     Fan | Sinf | Chorak | № | Bo'lim | Mavzu | Soat | Dars turi
 
   Fan      — kod (MATH) yoki to'liq nom; ikkisi ham tanilади
-  Sinf     — daraja raqami (5) yoki guruh nomi («5 A(full)»); raqam ajratiladi
+  Sinf     — daraja raqami (5) yoki sinf nomi («5 A(full)»). FAQAT raqamli
+             sinflar uchun. Oqim guruhlari («ENGLISH Low 6-7») bu ustun bilan
+             ko'rsatilmaydi — ular sahifada tanlanadi.
   Chorak   — 1..4. Faylda qaysi choraklar bo'lsa, FAQAT o'shalar almashadi —
              shuning uchun bitta chorakni alohida ham, butun yilni birdan ham
              yuklash mumkin.
@@ -135,19 +141,79 @@ def _fanlar() -> dict:
 	return out
 
 
-def _guruhlar() -> dict:
-	"""daraja raqami -> [Student Group]. Faqat jadvalda DARSI BOR guruhlar:
-	arxiv/bo'sh guruhlarni rejaga biriktirishning ma'nosi yo'q."""
-	darsli = {
-		r.guruh for r in frappe.db.sql(
-			"SELECT DISTINCT guruh FROM `tabJadval Yozuvi`", as_dict=True) if r.guruh
-	}
-	out: dict[str, list] = {}
-	for nom in sorted(darsli):
-		m = re.match(r"\s*(\d+)", str(nom))
-		if m:
-			out.setdefault(m.group(1), []).append(nom)
+def _guruh_malumot(fan: str | None = None) -> list[dict]:
+	"""Jadvalda DARSI BOR guruhlar — turi, darajasi va bloki bilan.
+
+	NEGA HAMMASI: maktabda guruhlar faqat «5 A», «5 B» emas. Fan oqimlari
+	(«ENGLISH Low 6-7», «MATH High 5»), tanlov guruhlari («CHOICE IT 9-11»),
+	qo'shma darslar («P.E - GYM 5A+5B») — bularning har biriga ALOHIDA reja
+	kerak, chunki «ENGLISH Low» va «ENGLISH High» da mavzular bir xil emas.
+	Avval guruh nomidan sinf raqami ajratilardi va raqamsiz guruhlar
+	ro'yxatdan butunlay tushib qolardi (2026-11-09 da tuzatildi).
+
+	`fan` berilsa — faqat SHU fandan darsi bor guruhlar (zavuch ENGLISH
+	tanlasa, MATH oqimlarini ko'rishning ma'nosi yo'q)."""
+	shart = "WHERE guruh IS NOT NULL AND guruh <> ''"
+	qiymat: dict = {}
+	if fan:
+		shart += " AND fan = %(fan)s"
+		qiymat["fan"] = fan
+
+	darsli = frappe.db.sql(
+		f"""SELECT guruh, COUNT(*) AS darslar
+		      FROM `tabJadval Yozuvi` {shart}
+		  GROUP BY guruh""", qiymat, as_dict=True)
+	if not darsli:
+		return []
+
+	nomlar = [r.guruh for r in darsli]
+	meta = frappe.get_meta("Student Group")
+	maydonlar = ["name", "student_group_name"]
+	for q in ("custom_guruh_turi", "custom_daraja", "custom_blok"):
+		if meta.has_field(q):
+			maydonlar.append(q)
+	sg = {r.name: r for r in frappe.get_all(
+		"Student Group", filters={"name": ["in", nomlar]},
+		fields=maydonlar, limit_page_length=0)}
+
+	out = []
+	for r in darsli:
+		g = sg.get(r.guruh) or {}
+		turi = g.get("custom_guruh_turi") or (
+			"Sinf" if _sinf_nomimi(r.guruh) else "Boshqa")
+		out.append({
+			"name": r.guruh,
+			"nomi": g.get("student_group_name") or r.guruh,
+			"turi": turi,
+			"daraja": g.get("custom_daraja") or "",
+			"blok": g.get("custom_blok") or "",
+			# `sinf` FAQAT haqiqiy sinf guruhida: «ENGLISH Low 6-7» dan ham
+			# raqam ajralib, u 6-sinf ro'yxatiga qo'shilib ketardi
+			"sinf": _daraja(r.guruh) if turi == "Sinf" else "",
+			"darslar": r.darslar,
+		})
+	out.sort(key=lambda x: (x["turi"], cint(x["sinf"]) or 99, x["name"]))
 	return out
+
+
+def _guruhlar() -> dict:
+	"""daraja raqami -> [Student Group]. Excel'dagi «Sinf» ustuni uchun.
+
+	Faqat RAQAMLI sinf guruhlari (5 A, 5 B …) — raqamsiz oqim guruhlariga
+	«Sinf» ustuni bilan murojaat qilib bo'lmaydi, ular sahifada tanlanadi."""
+	out: dict[str, list] = {}
+	for g in _guruh_malumot():
+		if g["sinf"]:
+			out.setdefault(g["sinf"], []).append(g["name"])
+	return out
+
+
+def _sinf_nomimi(nom: str) -> bool:
+	"""«5 A(full)» kabi RAQAM BILAN BOSHLANADIGAN sinf nomimi?
+
+	`custom_guruh_turi` to'ldirilmagan guruhlar uchun zaxira usul. Oddiy
+	«raqam bormi» tekshiruvi yaramaydi: «ENGLISH Low 6-7» da ham raqam bor."""
+	return bool(re.match(r"\s*\d+\s*[A-Za-z(]", str(nom or "")))
 
 
 def _daraja(xom) -> str:
@@ -164,11 +230,16 @@ def _joriy_yil() -> str | None:
 
 # ================================================================= tanlov (sahifa)
 def _tanlovni_tekshir(fan, guruhlar) -> tuple:
-	"""Sahifadagi tanlovni tekshiradi -> (fan, [guruh], daraja).
+	"""Sahifadagi tanlovni tekshiradi -> (fan, [guruh], yorliq).
 
-	Guruhlar BITTA darajadan bo'lishi shart: reja «fan x sinf darajasi» kesimida
-	saqlanadi, 5A va 6A ni bitta rejaga qo'yish mavzular ketma-ketligini buzadi.
-	Shuning uchun aralash tanlov darhol tushunarli xato bilan to'xtatiladi."""
+	ESKI QOIDA OLIB TASHLANDI (2026-11-09): guruhlar bitta RAQAMLI sinf
+	darajasidan bo'lishi shart emas. «ENGLISH Low 6-7» da 6 va 7-sinf
+	o'quvchilari birga o'qiydi, «CHOICE IT 9-11» da esa 9, 10, 11 — bunday
+	guruhga raqamli daraja tushunchasi mos kelmaydi. Reja endi TANLANGAN
+	GURUHLAR bo'yicha aniqlanadi, `sinf_daraja` esa faqat YORLIQ.
+
+	Yorliq: raqamli sinflar uchun «5», oqim guruhlari uchun esa guruhning
+	bloki yoki darajasi («ENGLISH 6-7», «High») — hisobotlarda o'qish uchun."""
 	if isinstance(guruhlar, str):
 		guruhlar = frappe.parse_json(guruhlar) if guruhlar.strip().startswith("[") else [guruhlar]
 	guruhlar = [g for g in (guruhlar or []) if g]
@@ -178,59 +249,99 @@ def _tanlovni_tekshir(fan, guruhlar) -> tuple:
 	if not guruhlar:
 		return (fan or None), [], None
 
-	darajalar = {_daraja(g) for g in guruhlar}
-	darajalar.discard("")
-	if len(darajalar) > 1:
-		frappe.throw(_(
-			"Guruhlar bitta sinf darajasidan bo'lishi kerak — tanlanganlar: {0}. "
-			"Har bir daraja uchun alohida yuklang."
-		).format(", ".join(sorted(darajalar))))
-	if not darajalar:
-		frappe.throw(_("Guruh nomidan sinf darajasi aniqlanmadi: {0}").format(", ".join(guruhlar)))
-
 	yoq = [g for g in guruhlar if not frappe.db.exists("Student Group", g)]
 	if yoq:
 		frappe.throw(_("Guruh topilmadi: {0}").format(", ".join(yoq)))
-	return (fan or None), guruhlar, next(iter(darajalar))
+
+	return (fan or None), guruhlar, _yorliq(guruhlar)
+
+
+def _yorliq(guruhlar: list) -> str:
+	"""Tanlangan guruhlar uchun o'qiladigan yorliq (`sinf_daraja`).
+
+	Bu YORLIQ — reja aynanligi guruhlar ro'yxati bilan belgilanadi
+	(`_reja_topish`), yorliq esa faqat ro'yxatlarda ko'rinishi uchun.
+
+	Sinf guruhlari -> «5» yoki «5-7». Oqim guruhlari -> bloki
+	(«ENGLISH 6-7»), bo'lmasa guruh nomining o'zi. RAQAM AJRATILMAYDI:
+	«ENGLISH Low 6-7» ni «6» deb belgilash Low va High ni ajratib
+	bo'lmaydigan qilib qo'yardi."""
+	malumot = {g["name"]: g for g in _guruh_malumot()}
+
+	sinflar, oqimlar = [], []
+	for g in guruhlar:
+		m = malumot.get(g)
+		if m and m["turi"] == "Sinf" and m["sinf"]:
+			sinflar.append(m["sinf"])
+		elif m is None and _sinf_nomimi(g) and _daraja(g):
+			sinflar.append(_daraja(g))      # jadvalda darsi yo'q sinf guruhi
+		else:
+			oqimlar.append(g)
+
+	if sinflar and not oqimlar:
+		r = sorted(set(sinflar), key=cint)
+		return r[0] if len(r) == 1 else f"{r[0]}-{r[-1]}"
+
+	bloklar = {m["blok"] for m in (malumot.get(g) for g in oqimlar) if m and m["blok"]}
+	if len(bloklar) == 1 and not sinflar:
+		return next(iter(bloklar))[:140]
+
+	return ", ".join(guruhlar)[:140]
 
 
 @frappe.whitelist()
-def tanlov() -> dict:
-	"""Sahifa uchun: fanlar ro'yxati + daraja bo'yicha guruhlar.
+def tanlov(fan: str | None = None) -> dict:
+	"""Sahifa uchun: fanlar va guruhlar ro'yxati.
 
-	Faqat jadvalda DARSI BOR guruhlar qaytariladi — arxiv guruhga reja
-	biriktirish zavuchni chalg'itadi."""
+	Faqat jadvalda DARSI BOR fan/guruhlar qaytariladi — arxiv guruhga reja
+	biriktirish zavuchni chalg'itadi. `fan` berilsa, guruhlar SHU fanga
+	qarab filtrlanadi: ENGLISH tanlansa ENGLISH oqimlari va sinflar
+	ko'rinadi, MATH oqimlari esa yo'q."""
 	frappe.only_for(("System Manager", "Zavuch", "Academics User", "Education Manager"))
 
-	fanlar = frappe.get_all("Course", fields=["name", "course_name"],
-	                        order_by="course_name asc", limit_page_length=0)
-	guruh_xarita = _guruhlar()
-	nomlar = {}
-	if guruh_xarita:
-		hammasi = [g for lst in guruh_xarita.values() for g in lst]
-		nomlar = {r.name: (r.student_group_name or r.name) for r in frappe.get_all(
-			"Student Group", filters={"name": ["in", hammasi]},
-			fields=["name", "student_group_name"], limit_page_length=0)}
+	# Darsi bor fanlar + nechta dars (zavuch bo'sh fanni tanlamasligi uchun)
+	darsli = {r.fan: r.darslar for r in frappe.db.sql(
+		"""SELECT fan, COUNT(*) AS darslar FROM `tabJadval Yozuvi`
+		    WHERE fan IS NOT NULL AND fan <> '' GROUP BY fan""", as_dict=True)}
+	nomlar = {r.name: (r.course_name or r.name) for r in frappe.get_all(
+		"Course", filters={"name": ["in", list(darsli)]} if darsli else None,
+		fields=["name", "course_name"], limit_page_length=0)}
+	fanlar = sorted(
+		({"name": k, "nomi": nomlar.get(k, k), "darslar": v} for k, v in darsli.items()),
+		key=lambda x: x["nomi"].lower())
+
+	guruhlar = _guruh_malumot(fan)
+
+	# Turlar bo'yicha guruhlab beramiz — sahifada shunday ko'rsatiladi
+	TARTIB = ("Sinf", "Daraja", "Tanlov", "Qo'shma", "Boshqa")
+	turlar: dict[str, list] = {}
+	for g in guruhlar:
+		turlar.setdefault(g["turi"], []).append(g)
 
 	return {
 		"oquv_yili": _joriy_yil(),
+		"fan": fan,
 		"fanlar": fanlar,
-		"darajalar": [
-			{"daraja": d, "guruhlar": [{"name": g, "nomi": nomlar.get(g, g)}
-			                           for g in guruh_xarita[d]]}
-			for d in sorted(guruh_xarita, key=lambda x: cint(x))
+		"guruhlar_jami": len(guruhlar),
+		"turlar": [
+			{"turi": t, "guruhlar": turlar[t]}
+			for t in sorted(turlar, key=lambda x: (TARTIB.index(x) if x in TARTIB else 99, x))
 		],
 	}
 
 
 # ================================================================= o'qish
 def _qatorlar(path: str, st_fan: str | None = None,
-              st_daraja: str | None = None) -> tuple[list[dict], list[str]]:
+              st_daraja: str | None = None,
+              sinfsiz: bool = False) -> tuple[list[dict], list[str]]:
 	"""Excel -> normallashgan qatorlar + xatolar ro'yxati.
 
 	`st_fan` / `st_daraja` — sahifada tanlangani. Fayl ustuni bo'sh bo'lsa
-	shu qiymat olinadi (fayl ustuni bor bo'lsa — fayl ustuvor)."""
-	kerak = _majburiy(st_fan, st_daraja)
+	shu qiymat olinadi (fayl ustuni bor bo'lsa — fayl ustuvor).
+
+	`sinfsiz=True` — zavuch guruhlarni sahifada tanlagan, demak «Sinf»
+	ustuni umuman tekshirilmaydi (oqim guruhlarida sinf raqami yo'q)."""
+	kerak = ("mavzu",) if sinfsiz else _majburiy(st_fan, st_daraja)
 	xom = _oqish(path)
 	if not xom:
 		return [], ["Fayl bo'sh"]
@@ -272,10 +383,13 @@ def _qatorlar(path: str, st_fan: str | None = None,
 			nomalum_fan.add(fan_xom or "(bo'sh)")
 			continue
 
-		daraja = _daraja(qiymat(qator, "sinf")) or (st_daraja or "")
-		if not daraja or daraja not in guruhlar:
-			nomalum_sinf.add(qiymat(qator, "sinf") or "(bo'sh)")
-			continue
+		if sinfsiz:
+			daraja = ""
+		else:
+			daraja = _daraja(qiymat(qator, "sinf")) or (st_daraja or "")
+			if not daraja or daraja not in guruhlar:
+				nomalum_sinf.add(qiymat(qator, "sinf") or "(bo'sh)")
+				continue
 
 		chorak = _daraja(qiymat(qator, "chorak"))
 		if chorak and chorak not in ("1", "2", "3", "4"):
@@ -306,18 +420,22 @@ def _qatorlar(path: str, st_fan: str | None = None,
 
 
 # ================================================================= yozish
-def _reja_topish(fan: str, daraja: str, yil: str, guruhlar: list) -> frappe.Document:
-	"""Shu fan × daraja × yil uchun rejani topadi yoki yaratadi.
+def _reja_topish(fan: str, yorliq: str, yil: str, guruhlar: list,
+                 aniq_tanlov: bool = False) -> frappe.Document:
+	"""Shu fan uchun rejani topadi yoki yaratadi.
 
-	QIDIRUV TARTIBI: avval yorliq (`sinf_daraja`), keyin guruh a'zoligi —
-	eski rejalarda yorliq bo'lmasligi mumkin. Topilmasa yangisi ochiladi."""
-	nom = frappe.db.get_value(
-		"Oquv Reja",
-		{"fan": fan, "sinf_daraja": daraja, "academic_year": yil,
-		 "holat": ["!=", "Arxiv"]},
-		"name",
-	)
-	if not nom and guruhlar:
+	ANIQLIK QOIDASI (2026-11-09): reja aynanligi — fan + o'quv yili +
+	GURUHLAR. `sinf_daraja` faqat yorliq, u bo'yicha qidirish XATO edi:
+	«ENGLISH Low 6-7» va «ENGLISH High 6-7» ikkisi ham «6-7» yorlig'ini
+	oladi va bitta rejaga qo'shilib ketardi, natijada Low oqimining
+	mavzulari High'ning mavzulari bilan almashardi.
+
+	`aniq_tanlov=True` — zavuch guruhlarni sahifada o'zi tanlagan: FAQAT
+	a'zolik bo'yicha qidiriladi. Aks holda (Excel'dagi «Sinf» ustuni bilan
+	ishlanganda) yorliq bo'yicha qidirish ham qoladi — eski rejalarda guruh
+	biriktirilmagan bo'lishi mumkin."""
+	nom = None
+	if guruhlar:
 		qator = frappe.db.sql(
 			"""SELECT r.name FROM `tabOquv Reja` r
 			   JOIN `tabOquv Reja Guruhi` g ON g.parent = r.name
@@ -328,15 +446,33 @@ def _reja_topish(fan: str, daraja: str, yil: str, guruhlar: list) -> frappe.Docu
 		)
 		nom = qator[0][0] if qator else None
 
+	if not nom and not aniq_tanlov and yorliq:
+		nom = frappe.db.get_value(
+			"Oquv Reja",
+			{"fan": fan, "sinf_daraja": yorliq, "academic_year": yil,
+			 "holat": ["!=", "Arxiv"]},
+			"name",
+		)
+
 	if nom:
 		return frappe.get_doc("Oquv Reja", nom)
 
 	doc = frappe.new_doc("Oquv Reja")
 	doc.fan = fan
-	doc.sinf_daraja = daraja
+	doc.sinf_daraja = yorliq
 	doc.academic_year = yil
 	doc.holat = "Faol"
 	return doc
+
+
+def _reja_nomi(fan: str, yorliq: str, guruhlar: list) -> str:
+	"""Reja nomi. Bitta oqim guruhi bo'lsa — guruhning O'Z nomi, shunda
+	ro'yxatda «ENGLISH — 6» ikki marta turmaydi va Low/High ajraladi."""
+	if len(guruhlar) == 1 and not _sinf_nomimi(guruhlar[0]):
+		return f"{fan} — {guruhlar[0]}"[:140]
+	if yorliq and yorliq.replace("-", "").isdigit():
+		return f"{fan} — {yorliq}-sinf"
+	return f"{fan} — {yorliq or ', '.join(guruhlar)}"[:140]
 
 
 def _guruhlarni_bogla(doc, guruhlar: list) -> int:
@@ -405,31 +541,36 @@ def import_excel(path: str, dry_run: int = 1, academic_year: str | None = None,
 	if not yil:
 		frappe.throw(_("Joriy o'quv yili aniqlanmadi — Academic Year ro'yxatini tekshiring."))
 
-	st_fan, st_guruhlar, st_daraja = _tanlovni_tekshir(fan, guruhlar)
-	qatorlar, xatolar = _qatorlar(path, st_fan, st_daraja)
+	st_fan, st_guruhlar, st_yorliq = _tanlovni_tekshir(fan, guruhlar)
+	aniq = bool(st_guruhlar)
+
+	# ANIQ TANLOVDA Excel'dan sinf o'qilmaydi: «ENGLISH Low 6-7» guruhida
+	# 6 va 7-sinf birga, ya'ni raqamli daraja ma'nosiz. Rejani guruhlar
+	# belgilaydi, Excel esa faqat mavzular ro'yxatini beradi.
+	qatorlar, xatolar = _qatorlar(path, st_fan, None if aniq else st_yorliq,
+	                              sinfsiz=aniq)
 	if not qatorlar:
 		return {"holat": "xato", "xatolar": xatolar or ["O'qiladigan qator topilmadi"],
 		        "qatorlar": 0}
 
-	guruh_xarita = _guruhlar()
+	guruh_xarita = {} if aniq else _guruhlar()
 
-	# (fan, daraja) bo'yicha guruhlaymiz
+	# Aniq tanlovda hamma qator BITTA rejaga; aks holda (fan, daraja) kesimida
 	guruhlangan: dict[tuple, list] = {}
 	for r in qatorlar:
-		guruhlangan.setdefault((r["fan"], r["daraja"]), []).append(r)
+		kalit = (r["fan"], "") if aniq else (r["fan"], r["daraja"])
+		guruhlangan.setdefault(kalit, []).append(r)
 
 	natija, jami_yangi = [], 0
 	for (fan, daraja), qator in sorted(guruhlangan.items()):
 		choraklar = {r["chorak"] for r in qator}
-		# Tanlov bo'lsa — aynan tanlangan guruhlar; aks holda shu darajadagi
-		# jadvalda darsi bor barcha parallel guruhlar
-		guruhlar = (st_guruhlar if (st_guruhlar and daraja == st_daraja)
-		            else guruh_xarita.get(daraja, []))
-		doc = _reja_topish(fan, daraja, yil, guruhlar)
+		guruhlar = st_guruhlar if aniq else guruh_xarita.get(daraja, [])
+		yorliq = st_yorliq if aniq else daraja
+		doc = _reja_topish(fan, yorliq, yil, guruhlar, aniq_tanlov=aniq)
 		yangimi = not doc.get("name") or doc.get("__islocal")
 
 		satr = {
-			"fan": fan, "daraja": daraja, "reja": doc.get("name") or "(yangi)",
+			"fan": fan, "daraja": yorliq or "—", "reja": doc.get("name") or "(yangi)",
 			"yangi_reja": bool(yangimi),
 			"choraklar": sorted(c for c in choraklar if c) or ["(choraksiz)"],
 			"mavzular": len(qator),
@@ -438,9 +579,9 @@ def import_excel(path: str, dry_run: int = 1, academic_year: str | None = None,
 		jami_yangi += len(qator)
 
 		if not cint(dry_run):
-			doc.sinf_daraja = daraja
+			doc.sinf_daraja = yorliq
 			if not doc.nomi:
-				doc.nomi = f"{fan} — {daraja}-sinf"
+				doc.nomi = _reja_nomi(fan, yorliq, guruhlar)
 			_guruhlarni_bogla(doc, guruhlar)
 			satr.update(_qatorlarni_almashtir(doc, qator, choraklar))
 			doc.flags.ignore_permissions = True
@@ -457,6 +598,7 @@ def import_excel(path: str, dry_run: int = 1, academic_year: str | None = None,
 		"oquv_yili": yil,
 		"tanlangan_fan": st_fan,
 		"tanlangan_guruhlar": st_guruhlar,
+		"yorliq": st_yorliq,
 		"qatorlar": len(qatorlar),
 		"rejalar": len(natija),
 		"mavzular": jami_yangi,
@@ -541,10 +683,12 @@ def namuna_shablon() -> dict:
 		["Soat", "ixtiyoriy", "Mavzu necha darsga mo'ljallangan (bo'sh = 1)"],
 		["Dars turi", "ixtiyoriy", "Bo'sh bo'lsa mavzu matnidan aniqlanadi (Nazorat/Amaliy/Takrorlash)"],
 		["Fan", "tanlovga qarab", "Sahifada fan tanlangan bo'lsa shart emas. Kod (MATH) yoki to'liq nom"],
-		["Sinf", "tanlovga qarab", "Sahifada guruh tanlangan bo'lsa shart emas. «5» yoki «5 A(full)»"],
+		["Sinf", "tanlovga qarab", "Sahifada guruh tanlangan bo'lsa shart emas. FAQAT raqamli sinf: «5» yoki «5 A(full)»"],
 		[],
 		["QOIDA", "", "Ustun TARTIBI muhim emas — sarlavha nomi bo'yicha topiladi"],
-		["QOIDA", "", "Reja parallel guruhlarga BITTA: «Matematika 5-sinf» 5A va 5B ga birdek"],
+		["QOIDA", "", "Parallel sinflarni BIRGA belgilang: 5A va 5B bitta reja oladi"],
+		["QOIDA", "", "Oqim guruhlariga ALOHIDA yuklang: ENGLISH Low 6-7 va ENGLISH High 6-7 - ikki xil reja"],
+		["QOIDA", "", "Oqim/tanlov/qo'shma guruhlar sahifada tanlanadi, «Sinf» ustuni bilan emas"],
 		["QOIDA", "", "Bitta chorakni alohida ham, butun yilni birdan ham yuklash mumkin"],
 		["QOIDA", "", "Avval «Tekshirish» — hech narsa yozilmaydi, keyin «Tasdiqlash»"],
 	):

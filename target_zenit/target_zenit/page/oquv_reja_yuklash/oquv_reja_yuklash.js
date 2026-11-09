@@ -32,10 +32,11 @@ class TZRejaYuklash {
 
 	esc(s) { return frappe.utils.escape_html(String(s == null ? "" : s)); }
 
-	load() {
+	load(fan) {
 		this.body.html(`<div class="ry-load">${__("Yuklanmoqda")}…</div>`);
 		frappe.call({
 			method: `${RY_M}.tanlov`,
+			args: { fan: fan || undefined },
 			callback: (r) => { this.tanlov = r.message || {}; this.render(); },
 			error: () => this.body.html(`<div class="ry-load">${__("Xatolik")}.</div>`),
 		});
@@ -61,22 +62,16 @@ class TZRejaYuklash {
 					<div class="ry-grid">
 						<label>${__("Fan")}
 							<select class="ry-fan">
-								<option value="">— ${__("Excel'dagi «Fan» ustunidan olinadi")} —</option>
+								<option value="">— ${__("fanni tanlang")} —</option>
 								${(t.fanlar || []).map((f) =>
-									`<option value="${this.esc(f.name)}">${this.esc(f.course_name || f.name)}</option>`).join("")}
+									`<option value="${this.esc(f.name)}" ${f.name === t.fan ? "selected" : ""}>${this.esc(f.nomi)} (${f.darslar} ${__("dars")})</option>`).join("")}
 							</select>
 						</label>
-						<label>${__("Sinf darajasi")}
-							<select class="ry-daraja">
-								<option value="">— ${__("Excel'dagi «Sinf» ustunidan olinadi")} —</option>
-								${darajalar.map((d) =>
-									`<option value="${this.esc(d.daraja)}">${this.esc(d.daraja)}-${__("sinf")}
-										(${(d.guruhlar || []).length} ${__("guruh")})</option>`).join("")}
-							</select>
+						<label>${__("Guruhni qidirish")}
+							<input type="text" class="ry-qidir" placeholder="${__("masalan: Low, 6-7, Python")}">
 						</label>
 					</div>
 					<div class="ry-guruhlar"></div>
-					<div class="ry-hint">${__("Reja parallel guruhlarga bitta bo'ladi. Guruh tanlanmasa — shu darajadagi barcha guruhlar biriktiriladi.")}</div>
 				</div>
 			</div>
 
@@ -112,35 +107,86 @@ class TZRejaYuklash {
 		this.body.find(`[data-act="tekshir"]`).on("click", () => this.yubor(1));
 		this.body.find(`[data-act="saqla"]`).on("click", () => this.tasdiq());
 		this.body.find(`[data-act="moodle"]`).on("click", () => this.moodle());
-		this.body.find(".ry-daraja").on("change", (e) => this.guruhlarChiz(e.target.value));
-		// Tanlov o'zgarsa — eski tekshiruv natijasi endi to'g'ri emas
-		this.body.find(".ry-fan, .ry-daraja").on("change", () => this.bekor());
+		// Fan o'zgarsa — guruhlar ro'yxati SHU fanga qarab qayta yuklanadi
+		this.body.find(".ry-fan").on("change", (e) => { this.bekor(); this.load(e.target.value); });
+		this.body.find(".ry-qidir").on("input", (e) => {
+			this.qidiruv = e.target.value; this.guruhlarChiz();
+		});
+		this.guruhlarChiz();
+
+		// Fan o'zgarganda sahifa qayta chiziladi — yuklangan fayl va qidiruv
+		// matni yo'qolib ketmasligi kerak (zavuch faylni qaytadan tanlamasin)
+		if (this.qidiruv) this.body.find(".ry-qidir").val(this.qidiruv);
+		if (this.fayl) {
+			this.body.find(".ry-fname").text(this.fayl.file_name || this.fayl.file_url);
+			this.body.find(`[data-act="tekshir"]`).prop("disabled", false);
+		}
 	}
 
-	guruhlarChiz(daraja) {
-		const d = (this.tanlov.darajalar || []).find((x) => x.daraja === daraja);
+// Guruhlar TURLARGA ajratilgan holda: Sinf (5 A, 5 B…), Daraja (ENGLISH
+	// Low 6-7, MATH High 5…), Tanlov (CHOICE IT 9-11), Qo'shma (P.E 5A+5B).
+	// Maktabda 79 guruh bor va ularning aksariyati raqamli sinf EMAS — oqim
+	// guruhlarining har biriga alohida reja kerak, chunki Low va High da
+	// mavzular bir xil bo'lmaydi.
+	guruhlarChiz() {
 		const box = this.body.find(".ry-guruhlar");
-		if (!d) { box.empty(); return; }
+		const t = this.tanlov;
+		const turlar = t.turlar || [];
+		if (!t.fan) {
+			box.html(`<div class="ry-hint">${__("Guruhlar fan tanlangandan keyin ko'rinadi — shu fandan darsi bor guruhlar.")}</div>`);
+			return;
+		}
+		if (!turlar.length) {
+			box.html(`<div class="ry-warn">${__("Bu fandan jadvalda darsi bor guruh topilmadi.")}</div>`);
+			return;
+		}
+		const q = (this.qidiruv || "").toLowerCase();
+		const mos = (g) => !q || g.nomi.toLowerCase().includes(q)
+			|| (g.daraja || "").toLowerCase().includes(q) || (g.blok || "").toLowerCase().includes(q);
+
 		box.html(`
-			<div class="ry-gt">${__("Guruhlar")}
-				<a href="#" data-act="g-all">${__("hammasi")}</a> ·
-				<a href="#" data-act="g-none">${__("hech biri")}</a></div>
-			<div class="ry-gl">
-				${(d.guruhlar || []).map((g) => `
-					<label class="ry-g"><input type="checkbox" value="${this.esc(g.name)}" checked>
-						<span>${this.esc(g.nomi)}</span></label>`).join("")}
-			</div>`);
-		box.find(`[data-act="g-all"]`).on("click", (e) => {
-			e.preventDefault(); box.find("input").prop("checked", true); this.bekor();
-		});
-		box.find(`[data-act="g-none"]`).on("click", (e) => {
-			e.preventDefault(); box.find("input").prop("checked", false); this.bekor();
+			<div class="ry-gt">
+				<b>${__("Guruhlar")}</b> — ${__("rejani olishi kerak guruhlarni belgilang")}
+				<span class="ry-gsay"></span>
+			</div>
+			${turlar.map((tr) => {
+				const list = (tr.guruhlar || []).filter(mos);
+				if (!list.length) return "";
+				return `<div class="ry-gtur">
+					<div class="ry-gturt">${this.esc(tr.turi)}
+						<a href="#" data-tur="${this.esc(tr.turi)}" data-act="g-tur">${__("barchasi")}</a></div>
+					<div class="ry-gl">
+						${list.map((g) => `<label class="ry-g" title="${this.esc(g.blok || g.daraja || "")}">
+							<input type="checkbox" value="${this.esc(g.name)}" data-tur="${this.esc(tr.turi)}">
+							<span>${this.esc(g.nomi)}</span>
+							<i>${g.darslar}</i></label>`).join("")}
+					</div>
+				</div>`;
+			}).join("")}
+			<div class="ry-hint">${__("Bir xil mavzular bir nechta guruhga tegishli bo'lsa (masalan 5 A va 5 B) — ularni birga belgilang, bitta reja yaratiladi. Low va High kabi oqimlarga esa ALOHIDA yuklang.")}</div>
+		`);
+
+		box.find(`[data-act="g-tur"]`).on("click", (e) => {
+			e.preventDefault();
+			const tur = $(e.currentTarget).data("tur");
+			const inp = box.find(`input[data-tur="${tur}"]`);
+			const hammasi = inp.filter(":checked").length === inp.length;
+			inp.prop("checked", !hammasi);
+			this.bekor();
 		});
 		box.find("input").on("change", () => this.bekor());
+		this.sanaChiz();
 	}
 
-	// Tanlov o'zgarganda tasdiq tugmalarini yopamiz — tekshirilmagan narsa saqlanmaydi
+	// Nechta guruh belgilangani — tasdiqlashdan oldin ko'rinib turishi uchun
+	sanaChiz() {
+		const n = this.tanlanganGuruhlar().length;
+		this.body.find(".ry-gsay").text(n ? ` · ${n} ${__("tanlandi")}` : "");
+	}
+
+		// Tanlov o'zgarganda tasdiq tugmalarini yopamiz — tekshirilmagan narsa saqlanmaydi
 	bekor() {
+		this.sanaChiz();
 		this.tekshirildi = null;
 		this.body.find(`[data-act="saqla"], [data-act="moodle"]`).prop("disabled", true);
 	}

@@ -128,3 +128,24 @@
 	.tz-ry .ry-step { padding: 14px; }
 	.tz-ry .ry-n { display: none; }
 }
+
+/* ---- guruhlar: turlarga ajratilgan (Sinf / Daraja / Tanlov / Qo'shma) */
+.tz-ry .ry-gtur { margin-bottom: 12px; }
+.tz-ry .ry-gturt {
+	font-size: 11px; font-weight: 600; color: var(--ry-muted);
+	text-transform: uppercase; letter-spacing: .04em;
+	margin-bottom: 5px;
+}
+.tz-ry .ry-gturt a { margin-left: 6px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.tz-ry .ry-gsay { color: var(--primary, #2490ef); font-weight: 600; }
+.tz-ry .ry-g i {
+	font-style: normal; font-size: 10px; color: var(--ry-muted);
+	background: var(--bg-light-gray, #f0f1f2);
+	border-radius: 8px; padding: 0 5px; margin-left: 2px;
+}
+.tz-ry .ry-g:has(input:checked) i { background: rgba(255, 255, 255, .6); }
+.tz-ry input[type="text"].ry-qidir {
+	width: 100%; margin-top: 4px; padding: 6px 8px; font-size: 13px;
+	border: 1px solid var(--ry-line); border-radius: 6px;
+	background: var(--control-bg, var(--ry-bg)); color: var(--text-color);
+}

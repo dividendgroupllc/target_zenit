@@ -14,12 +14,26 @@ def _daraja_raqam(s: str | None) -> str:
 	return m.group(0) if m else ""
 
 
+def _sinf_nomimi(nom: str | None) -> bool:
+	"""«5 A(full)» kabi RAQAM BILAN BOSHLANADIGAN sinf nomimi?
+
+	Oqim guruhlarida ham raqam bor («ENGLISH Low 6-7»), shuning uchun
+	«raqam bormi» tekshiruvi yetarli emas."""
+	return bool(re.match(r"\s*\d+\s*[A-Za-z(]", str(nom or "")))
+
+
 class OquvReja(Document):
 	def validate(self):
 		self.jami_soat = sum((q.soat or 0) for q in (self.qatorlar or []))
-		# sinf_daraja ni tanlangan sinflardan avto to'ldiramiz (bo'sh bo'lsa)
+		# sinf_daraja ni tanlangan sinflardan avto to'ldiramiz (bo'sh bo'lsa).
+		# FAQAT raqamli sinf guruhlaridan: «ENGLISH Low 6-7» dan «6» ajratib
+		# olish Low va High rejalarini bir-biridan ajratib bo'lmaydigan
+		# qilib qo'yardi (2026-11-09).
 		if not self.sinf_daraja and self.sinflar:
-			darajalar = sorted({_daraja_raqam(s.guruh_nomi or s.guruh) for s in self.sinflar} - {""})
+			darajalar = sorted({
+				_daraja_raqam(s.guruh_nomi or s.guruh) for s in self.sinflar
+				if _sinf_nomimi(s.guruh_nomi or s.guruh)
+			} - {""})
 			self.sinf_daraja = ", ".join(darajalar) if darajalar else None
 		self.nomi = self._nom_yasa()
 		# Qatorlar tartibini idx bo'yicha avto-raqamlash (bo'sh bo'lsa)
@@ -29,9 +43,22 @@ class OquvReja(Document):
 		self._faol_yagona()
 
 	def _nom_yasa(self) -> str:
+		"""Reja nomi. Oqim guruhlarida GURUH NOMI ishlatiladi, chunki yorliq
+		(«ENGLISH 6-7») Low va High uchun bir xil bo'lib, ro'yxatda ikki
+		bir xil qator turardi."""
 		fan = self.fan or "?"
-		sinf = self.sinf_daraja or (self.sinflar[0].guruh_nomi if self.sinflar else "?")
 		yil = f" ({self.academic_year})" if self.academic_year else ""
+
+		guruhlar = [(s.guruh_nomi or s.guruh) for s in (self.sinflar or []) if (s.guruh_nomi or s.guruh)]
+		oqimlar = [g for g in guruhlar if not _sinf_nomimi(g)]
+		if oqimlar:
+			# Oqim/tanlov/qo'shma guruh — o'z nomi bilan ko'rsatamiz
+			kesim = ", ".join(oqimlar[:3]) + ("…" if len(oqimlar) > 3 else "")
+			return f"{fan} — {kesim}{yil}"
+
+		sinf = self.sinf_daraja or (guruhlar[0] if guruhlar else "?")
+		if str(sinf).replace("-", "").replace(",", "").replace(" ", "").isdigit():
+			sinf = f"{sinf}-sinf"
 		return f"{fan} — {sinf}{yil}"
 
 	def _faol_yagona(self):

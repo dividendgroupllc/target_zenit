@@ -711,14 +711,24 @@ def _save_links(new_links, dry):
 
 # ---------------------------------------------------------------- Kirish nuqtalari
 
+# Moodle kirish ma'lumotlarini (login + boshlang'ich parol) kim ko'ra oladi.
+# Operator ularni odamlarga tarqatadi, shuning uchun ro'yxatda turadi.
+PAROL_KORUVCHI = ("System Manager", "Xojakbar_Operator")
+
+
 @frappe.whitelist()
 def parolni_korsat(link_name):
 	"""Moodle User Link'dagi boshlang'ich parolni ochib beradi.
 
 	Frappe `Password` maydonining qiymatini brauzerga yubormaydi (formada ****),
-	shuning uchun uni ko'rsatishning yagona yo'li — shu usul. Faqat System Manager.
+	shuning uchun uni ko'rsatishning yagona yo'li — shu usul.
+
+	KIM KO'RADI: System Manager va `Xojakbar_Operator`. Operator kirish
+	ma'lumotlarini o'qituvchi va o'quvchilarga tarqatadi — bu uning ish
+	vazifasi. Boshqa rollarga ochilmaydi: parol bitta yozuvda emas, BUTUN
+	maktab bo'yicha ochiq bo'lib qoladi.
 	"""
-	frappe.only_for("System Manager")
+	frappe.only_for(PAROL_KORUVCHI)
 	doc = frappe.get_doc("Moodle User Link", link_name)
 	parol = doc.get_password("initial_password", raise_exception=False)
 	return {

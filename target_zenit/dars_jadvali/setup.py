@@ -362,6 +362,14 @@ OPERATOR_PERMS = {
 	"Instructor": (1, 1, 1, 0),
 	"Course Schedule": (1, 1, 1, 1),
 	"Room": (1, 1, 1, 0),
+	# Moodle kirish ma'lumotlari — operator ularni o'qituvchi va
+	# o'quvchilarga tarqatadi. FAQAT O'QISH: yozuvlarni sinxron yaratadi,
+	# qo'lda tahrirlash kalitni buzib qo'yishi mumkin.
+	#
+	# Parolning o'zi `__Auth` jadvalida turadi va hisobotga/eksportga
+	# TUSHMAYDI — uni faqat formadagi "Kirish ma'lumotlarini ko'rsatish"
+	# tugmasi ochadi (`moodle.parolni_korsat`, rol bo'yicha tekshiriladi).
+	"Moodle User Link": (1, 0, 0, 0),
 }
 
 
