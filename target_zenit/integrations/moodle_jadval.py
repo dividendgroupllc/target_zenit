@@ -45,12 +45,40 @@ def _vaqt(qiymat):
 	return str(qiymat)[:5]
 
 
+def _sinflar_kaliti(sinflar, guruh) -> str:
+	"""Dars tegishli sinflar -> "|sinf|sinf|" (Moodle `memberclasses`).
+
+	NEGA KERAK: qo'shma va daraja darslarida `groupkey` BLOK guruhi bo'ladi
+	(masalan «ENGLISH 8A+8B+9A+9B (qo'shma)»), sinf emas. Moodle sahifasi
+	sinf jadvalini `groupkey` bo'yicha yig'ardi, ya'ni blok darslari hech
+	qaysi sinfga tushmasdi: 2026-11-10 da 8A dushanbasida 10 dars bor edi,
+	Moodle 3 tasini ko'rsatdi (English x2, Math x2, Hist.U x2, IT yo'qolgan).
+
+	`Jadval Yozuvi.sinflar` buni allaqachon biladi — `validate()` da
+	`guruh_sinflari()` orqali to'ldiriladi: oddiy darsda o'z sinfi, blok
+	darsida barcha a'zo sinflar.
+
+	Ajratgich boshida va oxirida HAM bo'ladi, shunda Moodle tomonidagi
+	`LIKE '%|8 A(full)|%'` qisman nomni (masalan «8 A(full) II») tasodifan
+	ushlamaydi.
+	"""
+	royxat = [s.strip() for s in cstr(sinflar or "").split(",") if s.strip()]
+	if not royxat and guruh:
+		# Himoya: `sinflar` biror sababdan bo'sh bo'lsa, hech bo'lmasa
+		# guruhning o'zi kalitga tushadi — sinf guruhlari ishlashda qoladi.
+		royxat = [guruh]
+	if not royxat:
+		return ""
+	return "|" + "|".join(royxat) + "|"
+
+
 def _darslar(yil):
 	"""Faol jadvaldagi hamma dars — plagin kutgan ko'rinishda."""
 	rows = frappe.db.sql(
 		"""
 		SELECT jy.guruh, jy.guruh_nomi, jy.fan, jy.oqituvchi, jy.oqituvchi_nomi,
-		       jy.kun, jy.kun_raqami, jy.dars_raqami, jy.boshlanish, jy.tugash, jy.xona
+		       jy.kun, jy.kun_raqami, jy.dars_raqami, jy.boshlanish, jy.tugash, jy.xona,
+		       jy.sinflar
 		FROM `tabJadval Yozuvi` jy
 		INNER JOIN `tabJadval Versiyasi` jv ON jv.name = jy.versiya
 		WHERE jv.holat = 'Faol'
@@ -87,6 +115,7 @@ def _darslar(yil):
 			"endtime": _vaqt(r.tugash),
 			"room": r.xona or "",
 			"courseidnumber": f"{yil}::{r.guruh}::{r.fan}",
+			"memberclasses": _sinflar_kaliti(r.sinflar, r.guruh),
 		})
 	return darslar
 
@@ -147,6 +176,26 @@ def _kalendar(yil, holiday_list=None):
 	return kalendar
 
 
+def _sorov(yil, bolak, n, kalendar, memberclasses: bool) -> dict:
+	"""Bitta bo'lak uchun `push_timetable` so'rovi.
+
+	Birinchi bo'lak eski jadvalni o'chiradi (`replace`), qolganlari ustiga
+	qo'shadi (`append`) — PHP'ning `max_input_vars` chegarasi tufayli jadval
+	bo'lib yuboriladi. Kalendar ham faqat birinchi bo'lak bilan ketadi.
+
+	`memberclasses=False` — eski plagin uchun zaxira yo'l (push'dagi izohga
+	qarang)."""
+	darslar = bolak if memberclasses else [
+		{k: v for k, v in d.items() if k != "memberclasses"} for d in bolak
+	]
+	return {
+		"academicyear": yil,
+		"lessons": darslar,
+		"mode": "replace" if n == 0 else "append",
+		"calendar": kalendar if n == 0 else [],
+	}
+
+
 def push(trigger="Qo'lda"):
 	"""Jadval va kalendarni Moodle'ga yuboradi. Moodle Sync Log qaytaradi."""
 	s = _settings()
@@ -155,7 +204,11 @@ def push(trigger="Qo'lda"):
 
 	log = frappe.get_doc({
 		"doctype": "Moodle Sync Log",
-		"sync_type": "Kurs",
+		# Log turi "Jadval": shu modul jadvalni uzatadi, kurslarni emas.
+		# Avval "Kurs" deb yozilardi va jadval push'i `moodle_kurs` sinxroni
+		# bilan logda aralashib ketardi — diagnostikada ikkisini ajratish
+		# mumkin bo'lmagan (2026-11-10).
+		"sync_type": "Jadval",
 		"trigger_type": trigger,
 		"status": "Ishlayapti",
 		"started": now_datetime(),
@@ -197,13 +250,30 @@ def push(trigger="Qo'lda"):
 			] or [[]]
 			jami = 0
 			kal_jami = 0
+			# `memberclasses` plaginning 2026111000 versiyasida paydo bo'ldi.
+			# Moodle tashqi API'si KUTILMAGAN maydonni rad etadi
+			# ("Unexpected keys ... detected in parameter array"), ya'ni
+			# Frappe yangi, plagin eski bo'lsa butun sinxron yiqiladi.
+			# Deploy tartibiga bog'liq bo'lib qolmaslik uchun birinchi
+			# rad etishdan keyin maydonsiz qayta yuboramiz: jadval
+			# (eski ko'rinishda) ishlashda qoladi, logda esa ogohlantirish
+			# turadi.
+			memberclasses_bor = True
 			for n, bolak in enumerate(bolaklar):
-				res = _call("local_targetzenit_push_timetable", {
-					"academicyear": yil,
-					"lessons": bolak,
-					"mode": "replace" if n == 0 else "append",
-					"calendar": kalendar if n == 0 else [],
-				})
+				try:
+					res = _call("local_targetzenit_push_timetable",
+						_sorov(yil, bolak, n, kalendar, memberclasses_bor))
+				except Exception as e:
+					if not (memberclasses_bor and "memberclasses" in str(e)):
+						raise
+					memberclasses_bor = False
+					lines.append(
+						"OGOHLANTIRISH: Moodle plagini `memberclasses` ni bilmaydi "
+						"(2026111000 dan eski). Maydonsiz yuborildi — blok darslari "
+						"sinf jadvalida ko'rinmaydi. Plaginni yangilang."
+					)
+					res = _call("local_targetzenit_push_timetable",
+						_sorov(yil, bolak, n, kalendar, False))
 				jami += res.get("lessons") or 0
 				kal_jami += res.get("calendar") or 0
 				lines.append(
