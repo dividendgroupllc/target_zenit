@@ -264,13 +264,24 @@ def push(trigger="Qo'lda"):
 					res = _call("local_targetzenit_push_timetable",
 						_sorov(yil, bolak, n, kalendar, memberclasses_bor))
 				except Exception as e:
-					if not (memberclasses_bor and "memberclasses" in str(e)):
+					# Xato MATNIGA tayanmaymiz. Moodle kutilmagan maydonni
+					# `invalidparameter: Invalid parameter value detected`
+					# deb qaytaradi; maydon nomi esa `debuginfo` da bo'ladi va
+					# u har doim kelmaydi (2026-11-10 da aynan shu sababli
+					# zaxira yo'l ishga tushmagan — prodda jadval sinxroni
+					# butunlay to'xtab qolgan).
+					#
+					# Shuning uchun: maydon yuborilgan va xato parametrga
+					# tegishli bo'lsa — maydonsiz BIR MARTA qayta urinamiz.
+					# Ikkinchisi ham yiqilsa, asl xato yuzaga chiqadi.
+					if not (memberclasses_bor and "invalidparameter" in str(e).lower()):
 						raise
 					memberclasses_bor = False
 					lines.append(
-						"OGOHLANTIRISH: Moodle plagini `memberclasses` ni bilmaydi "
-						"(2026111000 dan eski). Maydonsiz yuborildi — blok darslari "
-						"sinf jadvalida ko'rinmaydi. Plaginni yangilang."
+						"OGOHLANTIRISH: Moodle plagini `memberclasses` ni qabul "
+						"qilmadi (2026111020 dan eski). Maydonsiz yuborildi — blok "
+						"darslari sinf jadvalida ko'rinmaydi. Plaginni yangilang.\n"
+						f"  Moodle xatosi: {str(e)[:300]}"
 					)
 					res = _call("local_targetzenit_push_timetable",
 						_sorov(yil, bolak, n, kalendar, False))

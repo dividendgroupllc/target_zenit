@@ -627,16 +627,44 @@ def sync(trigger="Qo'lda", limit=0):
 		stat["suspended"] = sum(1 for v in new_links.values() if v.get("suspended"))
 
 		# Kalit o'zgarganlar: mahalliy yozuvni yangi nomga ko'chiramiz (tarix saqlanadi)
+		#
+		# DIQQAT — ICHKI funksiya ishlatiladi. `frappe.rename_doc` (yuqori
+		# qatlamdagi o'ram, `frappe/__init__.py`) `ignore_permissions`
+		# argumentini QABUL QILMAYDI:
+		#
+		#   rename_doc(doctype, old, new, force=False, merge=False, *,
+		#              ignore_if_exists=False, show_alert=True, rebuild_search=True)
+		#
+		# 2026-10-29 da aynan shu sababli 27 ta ko'chirish
+		# «rename_doc() got an unexpected keyword argument 'ignore_permissions'»
+		# bilan yiqilgan, keyin `_save_links` yangi yozuvni baribir yaratgan.
+		# Natija: bitta Moodle akkaunti uchun IKKI bog'lanish, parol esa faqat
+		# eskisida — 27 o'qituvchi tizimga kira olmagan ("parol saqlanmagan").
+		#
+		# Parol haqida: muvaffaqiyatli `rename_doc` ichida `rename_password()`
+		# chaqiriladi, ya'ni `initial_password` yangi nom bilan ko'chadi.
+		from frappe.model.rename_doc import rename_doc as _rename_doc
+
 		if not dry:
 			for eski_nom, yangi_nom in to_rename:
 				try:
-					frappe.rename_doc("Moodle User Link", eski_nom, yangi_nom,
-									  force=True, ignore_permissions=True)
+					_rename_doc("Moodle User Link", eski_nom, yangi_nom,
+								force=True, ignore_permissions=True)
 				except Exception as e:
 					stat["errors"] += 1
 					lines.append(f"XATO nom o'zgartirishda {eski_nom} -> {yangi_nom}: {e}")
 
 		_save_links({k: v for k, v in new_links.items() if k not in saqlangan}, dry)
+
+		# Ko'chirish yiqilgan bo'lsa (yoki avval yiqilgan bo'lsa) qolgan
+		# dublikatlarni olib tashlaymiz — buni sinxronning o'zi tuzatmaydi.
+		#
+		# `people` (new_links emas) bo'yicha ishlaydi: o'zgarmagan odam
+		# `new_links` ga tushmaydi ("skipped"), lekin uning dublikati
+		# baribir tozalanishi kerak.
+		tozalandi = _dublikat_tozala(people, links, lines, dry)
+		if tozalandi:
+			lines.append(f"Jami {tozalandi} dublikat bog'lanish olib tashlandi.")
 
 		frappe.db.set_single_value("Moodle Settings", "last_sync", now_datetime())
 		frappe.db.set_single_value(
@@ -672,6 +700,84 @@ def sync(trigger="Qo'lda", limit=0):
 		frappe.db.commit()
 		frappe.log_error(title="Moodle sync", message=frappe.get_traceback())
 		raise
+
+
+def _dublikat_tozala(people, links, lines, dry):
+	"""Bitta Moodle akkauntiga ikkita `Moodle User Link` qolsa — eskisini olib tashlaydi.
+
+	NEGA KERAK: `Instructor` ga `Employee` bog'langach kalit `INSTR-<ism>` dan
+	`HR-EMP-xxxxx` ga o'zgaradi. Kalit o'zgarishi tarmog'i eski yozuvni yangi
+	nomga ko'chirishi kerak, lekin 2026-10-29 da ko'chirish 27 marta yiqilgan
+	(`frappe.rename_doc` `ignore_permissions` ni qabul qilmaydi) va yangi yozuv
+	baribir yaratilgan. Parol faqat ESKI yozuvda qolgan, ya'ni karta "parol
+	saqlanmagan" deb ko'rsatgan va 27 o'qituvchi tizimga kira olmagan.
+
+	SINXRON BUNI O'ZI TUZATMAYDI: Moodle tomonda idnumber allaqachon yangi
+	kalit, shuning uchun oddiy "update" tarmog'i ishlaydi (ko'pincha esa
+	"o'zgarmagan" deb umuman o'tkazib yuboriladi) va eski yozuvga hech kim
+	qaramaydi. Shu sababli tozalash ALOHIDA, `people` bo'yicha yuradigan qadam.
+
+	PAROL ALMASHTIRILMAYDI — eskisidan ko'chiriladi. O'qituvchiga allaqachon
+	aytilgan bo'lishi mumkin, yangisini qo'yish uni bekorga chiqaradi.
+
+	Faqat AYNI BIR ODAMNING yozuvlari birlashtiriladi (`moodle_user_id` +
+	`person_type` + `reference_name` mos bo'lishi shart). Qaysi biri qolishi
+	TAXMIN QILINMAYDI: joriy kalit (`people` dagi `idnumber`) qaysi yozuvga
+	to'g'ri kelsa — o'sha qoladi. Mos keladigani yo'q yoki bir nechta bo'lsa
+	hech narsa o'chirilmaydi, faqat ogohlantirish yoziladi."""
+	from collections import defaultdict
+
+	kerakli = {p["idnumber"] for p in people}
+	guruh = defaultdict(list)
+	for l in links.values():
+		if (l.moodle_user_id or 0) and l.reference_name:
+			guruh[(l.moodle_user_id, l.person_type, l.reference_name)].append(l)
+
+	tozalandi = 0
+	for kalit, royxat in guruh.items():
+		if len(royxat) < 2:
+			continue
+		mid = kalit[0]
+		qoladi = [l for l in royxat if l.name in kerakli]
+		if len(qoladi) != 1:
+			lines.append(
+				f"OGOHLANTIRISH: moodle id {mid} uchun {len(royxat)} bog'lanish bor, "
+				f"joriy kalitga mos keladigani {len(qoladi)} ta — hech narsa "
+				"o'chirilmadi, qo'lda ko'rib chiqing: "
+				+ ", ".join(l.name for l in royxat)
+			)
+			continue
+		if dry:
+			lines.append(
+				f"[test] dublikat olib tashlanadi (moodle id {mid}): "
+				+ ", ".join(l.name for l in royxat if l.name != qoladi[0].name)
+				+ f" -> {qoladi[0].name}"
+			)
+			continue
+
+		nom = qoladi[0].name
+		if not frappe.db.exists("Moodle User Link", nom):
+			continue
+		yangi = frappe.get_doc("Moodle User Link", nom)
+		for eski in royxat:
+			if eski.name == nom or not frappe.db.exists("Moodle User Link", eski.name):
+				continue
+			if not yangi.get_password("initial_password", raise_exception=False):
+				parol = frappe.get_doc("Moodle User Link", eski.name).get_password(
+					"initial_password", raise_exception=False
+				)
+				if parol:
+					yangi.initial_password = parol
+					yangi.save(ignore_permissions=True)
+					yangi.reload()
+					lines.append(f"PAROL ko'chirildi: {eski.name} -> {nom}")
+			frappe.delete_doc(
+				"Moodle User Link", eski.name,
+				force=True, ignore_permissions=True, delete_permanently=True,
+			)
+			lines.append(f"DUBLIKAT olib tashlandi: {eski.name} (moodle id {mid}) -> {nom}")
+			tozalandi += 1
+	return tozalandi
 
 
 def _save_links(new_links, dry):
