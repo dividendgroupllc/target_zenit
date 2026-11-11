@@ -27,7 +27,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, get_datetime
 
-from target_zenit.telefoniya import matcher, storage, stt
+from target_zenit.telefoniya import matcher, setup, storage, stt
 from target_zenit.telefoniya.utils import normalize_phone
 
 DOCTYPE = "Telefon Qongirogi"
@@ -80,6 +80,8 @@ def ingest_call():
 	yaratilmaydi. Shu sababli yuklovchi xotirjam qayta urinishi mumkin —
 	internet uzilsa yozuv navbatda turadi va keyin yuboriladi.
 	"""
+	_ruxsatni_tekshir()
+
 	form = frappe.form_dict
 	yuklangan = frappe.request.files.get("file") if frappe.request else None
 	fayl_hash = _m(form, "fayl_hash")
@@ -142,7 +144,12 @@ def ingest_call():
 			f"tekshiring — Employee nomi, foydalanuvchi email'i yoki ichki raqam bo'lishi kerak."
 		)
 
-	qongiroq.insert()
+	# `ignore_permissions=True` ataylab: ruxsat allaqachon `_ruxsatni_tekshir()`
+	# da tekshirilgan. Doctype'ning DocPerm jadvaliga ikkinchi marta tayanib
+	# bo'lmaydi — boshqa modulning o'rnatmasi bitta Custom DocPerm qatori qo'shsa,
+	# bu doctype'ning qolgan hamma roli jimgina ruxsatdan mahrum bo'ladi va bu yer
+	# 403 beradi. Aynan shu 2026-11-11 da sodir bo'lgan (198 ta yozuv).
+	qongiroq.insert(ignore_permissions=True)
 
 	yozuv_bor = False
 	if yuklangan:
@@ -151,6 +158,42 @@ def ingest_call():
 
 	frappe.db.commit()
 	return _javob(qongiroq.name, takror=False, yozuv=yozuv_bor)
+
+
+def _ruxsatni_tekshir():
+	"""Chaqiruvchi qo'ng'iroq yubora oladimi — bitta joyda, aniq javob bilan.
+
+	Ruxsat uchta manbadan biri bilan beriladi: kodda qayd etilgan mashina
+	akkaunti, "Telefoniya Agent" roli, yoki System Manager. Birinchisi ataylab
+	rol/DocPerm zanjiriga BOG'LIQ EMAS: 2026-11-11 da doctype'ning Custom DocPerm
+	to'plami shu rolni yo'qotgani uchun `insert()` 403 bergan va 198 ta yozuv
+	CRM'ga tushmagan — foydalanuvchida rol o'sha-o'sha turgani holda.
+
+	Rad etish JIM O'TMAYDI: Error Log'ga yoziladi, aks holda telefon haftalab
+	403 olib turadi va buni hech kim ko'rmaydi.
+	"""
+	user = frappe.session.user
+	if user and user != "Guest":
+		if user in setup.ingest_foydalanuvchilar():
+			return
+		rollar = set(frappe.get_roles(user))
+		if setup.ROL in rollar or "System Manager" in rollar:
+			return
+
+	frappe.log_error(
+		message=(
+			f"Qo'ng'iroq yuborishga ruxsat yo'q: user={user!r}, rollar="
+			f"{sorted(frappe.get_roles(user)) if user else []}.\n\n"
+			f"Mashina akkauntiga '{setup.ROL}' rolini qaytaring yoki uni "
+			f"site_config'dagi 'telefoniya_ingest_users' ro'yxatiga qo'shing. "
+			f"Bu tuzatilmaguncha telefondagi ilova yozuvlarni yubora olmaydi."
+		),
+		title="Telefoniya: ingest ruxsati yo'q",
+	)
+	frappe.throw(
+		_("Qo'ng'iroq yuborishga ruxsat yo'q: {0}").format(user),
+		frappe.PermissionError,
+	)
 
 
 def _m(form, nom: str) -> str:

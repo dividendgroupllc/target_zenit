@@ -157,6 +157,42 @@ def ruxsatlarni_ber():
 			_perm(dt, rol, r, w, c, d)
 
 
+def _standart_qatorlarni_kochir(doctype: str):
+	"""Doctype JSON'idagi ruxsat qatorlarini Custom DocPerm'ga ko'chiradi (idempotent).
+
+	MUHIM, VA BU YERDA BIR MARTA QIMMATGA TUSHGAN: doctype uchun BITTA Custom
+	DocPerm qatori paydo bo'lishi bilan Frappe meta'si ruxsatlarni FAQAT shundan
+	o'qiydi va app'ning JSON'idagi qatorlarni BUTUNLAY e'tiborsiz qoldiradi
+	(`frappe/model/meta.py`: "Reset `permissions` with Custom DocPerm if exists").
+	`bench migrate` ularni tiklamaydi.
+
+	Eski kod CEO/Direktor uchun yalang'och Custom DocPerm qatori qo'shardi va
+	shu bilan doctype'ning QOLGAN HAMMA rolini jimgina ruxsatdan mahrum qilardi.
+	2026-11-11 da aniqlandi: `Telefon Qongirogi` shu yo'l bilan 8 ta rolini
+	(jumladan `Telefoniya Agent`) yo'qotgan → telefondagi ilova har yuklashda
+	HTTP 403 olgan → 198 ta qo'ng'iroq CRM'ga tushmagan. Rol foydalanuvchida
+	TURGAN edi — shuning uchun tashqaridan hammasi joyidek ko'rinardi.
+
+	Shu sabab har qo'shishdan OLDIN standart qatorlar ko'chiriladi, va allaqachon
+	buzilgan saytlar ham shu yerda o'z-o'zidan tuzaladi.
+	"""
+	for p in frappe.get_all("DocPerm", fields="*", filters={"parent": doctype}):
+		agar_bor = frappe.db.exists(
+			"Custom DocPerm",
+			{
+				"parent": doctype,
+				"role": p.role,
+				"permlevel": cint(p.permlevel),
+				"if_owner": cint(p.get("if_owner")),
+			},
+		)
+		if agar_bor:
+			continue
+		qator = frappe.new_doc("Custom DocPerm")
+		qator.update(p)
+		qator.insert(ignore_permissions=True)
+
+
 def _perm(doctype: str, rol: str, read: int, write: int, create: int, delete: int):
 	nomi = frappe.db.get_value(
 		"Custom DocPerm", {"parent": doctype, "role": rol, "permlevel": 0}, "name"
@@ -164,8 +200,21 @@ def _perm(doctype: str, rol: str, read: int, write: int, create: int, delete: in
 	bor = frappe.db.get_value(
 		"DocPerm", {"parent": doctype, "role": rol, "permlevel": 0}, "name"
 	)
+	custom_bor = bool(nomi) or bool(
+		frappe.db.exists("Custom DocPerm", {"parent": doctype})
+	)
+	if bor and not custom_bor:
+		return      # standart ruxsat JSON'da bor va u hali ham kuchda
+
+	# Custom DocPerm aralashgan zahoti standart qatorlar kuchini yo'qotadi —
+	# shuning uchun avval ularni ko'chirib olamiz (tafsilot yuqorida).
+	_standart_qatorlarni_kochir(doctype)
 	if bor:
-		return      # standart ruxsat allaqachon doctype JSON'ida bor
+		return      # endi standart qator Custom DocPerm'da ham bor
+
+	nomi = frappe.db.get_value(
+		"Custom DocPerm", {"parent": doctype, "role": rol, "permlevel": 0}, "name"
+	)
 	qiymat = {
 		"read": cint(read), "write": cint(write), "create": cint(create),
 		"delete": cint(delete), "report": 1, "export": cint(read), "print": cint(read),
