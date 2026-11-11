@@ -174,7 +174,26 @@ def ingest_call():
 	# bo'lmaydi — boshqa modulning o'rnatmasi bitta Custom DocPerm qatori qo'shsa,
 	# bu doctype'ning qolgan hamma roli jimgina ruxsatdan mahrum bo'ladi va bu yer
 	# 403 beradi. Aynan shu 2026-11-11 da sodir bo'lgan (198 ta yozuv).
-	qongiroq.insert(ignore_permissions=True)
+	try:
+		qongiroq.insert(ignore_permissions=True)
+	except frappe.UniqueValidationError:
+		# Poyga: ayni `uniqueid` li hujjat biz tekshirgandan keyin, insert'dan
+		# oldin boshqa so'rov tomonidan yaratilgan. Telefondagi ilova yuklashni
+		# bir vaqtda ikki oqimdan boshlab yuborishi mumkin edi (2026-11-11 da
+		# kuzatildi) — o'shanda poyga yutqazgani HTTP 417 olib, 4xx "butunlay
+		# xato" deb belgilanardi va YOZUV YO'QOLARDI.
+		#
+		# Bu xato emas: hujjat bor, ya'ni ish bajarilgan. Mavjudini qaytaramiz.
+		raqib = frappe.db.get_value(
+			DOCTYPE, {"asterisk_uniqueid": uniqueid}, ["name", "yozuv_bor"], as_dict=True
+		)
+		if not raqib:
+			raise
+		if content and not raqib.yozuv_bor:
+			qongiroq = frappe.get_doc(DOCTYPE, raqib.name)
+			_yozuvni_biriktir(qongiroq, yuklangan, content, haqiqiy_hash, fayl_hash)
+			return _javob(raqib.name, takror=True, yozuv=True)
+		return _javob(raqib.name, takror=True, yozuv=bool(raqib.yozuv_bor))
 
 	yozuv_bor = False
 	if content:
