@@ -86,6 +86,14 @@ def ingest_call():
 	yuklangan = frappe.request.files.get("file") if frappe.request else None
 	fayl_hash = _m(form, "fayl_hash")
 
+	# Fayl oqimi BIR MARTA o'qiladi: `stream.read()` ikkinchi chaqiruvda bo'sh
+	# qaytaradi, shuning uchun mazmun ham, hash ham shu yerda olinib, pastga
+	# uzatiladi.
+	content = yuklangan.stream.read() if yuklangan else None
+	if yuklangan is not None and not content:
+		frappe.throw(_("Yuborilgan fayl bo'sh"), frappe.ValidationError)
+	haqiqiy_hash = hashlib.sha256(content).hexdigest() if content else None
+
 	# Android ilovasi `uniqueid` yubormaydi — uning barqaror kaliti fayl hash'i.
 	# Shu sababli uniqueid ketma-ketlikda izlanadi.
 	uniqueid = _m(form, "uniqueid") or (fayl_hash or "")[:32]
@@ -99,11 +107,28 @@ def ingest_call():
 	)
 	if mavjud:
 		# Hujjat bor. Yozuv hali yo'q va endi fayl kelgan bo'lsa — biriktiramiz.
-		if yuklangan and not mavjud.yozuv_bor:
+		if content and not mavjud.yozuv_bor:
 			qongiroq = frappe.get_doc(DOCTYPE, mavjud.name)
-			_yozuvni_biriktir(qongiroq, yuklangan, fayl_hash)
+			_yozuvni_biriktir(qongiroq, yuklangan, content, haqiqiy_hash, fayl_hash)
 			return _javob(qongiroq.name, takror=False, yozuv=True)
 		return _javob(mavjud.name, takror=True, yozuv=bool(mavjud.yozuv_bor))
+
+	# MAZMUN BO'YICHA TAKRORLANISHNI TEKSHIRISH.
+	#
+	# `uniqueid` mijozning kalitiga tayanadi, mijoz esa bitta faylga bir nechta
+	# kalit berishi mumkin: Android ilovasi faylni MIUI yozib tugatmasdan oldin
+	# skaner qiladi, fayl o'sadi, keyingi skanerda hajm boshqacha bo'lgani uchun
+	# YANA bir qator yaratiladi. 2026-11-11 da shu sababdan 80 ta hujjatga atigi
+	# 39 ta noyob yozuv to'g'ri kelgan — har qo'ng'iroq CRM'da 2-3 marta turgan.
+	#
+	# Yozuvning HAQIQIY kimligi — fayl mazmuni. Shuning uchun ayni mazmunli
+	# yozuv allaqachon bo'lsa, yangi hujjat ochilmaydi.
+	if haqiqiy_hash:
+		bir_xil = frappe.db.get_value(
+			DOCTYPE, {"fayl_hash": haqiqiy_hash}, ["name", "yozuv_bor"], as_dict=True
+		)
+		if bir_xil:
+			return _javob(bir_xil.name, takror=True, yozuv=bool(bir_xil.yozuv_bor))
 
 	manba = _manba(form)
 
@@ -152,8 +177,8 @@ def ingest_call():
 	qongiroq.insert(ignore_permissions=True)
 
 	yozuv_bor = False
-	if yuklangan:
-		_yozuvni_biriktir(qongiroq, yuklangan, fayl_hash)
+	if content:
+		_yozuvni_biriktir(qongiroq, yuklangan, content, haqiqiy_hash, fayl_hash)
 		yozuv_bor = True
 
 	frappe.db.commit()
@@ -272,12 +297,13 @@ def _javob(nomi: str, takror: bool, yozuv: bool) -> dict:
 	}
 
 
-def _yozuvni_biriktir(qongiroq, yuklangan, kutilgan_hash: str | None):
-	"""Yuklangan faylni tekshirib diskka yozadi va hujjatni yangilaydi."""
-	content = yuklangan.stream.read()
-	if not content:
-		frappe.throw(_("Yuborilgan fayl bo'sh"), frappe.ValidationError)
+def _yozuvni_biriktir(qongiroq, yuklangan, content: bytes, haqiqiy_hash: str, kutilgan_hash: str | None):
+	"""Yuklangan faylni tekshirib diskka yozadi va hujjatni yangilaydi.
 
+	`content` va `haqiqiy_hash` ataylab tashqaridan beriladi: fayl oqimini
+	ikkinchi marta o'qib bo'lmaydi (`stream.read()` bo'sh qaytaradi), va
+	`ingest_call` o'sha hash bo'yicha mazmunan takrorlanishni tekshiradi.
+	"""
 	maks_mb = cint(frappe.db.get_single_value("Telefoniya Sozlamalari", "maks_fayl_mb")) or 25
 	if len(content) > maks_mb * 1024 * 1024:
 		frappe.throw(_("Fayl juda katta: {0} MB chegara").format(maks_mb), frappe.ValidationError)
@@ -295,7 +321,6 @@ def _yozuvni_biriktir(qongiroq, yuklangan, kutilgan_hash: str | None):
 	# Transport butunligi HTTPS + Content-Length bilan ta'minlanadi. Shuning uchun
 	# mos kelmaslik — xato emas, QAYD. Faylni qabul qilamiz, nomuvofiqlikni esa
 	# hujjatda ko'rinadigan qilib yozib qo'yamiz.
-	haqiqiy_hash = hashlib.sha256(content).hexdigest()
 	hash_nomuvofiq = bool(kutilgan_hash) and kutilgan_hash.strip().lower() != haqiqiy_hash
 
 	# Android telefonlari OEM'ga qarab turli formatda yozadi: Xiaomi/Samsung —
