@@ -2050,3 +2050,165 @@ def test_biriktir_hammasi():
 		for n in yaratilgan:
 			frappe.delete_doc("Telefon Qongirogi", n, force=True, ignore_permissions=True)
 		frappe.db.commit()
+
+
+def test_tolov_belgisi(case=None):
+	"""«To'ladi deb belgilash» oqimi: ro'yxatdan chiqadi -> pul tushmasa
+	muddat o'tgach qaytadi -> pul tushsa ish yopiladi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_tolov_belgisi
+	"""
+	from frappe.utils import add_days, nowdate
+
+	from target_zenit.qarzdorlik import engine
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	d = panel.get_data()
+	case = case or d["cases"][0]["name"]
+	eski = frappe.db.get_value(
+		"Qarz Ishi", case, ["ishlov_status", "keyingi_aloqa", "masul"], as_dict=True)
+	ism = frappe.db.get_value("Qarz Ishi", case, "student_name")
+	print(f"{case} ({ism}): holat '{eski.ishlov_status}'")
+	try:
+		r = panel.tolov_belgila(case, izoh="Sinov: kecha karta orqali to'laganman dedi")
+		print(f"  belgilandi -> {r['holat']}, {r['kun']} kun, keyingi aloqa {r['keyingi_aloqa']}")
+
+		kundalik = panel.get_data()
+		royxatda = any(c["name"] == case for c in kundalik["cases"])
+		# Kundalik ro'yxat JS'da filtrlanadi — statusni tekshiramiz
+		c = next(c for c in kundalik["cases"] if c["name"] == case)
+		print(f"  ro'yxatdagi holati: {c['ishlov_status']} · belgilangan: {c['tolov_belgilandi']}")
+		print(f"  stats.tolov_belgilangan = {kundalik['stats']['tolov_belgilangan']}")
+		assert royxatda and c["ishlov_status"] == "To'lov tekshirilmoqda"
+		assert kundalik["stats"]["tolov_belgilangan"] >= 1
+
+		# 1) Muddat o'tmagan — qaytmaydi
+		n1 = engine.tolov_belgilarini_tekshir()
+		holat1 = frappe.db.get_value("Qarz Ishi", case, "ishlov_status")
+		print(f"  kechki tekshiruv (muddat o'tmagan): qaytdi={n1['qaytdi']} holat={holat1}")
+		assert holat1 == "To'lov tekshirilmoqda", "muddatdan oldin qaytib ketdi"
+
+		# 2) Muddat o'tdi — ro'yxatga qaytadi
+		kun = engine._settings().tolov_kutish_kuni
+		frappe.db.set_value("Qarz Ishi", case, "tolov_belgilandi",
+		                    add_days(nowdate(), -kun - 1), update_modified=False)
+		frappe.db.commit()
+		n2 = engine.tolov_belgilarini_tekshir()
+		holat2 = frappe.db.get_value("Qarz Ishi", case, "ishlov_status")
+		print(f"  kechki tekshiruv ({kun} kundan keyin): qaytdi={n2['qaytdi']} holat={holat2}")
+		assert holat2 == "Urinilmoqda", "muddat o'tdi, lekin ro'yxatga qaytmadi"
+		print("OK — belgilash ro'yxatdan chiqaradi, pul tushmasa o'zi qaytaradi")
+	finally:
+		frappe.db.set_value("Qarz Ishi", case, {
+			"ishlov_status": eski.ishlov_status, "keyingi_aloqa": eski.keyingi_aloqa,
+			"tolov_belgilandi": None}, update_modified=False)
+		for c in frappe.get_all("Comment", filters={
+			"reference_doctype": "Qarz Ishi", "reference_name": case,
+			"content": ["like", "%Sinov:%"]}, pluck="name"):
+			frappe.delete_doc("Comment", c, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print(f"(tiklandi: {eski.ishlov_status})")
+
+
+def test_tolov_hisobdan_chiqdi(case=None):
+	"""«To'lov tekshiruvida» turgan ish «jami ochiq» hisobiga kirmasligi.
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_tolov_hisobdan_chiqdi
+	"""
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	oldin = panel.get_data()["stats"]
+	case = case or next(
+		c["name"] for c in panel.get_data()["cases"]
+		if c["ishlov_status"] != "To'lov tekshirilmoqda" and c["qarz_summa"] > 0)
+	qarz = frappe.db.get_value("Qarz Ishi", case, "qarz_summa")
+	eski = frappe.db.get_value(
+		"Qarz Ishi", case, ["ishlov_status", "keyingi_aloqa"], as_dict=True)
+	print(f"oldin: ochiq={oldin['ochiq']} jami={oldin['jami_qarz']:,.0f} "
+	      f"tekshiruvda={oldin['tolov_belgilangan']} ({oldin['tolov_summa']:,.0f})")
+	try:
+		panel.tolov_belgila(case, izoh="Sinov: hisobdan chiqishi tekshirilyapti")
+		keyin = panel.get_data()["stats"]
+		print(f"keyin: ochiq={keyin['ochiq']} jami={keyin['jami_qarz']:,.0f} "
+		      f"tekshiruvda={keyin['tolov_belgilangan']} ({keyin['tolov_summa']:,.0f})")
+		print(f"   qarz summasi: {qarz:,.0f}")
+		assert keyin["ochiq"] == oldin["ochiq"] - 1, "jami ochiq soni kamaymadi"
+		assert abs((oldin["jami_qarz"] - keyin["jami_qarz"]) - qarz) < 1, \
+			"jami qarz summasidan chiqmadi"
+		assert keyin["tolov_belgilangan"] == oldin["tolov_belgilangan"] + 1
+		assert abs((keyin["tolov_summa"] - oldin["tolov_summa"]) - qarz) < 1, \
+			"tekshiruv summasiga qo'shilmadi"
+		assert keyin["jami_hammasi"] == oldin["jami_hammasi"], "umumiy soni o'zgardi"
+		print("OK — tekshiruvdagi ish jami ochiqdan chiqdi, alohida hisobda turibdi")
+	finally:
+		frappe.db.set_value("Qarz Ishi", case, {
+			"ishlov_status": eski.ishlov_status, "keyingi_aloqa": eski.keyingi_aloqa,
+			"tolov_belgilandi": None}, update_modified=False)
+		for c in frappe.get_all("Comment", filters={
+			"reference_doctype": "Qarz Ishi", "reference_name": case,
+			"content": ["like", "%Sinov:%"]}, pluck="name"):
+			frappe.delete_doc("Comment", c, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		print("(tiklandi)")
+
+
+def test_tolov_tushgandan_keyin(case=None):
+	"""To'lov tushganda «tekshiruvda» turgan ish nima bo'ladi:
+	  * qarz to'liq yopilsa  -> ish yopiladi, panelda umuman ko'rinmaydi;
+	  * qarz qisman yopilsa  -> ro'yxatga qaytadi (jami ochiqda ko'rinadi).
+	bench --site target.local execute target_zenit.qarzdorlik.dev.test_tolov_tushgandan_keyin
+	"""
+	from frappe.utils import flt
+
+	from target_zenit.qarzdorlik import engine
+	from target_zenit.target_zenit.page.qarzdorlik import qarzdorlik as panel
+
+	frappe.set_user("Administrator")
+	d = panel.get_data()
+	case = case or next(
+		c["name"] for c in d["cases"]
+		if c["ishlov_status"] != "To'lov tekshirilmoqda" and c["qarz_summa"] > 100000)
+	qi = frappe.db.get_value(
+		"Qarz Ishi", case, ["student", "tolov_rejasi", "qarz_summa", "ishlov_status",
+		                    "keyingi_aloqa", "student_name"], as_dict=True)
+	tr = frappe.get_doc("Tolov Rejasi", qi.tolov_rejasi)
+	print(f"{case} ({qi.student_name}): qarz {qi.qarz_summa:,.0f}, holat {qi.ishlov_status}")
+	try:
+		# --- 1) Qisman to'lov ---
+		panel.tolov_belgila(case, izoh="Sinov: to'ladim dedi")
+		assert frappe.db.get_value("Qarz Ishi", case, "ishlov_status") == "To'lov tekshirilmoqda"
+		yangi_qarz = flt(qi.qarz_summa) / 2
+		engine._sync_case(tr, yangi_qarz, frappe.utils.nowdate())
+		frappe.db.commit()
+		h1 = frappe.db.get_value(
+			"Qarz Ishi", case, ["ishlov_status", "qarz_summa", "tolov_belgilandi"], as_dict=True)
+		print(f"  qisman to'lov ({yangi_qarz:,.0f} qoldi) -> holat '{h1.ishlov_status}', "
+		      f"belgi={h1.tolov_belgilandi}")
+		assert h1.ishlov_status == "Urinilmoqda", "qisman to'lovdan keyin qaytmadi"
+		assert not h1.tolov_belgilandi, "belgi tozalanmadi"
+		st = panel.get_data()["stats"]
+		print(f"  stats: ochiq={st['ochiq']} tekshiruvda={st['tolov_belgilangan']}")
+
+		# --- 2) To'liq to'lov ---
+		panel.tolov_belgila(case, izoh="Sinov: qolganini ham to'ladim dedi")
+		engine._sync_case(tr, 0.0, None)
+		frappe.db.commit()
+		h2 = frappe.db.get_value("Qarz Ishi", case, "ishlov_status")
+		royxatda = any(c["name"] == case for c in panel.get_data()["cases"])
+		print(f"  to'liq to'lov -> holat '{h2}', panel ro'yxatida: {royxatda}")
+		assert h2 == "Yopildi - To'landi", "to'liq to'lovda ish yopilmadi"
+		assert not royxatda, "yopilgan ish panelda qoldi"
+		print("OK — to'langach o'zi yechiladi, qarz qolsa ro'yxatga qaytadi")
+	finally:
+		frappe.db.set_value("Qarz Ishi", case, {
+			"ishlov_status": qi.ishlov_status, "qarz_summa": qi.qarz_summa,
+			"keyingi_aloqa": qi.keyingi_aloqa, "tolov_belgilandi": None,
+			"yopilish_sababi": None}, update_modified=False)
+		for c in frappe.get_all("Comment", filters={
+			"reference_doctype": "Qarz Ishi", "reference_name": case,
+			"content": ["like", "%Sinov:%"]}, pluck="name"):
+			frappe.delete_doc("Comment", c, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		engine.recompute_plan(qi.tolov_rejasi, sync_case=True)
+		frappe.db.commit()
+		print(f"(tiklandi: {frappe.db.get_value('Qarz Ishi', case, 'ishlov_status')})")

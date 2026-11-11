@@ -5,6 +5,7 @@
  "engine": "InnoDB",
  "field_order": [
   "tolov_kuni",
+  "tolov_kutish_kuni",
   "grace_days",
   "tolerance",
   "min_threshold",
@@ -23,6 +24,13 @@
    "fieldname": "tolov_kuni",
    "fieldtype": "Int",
    "label": "To'lov kuni (oyning)"
+  },
+  {
+   "default": "3",
+   "fieldname": "tolov_kutish_kuni",
+   "fieldtype": "Int",
+   "label": "To'lov tekshiruvi (kun)",
+   "description": "Menejer «to'ladi» deb belgilaganda ish shuncha kunga ro'yxatdan chiqadi. Shu muddatda pul tushmasa — ro'yxatga qaytadi."
   },
   {
    "default": "3",
@@ -91,7 +99,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-14 12:00:00.000000",
+ "modified": "2026-11-11 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Qarzdorlik Sozlamalari",

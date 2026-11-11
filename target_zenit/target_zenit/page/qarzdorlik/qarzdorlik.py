@@ -425,6 +425,7 @@ def get_data(ketganlar: int = 0):
 		fields=[
 			"name", "student", "student_name", "sinf", "payer_name", "payer_phone",
 			"qarz_summa", "eng_eski_muddat", "aging_bucket", "ishlov_status",
+			"tolov_belgilandi",
 			"keyingi_aloqa", "masul", "urinishlar_soni", "buzilgan_vadalar",
 			"oxirgi_aloqa", "aloqa_cheklovi", "ochilgan_sana",
 		],
@@ -498,23 +499,34 @@ def get_data(ketganlar: int = 0):
 	_qongiroq_statistikasi(cases)
 
 	today = getdate(nowdate())
+	# «To'lov tekshirilmoqda» — menejer «to'ladi» deb belgilagan ishlar.
+	# Ular KUNDALIK ish ro'yxatiga ham, "jami ochiq" hisobiga ham KIRMAYDI:
+	# aks holda menejer bajargan ishi yana ro'yxatda turgandek ko'rinardi.
+	# Ular alohida KPI kartasida (soni va summasi bilan) ko'rinadi.
+	belgilangan = [c for c in cases if c.ishlov_status == "To'lov tekshirilmoqda"]
+	ishlanadi = [c for c in cases if c.ishlov_status != "To'lov tekshirilmoqda"]
+
 	stats = {
-		"ochiq": len(cases),
-		"jami_qarz": sum(flt(c.qarz_summa) for c in cases),
+		"ochiq": len(ishlanadi),
+		"jami_qarz": sum(flt(c.qarz_summa) for c in ishlanadi),
 		"bugun": 0,
 		"otgan": 0,
-		"gaplashilgan": sum(1 for c in cases if c["aloqa_soni"] > 0),
+		"gaplashilgan": sum(1 for c in ishlanadi if c["aloqa_soni"] > 0),
 		# Ovoz yozuvi bor suhbat o'tkazilgan o'quvchilar (KPI + filtr uchun)
-		"yozuvli": sum(1 for c in cases if c.get("yozuv_soni")),
-		"yozuv_jami": sum(int(c.get("yozuv_soni") or 0) for c in cases),
-		"vada_buzilgan": sum(1 for c in cases if c.ishlov_status == "Va'da buzildi"),
-		"eskalatsiya": sum(1 for c in cases if c.ishlov_status == "Eskalatsiya"),
+		"yozuvli": sum(1 for c in ishlanadi if c.get("yozuv_soni")),
+		# Menejer «to'ladi» deb belgilaganlar — alohida hisob
+		"tolov_belgilangan": len(belgilangan),
+		"tolov_summa": sum(flt(c.qarz_summa) for c in belgilangan),
+		"yozuv_jami": sum(int(c.get("yozuv_soni") or 0) for c in ishlanadi),
+		"vada_buzilgan": sum(1 for c in ishlanadi if c.ishlov_status == "Va'da buzildi"),
+		"eskalatsiya": sum(1 for c in ishlanadi if c.ishlov_status == "Eskalatsiya"),
 		"ketgan_soni": ketgan_soni,
 		"turlar": turlar,
 		"ketganlar_rejimi": 1 if ketganlar else 0,
+		"jami_hammasi": len(cases),
 		"buckets": {},
 	}
-	for c in cases:
+	for c in ishlanadi:
 		if c.keyingi_aloqa:
 			if getdate(c.keyingi_aloqa) < today:
 				stats["otgan"] += 1
@@ -876,3 +888,50 @@ def ish_topish(case: str | None = None, student: str | None = None) -> dict:
 		"student": qi.student,
 		"ketgan": 1 if (not st.enabled or st.date_of_leaving) else 0,
 	}
+
+
+@frappe.whitelist()
+def tolov_belgila(case: str, izoh: str | None = None, bekor: int = 0):
+	"""«Ota-ona to'ladim dedi» — ishni vaqtincha ro'yxatdan chiqarish.
+
+	Muammo: kassa har kuni kiritilmaydi, pul bir necha kundan keyin tizimga
+	tushadi. Shu orada menejer to'lagan ota-onaga qayta qo'ng'iroq qilib,
+	noqulay vaziyat yuzaga keladi. Endi menejer ishni «to'ladi» deb belgilaydi:
+	ish `To'lov tekshirilmoqda` holatiga o'tadi va kundalik ro'yxatda
+	ko'rinmaydi. Pul tushsa — ish o'zi yopiladi; tushmasa, sozlamadagi
+	`tolov_kutish_kuni` o'tgach kechki tekshiruv uni ro'yxatga qaytaradi.
+
+	`bekor=1` — belgini olib tashlash (xato belgilangan bo'lsa)."""
+	_guard()
+	from frappe.utils import add_days, now_datetime
+
+	from target_zenit.qarzdorlik.engine import _settings
+
+	qi = frappe.get_doc("Qarz Ishi", case)
+	if qi.ishlov_status in YOPIQ:
+		frappe.throw("Bu ish allaqachon yopilgan.")
+
+	if int(bekor or 0):
+		qi.ishlov_status = "Urinilmoqda"
+		qi.tolov_belgilandi = None
+		qi.keyingi_aloqa = nowdate()
+		qi.save(ignore_permissions=True)
+		qi.add_comment("Info", "«To'ladi» belgisi olib tashlandi — ro'yxatga qaytdi")
+		frappe.db.commit()
+		return {"ok": 1, "holat": qi.ishlov_status}
+
+	kun = _settings().tolov_kutish_kuni
+	qi.ishlov_status = "To'lov tekshirilmoqda"
+	qi.tolov_belgilandi = now_datetime()
+	qi.keyingi_aloqa = add_days(nowdate(), kun)
+	if izoh:
+		qi.oxirgi_komment = izoh
+	qi.save(ignore_permissions=True)
+	qi.add_comment(
+		"Comment",
+		f"To'ladi deb belgilandi — {kun} kun tekshiruvda, ro'yxatda ko'rinmaydi."
+		+ (f" Izoh: {izoh}" if izoh else ""),
+	)
+	frappe.db.commit()
+	return {"ok": 1, "holat": qi.ishlov_status, "kun": kun,
+	        "keyingi_aloqa": str(qi.keyingi_aloqa)}

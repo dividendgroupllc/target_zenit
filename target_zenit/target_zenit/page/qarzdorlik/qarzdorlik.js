@@ -23,7 +23,10 @@ class TZQarzPanel {
 		this.fSinflar = new Set();  // sinf filtri — bir vaqtda bir nechta sinf
 		this.fKetgan = 0;       // 0 = faol o'quvchilar, 1 = ketganlar ro'yxati
 		this.fTurlar = new Set();   // qarz turi: o'quv to'lovi / Kitob / Forma / Yotoqxona…
-		this.fQueue = "all";    // all | today | overdue
+		// Kundalik ro'yxat: "to'ladi" deb belgilanganlar KO'RINMAYDI (kassa
+		// kechikkanda menejer to'lagan ota-onaga qayta qo'ng'iroq qilmasin).
+		// "tolov" — aynan o'shalarni ko'rish, "all" — hammasi.
+		this.fQueue = "ish";    // ish | tolov | all | today | overdue | gaplashilgan | yozuvli
 		// Boshqa sahifadan havola bilan kelish: /app/qarzdorlik?case=QI-… yoki
 		// ?student=EDU-STU-… — o'sha o'quvchining kartasi darhol ochiladi
 		// (sotuv nazoratidan suhbat/taklif qatorini bosganda shu ishlaydi).
@@ -247,6 +250,9 @@ class TZQarzPanel {
 			if (this.fBucket && c.aging_bucket !== this.fBucket) return false;
 			if (this.fStatus && c.ishlov_status !== this.fStatus) return false;
 			if (this.fSinflar.size && !this.fSinflar.has(c.sinf || "__none")) return false;
+			const belgilangan = c.ishlov_status === "To'lov tekshirilmoqda";
+			if (this.fQueue === "ish" && belgilangan) return false;
+			if (this.fQueue === "tolov" && !belgilangan) return false;
 			if (this.fQueue === "today" && !(c.keyingi_aloqa && c.keyingi_aloqa <= today)) return false;
 			if (this.fQueue === "overdue" && !(c.keyingi_aloqa && c.keyingi_aloqa < today)) return false;
 			if (this.fQueue === "gaplashilgan" && !(c.aloqa_soni > 0)) return false;
@@ -276,6 +282,7 @@ class TZQarzPanel {
 					<h1>Qarzdorlik paneli</h1>
 					<div class="sub">
 						<span class="badge-qarz">${this.fKetgan ? "Ketganlar" : "Qarzdorlar"}: <b>${this.fmt(st.ochiq)}</b> ta · jami <b>${this.fmt(st.jami_qarz)}</b> so'm</span>
+						${st.tolov_belgilangan ? `<span class="badge-tolov" title="Menejer «to'ladi» deb belgilagan — yuqoridagi hisobga kirmaydi">💸 tekshiruvda: <b>${this.fmt(st.tolov_belgilangan)}</b> ta · ${this.fmt(st.tolov_summa)} so'm</span>` : ""}
 						${this.fKetgan ? `<span class="badge-ketgan">Maktabdan ketgan o'quvchilar ro'yxati</span>`
 							: `<span class="mini">faqat faol o'quvchilar</span>`}
 					</div>
@@ -303,9 +310,17 @@ class TZQarzPanel {
 					<div class="val">${this.fmt(st.vada_buzilgan)}</div><div class="sub">birinchi navbatda</div></div>
 				<div class="card kpi"><div class="lab"><span class="pin r"></span>Eskalatsiya</div>
 					<div class="val">${this.fmt(st.eskalatsiya)}</div><div class="sub">rahbar nazorati</div></div>
-				<div class="card kpi click ${this.fQueue === "all" ? "sel" : ""}" data-queue="all">
+				<div class="card kpi click ${this.fQueue === "tolov" ? "sel" : ""}" data-queue="tolov"
+					title="Menejer «to'ladi» deb belgilagan — kassa tasdiqlashini kutyapti, kundalik ro'yxatda ko'rinmaydi">
+					<div class="lab"><span class="pin b"></span>💸 To'lov tekshiruvda</div>
+					<div class="val">${this.fmt(st.tolov_belgilangan)}</div>
+					<div class="sub">${this.fmt(st.tolov_summa)} so'm · jami ochiqqa kirmaydi</div></div>
+				<div class="card kpi click ${this.fQueue === "ish" ? "sel" : ""}" data-queue="ish"
+					title="To'lov tekshiruvidagilar bu hisobga KIRMAYDI — ular alohida kartada">
 					<div class="lab"><span class="pin g"></span>Jami ochiq</div>
-					<div class="val">${this.fmt(st.ochiq)}</div><div class="sub">hamma ishlar</div></div>
+					<div class="val">${this.fmt(st.ochiq)}</div>
+					<div class="sub">${st.tolov_belgilangan
+						? `+${this.fmt(st.tolov_belgilangan)} ta tekshiruvda (alohida)` : "ishlanadigan ishlar"}</div></div>
 			</div>
 
 			<div class="controls mb">
@@ -372,8 +387,12 @@ class TZQarzPanel {
 		// Jadval tepasidagi yakun — FILTRLANGAN ro'yxat bo'yicha
 		const jami = rows.reduce((a, c) => a + (Number(c.qarz_summa) || 0), 0);
 		const turJami = this.turSummasi(rows);
+		const rejim = { ish: "kundalik ro'yxat — to'lov tekshiruvidagilar chiqarilgan",
+			tolov: "to'lov tekshiruvida", all: "hamma ishlar", today: "bugun aloqa",
+			overdue: "o'tib ketgan", gaplashilgan: "gaplashilganlar",
+			yozuvli: "ovoz yozuvi bor" }[this.fQueue] || "";
 		const bosh = `<div class="list-head">
-			<span>Qarzdorlar: <b>${this.fmt(rows.length)}</b> ta</span>
+			<span>Qarzdorlar: <b>${this.fmt(rows.length)}</b> ta${rejim ? ` <span class="mini">· ${rejim}</span>` : ""}</span>
 			<span>Jami qarz: <b class="money">${this.fmt(jami)}</b> so'm</span>
 			${turJami !== null ? `<span class="tur-jami">${this.esc(this.turLabel())}: <b class="money">${this.fmt(turJami)}</b> so'm</span>` : ""}
 			${rows.length !== (this.data.cases || []).length
@@ -394,7 +413,8 @@ class TZQarzPanel {
 								? `<div class="mini tur-mini">${Object.entries(c.qarz_turlari)
 									.map(([t, v]) => `${this.esc(t)} ${this.fmt(v)}`).join(" · ")}</div>` : ""}</td>
 						<td>${this.bucketPill(c.aging_bucket, c.eng_eski_muddat)}</td>
-						<td>${this.statusPill(c.ishlov_status)}</td>
+						<td>${this.statusPill(c.ishlov_status)}${c.tolov_belgilandi
+							? `<div class="mini" title="To'ladi deb belgilangan">💸 ${this.dmy(c.tolov_belgilandi)}</div>` : ""}</td>
 						<td class="${c.keyingi_aloqa && c.keyingi_aloqa < today ? "red" : ""}">${this.dmy(c.keyingi_aloqa)}</td>
 						<td class="mini">${this.esc((this.data.managers.find((m) => m.name === c.masul) || {}).full_name || c.masul || "")}</td>
 					</tr>`).join("")}
@@ -577,6 +597,9 @@ class TZQarzPanel {
 				${qlar.length ? `<button class="btn-suhbat">🎧 Suhbatlar (${qlar.length})${
 					qlar.filter((q) => q.ai_xulosa).length
 						? ` · ${qlar.filter((q) => q.ai_xulosa).length} tahlil` : ""}</button>` : ""}
+				${c.ishlov_status === "To'lov tekshirilmoqda"
+					? `<button class="btn-tolov back">↩ «To'ladi» belgisini olish</button>`
+					: `<button class="btn-tolov">💸 To'ladi dedi — tekshiruvga</button>`}
 				<button class="btn-call">📞 Qo'ng'iroq natijasi</button>
 				${this.mur_yozamanmi() ? `<button class="btn-yonaltir">⬆ Rahbarga yo'naltirish</button>` : ""}
 				<button class="btn-pdf">📄 Hisobot (PDF)</button>
@@ -593,6 +616,8 @@ class TZQarzPanel {
 		`);
 
 		this.body.find(".btn-suhbat").on("click", () => this.suhbat_dialog());
+		this.body.find(".btn-tolov").on("click", (e) =>
+			this.tolov_dialog($(e.currentTarget).hasClass("back")));
 		this.body.find(".btn-call").on("click", () => this.call_dialog());
 		this.body.find(".btn-yonaltir").on("click", () => this.yonaltir_dialog());
 		this.body.find(".btn-pdf").on("click", () => this.pdf_hisobot());
@@ -1055,6 +1080,52 @@ class TZQarzPanel {
 						dlg.hide();
 						frappe.show_alert({ message: "Murojaat yopildi", indicator: "green" }, 5);
 						this.load_detail(this.detail.case.name, true);
+					},
+				});
+			},
+		});
+		dlg.show();
+	}
+
+	// «Ota-ona to'ladim dedi» — ishni vaqtincha ro'yxatdan chiqarish.
+	// Kassa kechikkanda to'lagan odamga qayta qo'ng'iroq qilinmasligi uchun.
+	tolov_dialog(bekor) {
+		const c = this.detail.case;
+		if (bekor) {
+			frappe.confirm(__("«To'ladi» belgisi olib tashlansinmi? Ish ro'yxatga qaytadi."), () => {
+				frappe.call({
+					method: `${QARZ_M}.tolov_belgila`,
+					args: { case: c.name, bekor: 1 }, freeze: true,
+					callback: () => {
+						frappe.show_alert({ message: __("Ro'yxatga qaytdi"), indicator: "blue" });
+						this.load(); this.load_detail(c.name, true);
+					},
+				});
+			});
+			return;
+		}
+		const dlg = new frappe.ui.Dialog({
+			title: `To'ladi deb belgilash — ${c.student_name}`,
+			fields: [
+				{ fieldtype: "HTML", options: `<div class="text-muted" style="font-size:12px;margin-bottom:6px">
+					Ish <b>kundalik ro'yxatdan chiqadi</b> va kassa tasdiqlashini kutadi.
+					Pul tushsa — ish o'zi yopiladi. Tushmasa, belgilangan kundan keyin
+					ro'yxatga qaytadi va yana qo'ng'iroq qilasiz.</div>` },
+				{ fieldname: "izoh", fieldtype: "Small Text", label: "Izoh (qachon, qancha, qaysi usulda to'lagan)" },
+			],
+			primary_action_label: "Belgilash",
+			primary_action: (v) => {
+				frappe.call({
+					method: `${QARZ_M}.tolov_belgila`,
+					args: { case: c.name, izoh: v.izoh }, freeze: true,
+					callback: (r) => {
+						dlg.hide();
+						const m = r.message || {};
+						frappe.show_alert({
+							message: __("Belgilandi — {0} kun ro'yxatda ko'rinmaydi", [m.kun || ""]),
+							indicator: "green",
+						}, 7);
+						this.load(); this.load_detail(c.name, true);
 					},
 				});
 			},

@@ -41,6 +41,7 @@ def _settings():
 		# paneliga tushadi (operatorlar yig'ishni darhol boshlaydi)
 		grace_days=s.grace_days if s.grace_days is not None else 0,
 		tolov_kuni=min(max(kuni, 1), 28),
+		tolov_kutish_kuni=max(int(s.tolov_kutish_kuni or 0) or 3, 1),
 		tolerance=flt(s.tolerance) or 1000,
 		min_threshold=flt(s.min_threshold) or 10000,
 		buzilgan_vada_limit=s.buzilgan_vada_limit or 2,
@@ -1122,6 +1123,44 @@ def komment_masul(doc, method=None):
 		frappe.log_error(frappe.get_traceback(), f"qarzdorlik komment_masul: {doc.name}")
 
 
+def tolov_belgilarini_tekshir() -> dict:
+	"""«To'ladi» deb belgilangan ishlar: pul tushdimi yoki muddat o'tdimi.
+
+	Kassa har kuni kiritilmaydi — shuning uchun menejer «ota-ona to'ladi dedi»
+	deb belgilaganda ish vaqtincha ro'yxatdan chiqadi (status
+	«To'lov tekshirilmoqda»). Pul tushsa — `_sync_case` ishni o'zi yopadi.
+	Tushmasa — belgilangan kundan `tolov_kutish_kuni` o'tgach ish ro'yxatga
+	QAYTADI, aks holda qarz jimgina ko'rinmay qolardi."""
+	cfg = _settings()
+	chegara = add_days(nowdate(), -cfg.tolov_kutish_kuni)
+	qaytdi = 0
+	for qi in frappe.get_all(
+		"Qarz Ishi",
+		filters={"ishlov_status": "To'lov tekshirilmoqda"},
+		fields=["name", "tolov_belgilandi", "qarz_summa", "masul", "student_name"],
+	):
+		belgi = str(qi.tolov_belgilandi or "")[:10]
+		if belgi and belgi > chegara:
+			continue
+		if flt(qi.qarz_summa) <= cfg.tolerance:
+			continue        # pul tushgan — `_sync_case` yopadi
+		doc = frappe.get_doc("Qarz Ishi", qi.name)
+		doc.ishlov_status = "Urinilmoqda"
+		doc.keyingi_aloqa = nowdate()
+		frappe.flags.qarz_engine = True
+		doc.save(ignore_permissions=True)
+		frappe.flags.qarz_engine = False
+		doc.add_comment(
+			"Info",
+			f"To'lov tasdiqlanmadi ({cfg.tolov_kutish_kuni} kun o'tdi) — "
+			f"ro'yxatga qaytdi. Qarz: {flt(qi.qarz_summa):,.0f}",
+		)
+		qaytdi += 1
+	if qaytdi:
+		frappe.db.commit()
+	return {"qaytdi": qaytdi}
+
+
 def masullarni_yangila() -> dict:
 	"""Hamma ochiq ish bo'yicha mas'ulni oxirgi gaplashganga moslash (kechasi).
 
@@ -1232,7 +1271,7 @@ def _sync_case(tr, qarz: float, eng_eski):
 	open_case = frappe.db.get_value(
 		"Qarz Ishi",
 		{"student": tr.student, "ishlov_status": ["not in", list(YOPIQ_STATUSLAR)]},
-		["name", "ishlov_status", "buzilgan_vadalar"],
+		["name", "ishlov_status", "buzilgan_vadalar", "qarz_summa"],
 		as_dict=True,
 	)
 	frappe.flags.qarz_engine = True
@@ -1261,12 +1300,26 @@ def _sync_case(tr, qarz: float, eng_eski):
 
 	# 2) Ochiq ish bor -> qarz ma'lumotlarini yangilash
 	if open_case:
+		vals = {"qarz_summa": qarz, "eng_eski_muddat": eng_eski, "aging_bucket": bucket}
+		# To'lov tushdi, lekin qarz TO'LIQ yopilmadi: ish «to'lov tekshiruvida»
+		# turgan bo'lsa, ro'yxatga QAYTARILADI — menejer qolgan qarz bo'yicha
+		# ishini davom ettirishi kerak (aks holda ish tekshiruvda qolib ketardi).
+		tushdi = flt(open_case.qarz_summa) - qarz
+		if open_case.ishlov_status == "To'lov tekshirilmoqda" and tushdi > cfg.tolerance:
+			vals.update({
+				"ishlov_status": "Urinilmoqda",
+				"tolov_belgilandi": None,
+				"keyingi_aloqa": nowdate(),
+			})
 		frappe.db.set_value(
-			"Qarz Ishi",
-			open_case.name,
-			{"qarz_summa": qarz, "eng_eski_muddat": eng_eski, "aging_bucket": bucket},
-			update_modified=False,
+			"Qarz Ishi", open_case.name, vals, update_modified=False
 		)
+		if vals.get("ishlov_status"):
+			frappe.get_doc("Qarz Ishi", open_case.name).add_comment(
+				"Info",
+				f"To'lov tushdi ({tushdi:,.0f}), lekin qarz qoldi ({qarz:,.0f}) — "
+				f"ish ro'yxatga qaytdi.",
+			)
 		return
 
 	# 3) Yangi ish ochish: threshold + grace (grace 0 = kutish yo'q,
@@ -1549,6 +1602,10 @@ def nightly():
 		masullarni_yangila()
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "qarzdorlik nightly: masullarni_yangila")
+	try:
+		tolov_belgilarini_tekshir()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "qarzdorlik nightly: tolov_belgilari")
 	frappe.db.commit()
 
 

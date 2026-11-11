@@ -24,6 +24,7 @@
   "section_ishlov",
   "masul",
   "ishlov_status",
+  "tolov_belgilandi",
   "keyingi_aloqa",
   "column_break_4",
   "urinishlar_soni",
@@ -168,6 +169,13 @@
    "reqd": 1
   },
   {
+   "fieldname": "tolov_belgilandi",
+   "fieldtype": "Datetime",
+   "label": "To'ladi deb belgilangan",
+   "read_only": 1,
+   "description": "Menejer «to'lagan» deb belgilagan vaqt — kassa kechikkanda ish vaqtincha ro'yxatdan chiqadi; pul tushmasa o'zi qaytadi"
+  },
+  {
    "description": "Ochiq ishda majburiy. 'Keyinroq' degan tushuncha yo'q — har doim aniq sana.",
    "fieldname": "keyingi_aloqa",
    "fieldtype": "Date",
@@ -253,7 +261,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-21 12:00:00.000000",
+ "modified": "2026-11-11 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Qarz Ishi",
