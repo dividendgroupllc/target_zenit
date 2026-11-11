@@ -59,7 +59,7 @@ def takrorlarni_tozala(dry_run=1, limit=5000):
 	ochirildi = bogliq = 0
 	hisobot = []
 
-	for h, guruh in takror.items():
+	for guruh in takror.values():
 		guruh.sort(key=lambda q: (-_tolalik(q), q.creation))
 		qoladi, ortiqcha = guruh[0], guruh[1:]
 
