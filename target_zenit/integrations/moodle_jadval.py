@@ -176,24 +176,51 @@ def _kalendar(yil, holiday_list=None):
 	return kalendar
 
 
-def _sorov(yil, bolak, n, kalendar, memberclasses: bool) -> dict:
+def _amal_sanasi(yil) -> str:
+	"""Faol jadval versiyasi qaysi sanadan kuchga kirgan (YYYY-MM-DD).
+
+	NEGA MOODLEGA KERAK: Moodle tomondagi reja (`local_targetzenit_slot`)
+	o'tmishni muzlatadi — shunda keyin kelgan jadval tarixni qayta yozmaydi.
+	Lekin jadval KECHIKIB kelishi mumkin: 2026-11-09 kechasi yangi jadval
+	import qilingan, Moodlega esa 11-10 ertalab yetgan va o'sha ikki kun
+	eski jadvalda muzlab qolgan. Natijada o'qituvchi paneli, direktor
+	paneli va tahlil sahifalari (hammasi `slot` dan o'qiydi) eski jadvalni
+	ko'rsatgan.
+
+	Shu sana yuborilsa, Moodle u O'ZGARGANDA rejani o'sha nuqtadan qayta
+	quradi. Sana o'zgarmasa hech narsa qilinmaydi."""
+	s = frappe.db.get_value(
+		"Jadval Versiyasi", {"holat": "Faol", "academic_year": yil}, "amal_boshlanishi"
+	) or frappe.db.get_value("Jadval Versiyasi", {"holat": "Faol"}, "amal_boshlanishi")
+	return str(s)[:10] if s else ""
+
+
+def _sorov(yil, bolak, n, kalendar, memberclasses: bool, amal_sanasi: str = "") -> dict:
 	"""Bitta bo'lak uchun `push_timetable` so'rovi.
 
 	Birinchi bo'lak eski jadvalni o'chiradi (`replace`), qolganlari ustiga
 	qo'shadi (`append`) — PHP'ning `max_input_vars` chegarasi tufayli jadval
-	bo'lib yuboriladi. Kalendar ham faqat birinchi bo'lak bilan ketadi.
+	bo'lib yuboriladi. Kalendar va amal qilish sanasi ham faqat birinchi
+	bo'lak bilan ketadi: reja bir marta, hamma dars kelib bo'lgach qayta
+	quriladi.
 
 	`memberclasses=False` — eski plagin uchun zaxira yo'l (push'dagi izohga
 	qarang)."""
 	darslar = bolak if memberclasses else [
 		{k: v for k, v in d.items() if k != "memberclasses"} for d in bolak
 	]
-	return {
+	sorov = {
 		"academicyear": yil,
 		"lessons": darslar,
 		"mode": "replace" if n == 0 else "append",
 		"calendar": kalendar if n == 0 else [],
 	}
+	# `effectivefrom` ham yangi maydon (`memberclasses` bilan bir vaqtda
+	# qo'shilgan), shuning uchun eski plagin uchun zaxira yo'lda u ham
+	# yuborilmaydi — aks holda Moodle so'rovni yana rad etardi.
+	if memberclasses:
+		sorov["effectivefrom"] = amal_sanasi if n == 0 else ""
+	return sorov
 
 
 def push(trigger="Qo'lda"):
@@ -259,10 +286,18 @@ def push(trigger="Qo'lda"):
 			# (eski ko'rinishda) ishlashda qoladi, logda esa ogohlantirish
 			# turadi.
 			memberclasses_bor = True
+			amal_sanasi = _amal_sanasi(yil)
+			if amal_sanasi:
+				lines.append(f"Jadval kuchga kirgan sana: {amal_sanasi}")
+			else:
+				lines.append(
+					"OGOHLANTIRISH: faol versiyada `amal_boshlanishi` bo'sh — Moodle "
+					"rejasi o'tmishdagi muzlatilgan kunlarni yangilamaydi."
+				)
 			for n, bolak in enumerate(bolaklar):
 				try:
 					res = _call("local_targetzenit_push_timetable",
-						_sorov(yil, bolak, n, kalendar, memberclasses_bor))
+						_sorov(yil, bolak, n, kalendar, memberclasses_bor, amal_sanasi))
 				except Exception as e:
 					# Xato MATNIGA tayanmaymiz. Moodle kutilmagan maydonni
 					# `invalidparameter: Invalid parameter value detected`
