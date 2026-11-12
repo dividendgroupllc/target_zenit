@@ -323,7 +323,7 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 			for d in frappe.get_all(
 				"Moodle Course Link",
 				fields=["name", "moodle_course_id", "shortname", "sync_hash",
-						"enrolled_json", "guruh", "fan", "status"],
+						"enrolled_json", "guruh", "fan", "status", "oqituvchi"],
 				limit_page_length=0,
 			)
 		}
@@ -408,8 +408,38 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 					lines.append(f"XATO kurs yangilashda (id {cid}): {err}")
 
 		# --- Yozilishlar (enrolment)
+		#
+		# NIMA UCHUN "jadvalsiz" qatlam kerak: jadvalda guruh bo'lmasa ham,
+		# uning Moodle kursi allaqachon mavjud bo'lishi mumkin (masalan ingliz
+		# tili daraja guruhlari — jadvalda blok guruhi turadi). Oldin bunday
+		# kurslar yozilish hisobidan BUTUNLAY chetda qolardi: Frappe'da guruh
+		# a'zoligi o'zgarsa Moodle'da hech nima o'zgarmasdi, log esa yashil
+		# ko'rinardi. Talab: Frappe guruhi = Moodle kursi a'zolari.
+		#
+		# Bunday kurslarga faqat O'QUVCHI yozilishi bo'yicha tegamiz:
+		# o'qituvchi jadvaldan olinadi, jadval yo'q — demak o'qituvchi
+		# noma'lum, shuning uchun `oqituvchi` bo'sh qoldiriladi va pastdagi
+		# mantiq mavjud o'qituvchi yozilishini saqlab qoladi.
+		jadvalsiz = {}
+		if limit == 0:
+			for k, d in links.items():
+				if k in yangi_links or not d.moodle_course_id or not d.guruh:
+					continue
+				jadvalsiz[k] = {
+					"guruh": d.guruh,
+					"fan": d.fan,
+					"shortname": d.shortname or k,
+					"moodle_course_id": d.moodle_course_id,
+					"oqituvchi": None,
+				}
+			if jadvalsiz:
+				lines.append(
+					f"Jadvalda yo'q, lekin kursi bor guruh: {len(jadvalsiz)} ta — "
+					"faqat o'quvchi yozilishi moslanadi (kurs/o'qituvchi tegilmaydi)."
+				)
+
 		enrolments, enrol_holat = [], {}
-		for key, v in yangi_links.items():
+		for key, v in {**yangi_links, **jadvalsiz}.items():
 			cid = v.get("moodle_course_id") or 0
 			if not cid:
 				continue
@@ -491,9 +521,15 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 						enrol_holat[key] = _json_oqi(eski_link.enrolled_json) if eski_link else {}
 
 		# --- Jadvaldan chiqib ketgan kurslarni yashirish
+		#
+		# MUHIM: o'quvchisi BOR kursni yashirmaymiz. Yashirin kursni o'quvchi
+		# ko'rmaydi — ya'ni "Moodle'da ham shu guruhda turish" amalda
+		# buzilardi. Guruh bo'shagandan keyingina yashiramiz.
+		azoli = {k for k, v in jadvalsiz.items() if azolar.get(v["guruh"])}
 		yoq_boldi = [
 			d for k, d in links.items()
-			if k not in yangi_links and d.moodle_course_id and d.status != "Yashirilgan"
+			if k not in yangi_links and k not in azoli
+			and d.moodle_course_id and d.status != "Yashirilgan"
 		]
 		if yoq_boldi and limit == 0:
 			lines.append(f"Jadvalda qolmagan kurs: {len(yoq_boldi)} ta — yashiriladi (o'chirilmaydi).")
@@ -503,7 +539,17 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 					frappe.db.set_value("Moodle Course Link", d.name, "status", "Yashirilgan")
 			stat["hidden"] = len(yoq_boldi)
 
+		# Guruhga qayta o'quvchi kirgan bo'lsa yashirin kursni ochib qo'yamiz.
+		kor_boladi = [links[k] for k in azoli if links[k].status == "Yashirilgan"]
+		if kor_boladi and limit == 0:
+			lines.append(f"O'quvchisi qaytgan yashirin kurs: {len(kor_boladi)} ta — ochiladi.")
+			if not dry:
+				_kurs_yangila([{"id": d.moodle_course_id, "visible": 1} for d in kor_boladi])
+				for d in kor_boladi:
+					frappe.db.set_value("Moodle Course Link", d.name, "status", "Faol")
+
 		_saqla(yangi_links, enrol_holat, dry)
+		_saqla_enrol(jadvalsiz, enrol_holat, student_role, dry)
 
 		log.db_set({
 			"status": "Xato" if stat["errors"] and not (stat["created"] or stat["updated"]) else "Tugadi",
@@ -562,6 +608,27 @@ def _saqla(yangi_links, enrol_holat, dry):
 			doc.save(ignore_permissions=True)
 		else:
 			frappe.get_doc({"doctype": "Moodle Course Link", **values}).insert(ignore_permissions=True)
+
+
+def _saqla_enrol(jadvalsiz, enrol_holat, student_role, dry):
+	"""Jadvalda yo'q kurslar uchun FAQAT yozilish holatini yozadi.
+
+	`_saqla()` dan farqi: `idnumber`, `fan`, `oqituvchi`, `sync_hash` va
+	`status` ga tegilmaydi. Ayniqsa `status`: bu kurslar jadvalda yo'q, agar
+	ularni "Faol" deb belgilasak keyingi yurish ularni yana yashirishga
+	urinadi va holat tebranib qoladi.
+	"""
+	if dry:
+		return
+	for key in jadvalsiz:
+		if key not in enrol_holat or not frappe.db.exists("Moodle Course Link", key):
+			continue
+		holat = enrol_holat[key]
+		frappe.db.set_value("Moodle Course Link", key, {
+			"enrolled_json": json.dumps(holat, ensure_ascii=False),
+			"student_count": sum(1 for r in holat.values() if r == student_role),
+			"last_synced": now_datetime(),
+		}, update_modified=False)
 
 
 # ---------------------------------------------------------------- Kirish nuqtalari
