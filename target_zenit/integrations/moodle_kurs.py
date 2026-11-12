@@ -82,7 +82,13 @@ def _juftliklar(yil):
 	for r in rows:
 		kalit = (r.guruh, r.fan)
 		if kalit in juft:
-			continue  # soat bo'yicha tartiblangan — birinchisi asosiy o'qituvchi
+			# Soat bo'yicha tartiblangan — birinchisi asosiy o'qituvchi (kurs
+			# kartochkasida ko'rinadi), qolganlari ham kursga o'qituvchi
+			# sifatida yoziladi: jadvalda bir fanni ikki kishi o'tsa
+			# (masalan 11A BUS) Moodle'da ikkisi ham turishi kerak.
+			if r.oqituvchi and r.oqituvchi not in juft[kalit]["oqituvchilar"]:
+				juft[kalit]["oqituvchilar"].append(r.oqituvchi)
+			continue
 		juft[kalit] = {
 			"idnumber": f"{yil}::{r.guruh}::{r.fan}",
 			"guruh": r.guruh,
@@ -90,6 +96,7 @@ def _juftliklar(yil):
 			"fan": r.fan,
 			"oqituvchi": r.oqituvchi,
 			"oqituvchi_nomi": r.oqituvchi_nomi,
+			"oqituvchilar": [r.oqituvchi] if r.oqituvchi else [],
 			"soat": r.soat,
 		}
 	return juft
@@ -431,6 +438,12 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 					"shortname": d.shortname or k,
 					"moodle_course_id": d.moodle_course_id,
 					"oqituvchi": None,
+					"oqituvchilar": [],
+					# Bu kurs joriy jadvalda YO'Q: o'qituvchi "noma'lum" emas,
+					# balki endi bu guruhga dars bermaydi. Shuning uchun uning
+					# yozilishi saqlanmaydi — Moodle'dagi o'qituvchi↔guruh
+					# bog'lanishi Frappe jadvali bilan bir xil bo'lishi kerak.
+					"jadvalda_yoq": True,
 				}
 			if jadvalsiz:
 				lines.append(
@@ -449,18 +462,30 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 				uid = users.get(st)
 				if uid:
 					kerak[st] = (uid, student_role)
-			o_kalit = _oqituvchi_kaliti(v.get("oqituvchi"))
+			# Jadvalda shu (guruh x fan) ga dars beradigan HAMMA o'qituvchi
+			oqituvchilar = v.get("oqituvchilar") or ([v["oqituvchi"]] if v.get("oqituvchi") else [])
+			kalitlar = [k for k in (_oqituvchi_kaliti(o) for o in oqituvchilar) if k]
+			topilgan = [k for k in kalitlar if users.get(k)]
+			for k in topilgan:
+				kerak[k] = (users[k], teacher_role)
 			# O'qituvchini Moodle'da ANIQ topdikmi? Topa olmaslik — ma'lumot
 			# bo'shlig'i, "ishdan ketdi" degani EMAS. Farqi muhim: pastda
-			# suspend qilish qarori shunga tayanadi.
-			oqituvchi_aniq = bool(o_kalit and users.get(o_kalit))
-			if oqituvchi_aniq:
-				kerak[o_kalit] = (users[o_kalit], teacher_role)
-			elif o_kalit:
-				lines.append(
-					f"OGOHLANTIRISH: {v['shortname']} — o'qituvchi {o_kalit} "
-					"Moodle'da topilmadi; mavjud yozilishga tegilmaydi."
-				)
+			# suspend qilish qarori shunga tayanadi. Jadvalda umuman yo'q
+			# kurs esa boshqa holat: u yerda o'qituvchi chiqarib tashlanadi.
+			oqituvchi_aniq = bool(topilgan) and len(topilgan) == len(kalitlar)
+			if v.get("jadvalda_yoq") and not kerak:
+				# Jadvalda ham, guruhda ham hech kim qolmagan kurs (masalan
+				# eski blok guruhi) — o'qituvchi yozilishi ham olib tashlanadi,
+				# aks holda u Moodle'da o'sha "guruh"ga biriktirilgan bo'lib
+				# ko'rinib turadi. O'QUVCHISI BOR kursga tegmaymiz: jadvaldan
+				# chiqqan bo'lsa ham o'quvchilar uchun o'qituvchisiz qolmasin.
+				oqituvchi_aniq = True
+			for k in kalitlar:
+				if k not in topilgan:
+					lines.append(
+						f"OGOHLANTIRISH: {v['shortname']} — o'qituvchi {k} "
+						"Moodle'da topilmadi; mavjud yozilishga tegilmaydi."
+					)
 
 			link = links.get(key)
 			eski = _json_oqi(link.enrolled_json) if link else {}
