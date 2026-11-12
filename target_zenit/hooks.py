@@ -259,6 +259,12 @@ doc_events = {
 			"target_zenit.ism_sync.employee_on_update",
 		],
 	},
+	# Jadvalda dars (yoki uning o'qituvchisi) o'zgarsa — Student Group'dagi
+	# o'qituvchi ro'yxati ham shu zahoti jadvaldagi holatga keltiriladi
+	"Jadval Yozuvi": {
+		"on_update": "target_zenit.dars_jadvali.import_excel.jadval_yozuvi_ozgardi",
+		"on_trash": "target_zenit.dars_jadvali.import_excel.jadval_yozuvi_ozgardi",
+	},
 	# Instructor nomi (yoki uning Employee'si) o'zgarsa — Jadval Yozuvi va
 	# Jadval Ozgarishi dagi oqituvchi_nomi nusxalari
 	"Instructor": {

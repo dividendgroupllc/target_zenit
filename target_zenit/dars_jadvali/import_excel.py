@@ -953,6 +953,11 @@ def sinxron(path, versiya_nomi=None, academic_year=None, dry_run=1):
 
 	istak, muammo = _istalgan_yozuvlar(yacheykalar)
 	hisobot["5_yozuvlar"] = _yozuv_sinxron(versiya, istak, dry_run)
+	oq_b = oqituvchilarni_biriktir(versiya, dry_run)
+	hisobot["6_guruh_oqituvchilari"] = {
+		"ozgardi": oq_b["ozgardi_soni"], "tegilmadi": oq_b["tegilmadi"],
+		"jadvalda_yoq": oq_b["jadvalda_yoq"], "namuna": oq_b["ozgardi"][:10],
+	}
 	hisobot["muammolar"] = muammo[:20]
 
 	# Excel'da ishlatilmayotgan blok/guruhlar (o'chirmaymiz — faqat xabar beramiz)
@@ -1044,3 +1049,100 @@ def tekshir(path, versiya=None, chiqar=20):
 	}
 	print(json.dumps(xulosa, ensure_ascii=False, indent=1))
 	return xulosa
+
+
+# -------------------------- 6. guruhlarga o'qituvchi biriktirish
+def oqituvchilarni_biriktir(versiya=None, dry_run=0, faqat_daraja=0):
+	"""Student Group.instructors ni jadvaldan to'ldiradi.
+
+	Qoida: guruhga jadvalda kim dars bersa, Student Group'da ham aynan o'sha
+	turadi (masalan «ENGLISH Low 6-7» guruhida jadvalda Fateme Majouri bo'lsa,
+	guruh kartochkasida ham u ko'rinadi). Sinf guruhiga (1 A(full)) shu sinfga
+	dars beradigan BARCHA o'qituvchilar yoziladi — darslar soni bo'yicha
+	kamayish tartibida; faqat_daraja=1 bo'lsa sinf guruhlari tegilmaydi."""
+	from collections import Counter, defaultdict
+
+	versiya = versiya or frappe.db.get_value("Jadval Versiyasi", {"holat": "Faol"}, "name")
+	hisob = defaultdict(Counter)
+	for r in frappe.get_all(
+		"Jadval Yozuvi", filters={"versiya": versiya},
+		fields=["guruh", "oqituvchi"],
+	):
+		if r.guruh and r.oqituvchi:
+			hisob[r.guruh][r.oqituvchi] += 1
+
+	natija = {"versiya": versiya, "ozgardi": [], "tegilmadi": 0, "jadvalda_yoq": []}
+	for sg in frappe.get_all("Student Group", fields=["name", "custom_guruh_turi"]):
+		tur = sg.custom_guruh_turi or "Sinf"
+		if faqat_daraja and tur == "Sinf":
+			continue
+		istak = [o for o, _n in hisob.get(sg.name, Counter()).most_common()]
+		bor = frappe.get_all(
+			"Student Group Instructor", filters={"parent": sg.name}, pluck="instructor", order_by="idx"
+		)
+		if bor == istak:
+			natija["tegilmadi"] += 1
+			continue
+		if not istak:
+			# jadvalda darsi yo'q guruh — mavjud biriktirishni o'chirmaymiz
+			natija["jadvalda_yoq"].append(sg.name)
+			continue
+		natija["ozgardi"].append({"guruh": sg.name, "eski": bor, "yangi": istak})
+		if dry_run:
+			continue
+		doc = frappe.get_doc("Student Group", sg.name)
+		doc.instructors = []
+		for o in istak:
+			doc.append("instructors", {"instructor": o})
+		doc.flags.ignore_mandatory = True
+		# TUZOQ: Student Group.validate nofaol o'quvchi bo'lsa xato beradi
+		# ("… is inactive student") — guruh a'zolari bu yerda tegilmaydi,
+		# shuning uchun validatsiyani o'tkazib yuboramiz.
+		doc.flags.ignore_validate = True
+		doc.save(ignore_permissions=True)
+
+	if not dry_run:
+		frappe.db.commit()
+	natija["ozgardi_soni"] = len(natija["ozgardi"])
+	return natija
+
+
+def guruh_oqituvchilarini_yangila(guruh: str, versiya: str | None = None):
+	"""Bitta guruhning Student Group.instructors ro'yxatini jadvaldan yangilaydi."""
+	from collections import Counter
+
+	if not guruh or not frappe.db.exists("Student Group", guruh):
+		return
+	versiya = versiya or frappe.db.get_value("Jadval Versiyasi", {"holat": "Faol"}, "name")
+	c = Counter()
+	for r in frappe.get_all(
+		"Jadval Yozuvi", filters={"versiya": versiya, "guruh": guruh}, fields=["oqituvchi"]
+	):
+		if r.oqituvchi:
+			c[r.oqituvchi] += 1
+	istak = [o for o, _n in c.most_common()]
+	bor = frappe.get_all(
+		"Student Group Instructor", filters={"parent": guruh}, pluck="instructor", order_by="idx"
+	)
+	if bor == istak or not istak:
+		return
+	doc = frappe.get_doc("Student Group", guruh)
+	doc.instructors = []
+	for o in istak:
+		doc.append("instructors", {"instructor": o})
+	doc.flags.ignore_mandatory = True
+	doc.flags.ignore_validate = True
+	doc.save(ignore_permissions=True)
+
+
+def jadval_yozuvi_ozgardi(doc, method=None):
+	"""Jadval Yozuvi saqlansa/o'chirilsa — tegishli guruh o'qituvchisi yangilanadi.
+
+	hooks.doc_events orqali chaqiriladi: zavuch sahifada darsni almashtirsa,
+	Student Group kartochkasidagi o'qituvchi ham darhol o'sha bo'lib qoladi."""
+	try:
+		if doc.get("versiya") and frappe.db.get_value("Jadval Versiyasi", doc.versiya, "holat") != "Faol":
+			return
+		guruh_oqituvchilarini_yangila(doc.get("guruh"), doc.get("versiya"))
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "guruh o'qituvchisini yangilash")
