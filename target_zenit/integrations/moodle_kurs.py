@@ -325,13 +325,16 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 
 		# --- Moodle'dagi mavjud kurslar va mahalliy bog'lanishlar
 		mavjud = {} if dry else _moodle_kurslar()
+		link_maydonlari = ["name", "moodle_course_id", "shortname", "sync_hash",
+						   "enrolled_json", "guruh", "fan", "status", "oqituvchi"]
+		# `amal` — keyin qo'shilgan maydon: migratsiya o'tmagan saytda
+		# so'rov yiqilmasligi uchun ustun borligini tekshiramiz.
+		if frappe.db.has_column("Moodle Course Link", "amal"):
+			link_maydonlari.append("amal")
 		links = {
 			d.name: d
 			for d in frappe.get_all(
-				"Moodle Course Link",
-				fields=["name", "moodle_course_id", "shortname", "sync_hash",
-						"enrolled_json", "guruh", "fan", "status", "oqituvchi"],
-				limit_page_length=0,
+				"Moodle Course Link", fields=link_maydonlari, limit_page_length=0,
 			)
 		}
 		# Kalit o'zgarishi himoyasi (guruh nomi o'zgarsa dublikat kurs ochilmasin)
@@ -448,7 +451,7 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 			if jadvalsiz:
 				lines.append(
 					f"Jadvalda yo'q, lekin kursi bor guruh: {len(jadvalsiz)} ta — "
-					"faqat o'quvchi yozilishi moslanadi (kurs/o'qituvchi tegilmaydi)."
+					"o'quvchi yozilishi moslanadi, o'qituvchi esa olib tashlanadi."
 				)
 
 		enrolments, enrol_holat = [], {}
@@ -473,12 +476,13 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 			# suspend qilish qarori shunga tayanadi. Jadvalda umuman yo'q
 			# kurs esa boshqa holat: u yerda o'qituvchi chiqarib tashlanadi.
 			oqituvchi_aniq = bool(topilgan) and len(topilgan) == len(kalitlar)
-			if v.get("jadvalda_yoq") and not kerak:
-				# Jadvalda ham, guruhda ham hech kim qolmagan kurs (masalan
-				# eski blok guruhi) — o'qituvchi yozilishi ham olib tashlanadi,
-				# aks holda u Moodle'da o'sha "guruh"ga biriktirilgan bo'lib
-				# ko'rinib turadi. O'QUVCHISI BOR kursga tegmaymiz: jadvaldan
-				# chiqqan bo'lsa ham o'quvchilar uchun o'qituvchisiz qolmasin.
+			if v.get("jadvalda_yoq"):
+				# Jadvalda bu (guruh x fan) YO'Q — demak o'qituvchi bu guruhga
+				# dars bermaydi va Moodle'da ham unga biriktirilgan bo'lib
+				# turmasligi kerak (talab: Moodle o'qituvchi<->guruh = Frappe
+				# jadvali). Yozilishi suspend qilinadi. O'QUVCHILAR kursda
+				# QOLADI (materiali yo'qolmasin) — kursning o'zini yashirish
+				# yoki arxivlash alohida qaror.
 				oqituvchi_aniq = True
 			for k in kalitlar:
 				if k not in topilgan:
@@ -545,33 +549,53 @@ def sync_kurslar(trigger="Qo'lda", limit=0):
 						eski_link = links.get(key)
 						enrol_holat[key] = _json_oqi(eski_link.enrolled_json) if eski_link else {}
 
-		# --- Jadvaldan chiqib ketgan kurslarni yashirish
+		# --- KO'RINISH BOSHQARUVI: Frappe hal qiladi, Moodle bo'ysunadi
 		#
-		# MUHIM: o'quvchisi BOR kursni yashirmaymiz. Yashirin kursni o'quvchi
-		# ko'rmaydi — ya'ni "Moodle'da ham shu guruhda turish" amalda
-		# buzilardi. Guruh bo'shagandan keyingina yashiramiz.
-		azoli = {k for k, v in jadvalsiz.items() if azolar.get(v["guruh"])}
-		yoq_boldi = [
-			d for k, d in links.items()
-			if k not in yangi_links and k not in azoli
-			and d.moodle_course_id and d.status != "Yashirilgan"
-		]
-		if yoq_boldi and limit == 0:
-			lines.append(f"Jadvalda qolmagan kurs: {len(yoq_boldi)} ta — yashiriladi (o'chirilmaydi).")
-			if not dry:
-				_kurs_yangila([{"id": d.moodle_course_id, "visible": 0} for d in yoq_boldi])
-				for d in yoq_boldi:
-					frappe.db.set_value("Moodle Course Link", d.name, "status", "Yashirilgan")
-			stat["hidden"] = len(yoq_boldi)
+		# Qoida (foydalanuvchi talabi 2026-11-12):
+		#   `amal` = Avto      -> jadvalda bo'lsa ochiq, jadvaldan chiqsa YOPIQ
+		#                         (o'quvchisi bo'lsa ham: ishlatilmayotgan kurs
+		#                         o'quvchi ro'yxatini chalg'itmasligi kerak)
+		#   `amal` = Yashirish -> har doim yopiq (qo'lda qaror)
+		#   `amal` = O'chirish -> Moodle'dagi kurs O'CHIRILADI va bu yozuv ham
+		#                         olib tashlanadi (ortga yo'l yo'q)
+		if limit == 0:
+			ochirilsin = [d for d in links.values() if (d.get("amal") or "Avto") == "O'chirish"]
+			if ochirilsin:
+				lines.append(f"«O'chirish» belgilangan kurs: {len(ochirilsin)} ta.")
+				if not dry:
+					lines.extend(_kurslarni_ochir(ochirilsin))
+					for d in ochirilsin:
+						links.pop(d.name, None)
+						yangi_links.pop(d.name, None)
 
-		# Guruhga qayta o'quvchi kirgan bo'lsa yashirin kursni ochib qo'yamiz.
-		kor_boladi = [links[k] for k in azoli if links[k].status == "Yashirilgan"]
-		if kor_boladi and limit == 0:
-			lines.append(f"O'quvchisi qaytgan yashirin kurs: {len(kor_boladi)} ta — ochiladi.")
-			if not dry:
-				_kurs_yangila([{"id": d.moodle_course_id, "visible": 1} for d in kor_boladi])
-				for d in kor_boladi:
-					frappe.db.set_value("Moodle Course Link", d.name, "status", "Faol")
+			yopiladi, ochiladi = [], []
+			for k, d in links.items():
+				amal = d.get("amal") or "Avto"
+				if amal == "O'chirish":
+					continue
+				kerakli = (k in yangi_links) if amal == "Avto" else False
+				if kerakli and d.status == "Yashirilgan":
+					ochiladi.append(d)
+				elif not kerakli and d.status != "Yashirilgan" and d.moodle_course_id:
+					yopiladi.append(d)
+
+			if yopiladi:
+				lines.append(
+					f"Yopiladi (jadvalda yo'q yoki qo'lda yashirilgan): {len(yopiladi)} ta "
+					"— kurs va materiallari o'chmaydi, faqat o'quvchiga ko'rinmaydi."
+				)
+				if not dry:
+					_kurs_yangila([{"id": d.moodle_course_id, "visible": 0} for d in yopiladi])
+					for d in yopiladi:
+						frappe.db.set_value("Moodle Course Link", d.name, "status", "Yashirilgan")
+				stat["hidden"] = len(yopiladi)
+
+			if ochiladi:
+				lines.append(f"Qayta ochiladi (jadvalga qaytgan): {len(ochiladi)} ta.")
+				if not dry:
+					_kurs_yangila([{"id": d.moodle_course_id, "visible": 1} for d in ochiladi])
+					for d in ochiladi:
+						frappe.db.set_value("Moodle Course Link", d.name, "status", "Faol")
 
 		_saqla(yangi_links, enrol_holat, dry)
 		_saqla_enrol(jadvalsiz, enrol_holat, student_role, dry)
@@ -623,16 +647,23 @@ def _saqla(yangi_links, enrol_holat, dry):
 			"moodle_course_id": v.get("moodle_course_id") or 0,
 			"student_count": v.get("student_count") or 0,
 			"sync_hash": v.get("sync_hash"),
-			"status": "Faol",
 			"last_synced": now_datetime(),
 			"enrolled_json": json.dumps(enrol_holat.get(key, {}), ensure_ascii=False),
 		}
 		if frappe.db.exists("Moodle Course Link", key):
 			doc = frappe.get_doc("Moodle Course Link", key)
 			doc.update(values)
+			# `status` ni bu yerda majburan "Faol" qilmaymiz: ko'rinish
+			# boshqaruvi (amal/jadval) yuqorida hal qilingan va uni ustiga
+			# yozib yuborsak, qo'lda yashirilgan kurs har yurishda qayta
+			# "Faol" bo'lib, Moodlega keraksiz visible=0 ketib turardi.
+			if (doc.get("amal") or "Avto") != "Yashirish" and doc.status != "Yashirilgan":
+				doc.status = "Faol"
 			doc.save(ignore_permissions=True)
 		else:
-			frappe.get_doc({"doctype": "Moodle Course Link", **values}).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "Moodle Course Link", "status": "Faol", **values}).insert(
+				ignore_permissions=True
+			)
 
 
 def _saqla_enrol(jadvalsiz, enrol_holat, student_role, dry):
@@ -758,3 +789,40 @@ def yozilishni_tikla(dry_run=1):
 		"tozalandi": 0 if dry_run else len(nomlar),
 		"keyingi_qadam": "target_zenit.integrations.moodle_kurs.sync_now",
 	}
+
+
+def kursni_ochir(moodle_course_id: int):
+	"""Moodle'dagi kursni butunlay o'chiradi (baholari bilan).
+
+	DIQQAT: bu qaytarib bo'lmaydigan amal. Shuning uchun faqat Frappe'dan
+	ataylab buyurilganda chaqiriladi: `Moodle Course Link.amal = "O'chirish"`
+	yoki o'sha yozuvni o'chirish (`on_trash`).
+
+	`core_course_delete_courses` Moodle'da «Frappe Sync» servisiga
+	biriktirilgan bo'lishi kerak — aks holda `accessexception` keladi va
+	xabar nima qilish kerakligini aytadi."""
+	if not moodle_course_id:
+		return
+	javob = _call("core_course_delete_courses", {"courseids": [int(moodle_course_id)]})
+	ogohlar = (javob or {}).get("warnings") or []
+	# "Kurs topilmadi" — bizga mos: Moodle'da allaqachon yo'q.
+	jiddiy = [w for w in ogohlar if (w.get("warningcode") or "") not in ("unknowncourseidnumber", "invalidrecord")]
+	if jiddiy:
+		raise MoodleError(f"Moodle o'chirmadi: {jiddiy}")
+
+
+def _kurslarni_ochir(linklar) -> list[str]:
+	"""«O'chirish» belgilangan kurslarni Moodle'dan o'chirib, yozuvini oladi."""
+	satrlar = []
+	for d in linklar:
+		try:
+			kursni_ochir(d.moodle_course_id)
+			# Avval id ni bo'shatamiz — shunda `on_trash` API'ni qayta chaqirmaydi
+			frappe.db.set_value("Moodle Course Link", d.name, "moodle_course_id", 0,
+								update_modified=False)
+			frappe.delete_doc("Moodle Course Link", d.name, force=1, ignore_permissions=True)
+			satrlar.append(f"  O'CHIRILDI: {d.shortname or d.name} (Moodle id {d.moodle_course_id})")
+		except Exception as e:
+			frappe.db.set_value("Moodle Course Link", d.name, "error", str(e)[:1000])
+			satrlar.append(f"  XATO o'chirishda {d.shortname or d.name}: {str(e)[:200]}")
+	return satrlar

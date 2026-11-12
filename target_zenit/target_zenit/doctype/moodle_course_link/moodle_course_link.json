@@ -12,6 +12,7 @@
   "oqituvchi",
   "column_break_1",
   "idnumber",
+  "amal",
   "status",
   "last_synced",
   "section_moodle",
@@ -68,13 +69,22 @@
    "unique": 1
   },
   {
+   "fieldname": "amal",
+   "fieldtype": "Select",
+   "label": "Amal (Frappe boshqaradi)",
+   "options": "Avto\nYashirish\nO'chirish",
+   "default": "Avto",
+   "in_list_view": 1,
+   "description": "Avto — jadvalga qarab: jadvalda bo'lsa ochiq, chiqsa yashiriladi. Yashirish — har doim yopiq (o'quvchi ko'rmaydi). O'chirish — keyingi sinxronda Moodle'dagi kurs butunlay o'chiriladi va bu yozuv olib tashlanadi."
+  },
+  {
    "default": "Faol",
    "fieldname": "status",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Holat",
-   "options": "Faol\nYashirilgan\nXato",
+   "options": "Faol\nYashirilgan\nO'chirilgan\nXato",
    "read_only": 1
   },
   {
