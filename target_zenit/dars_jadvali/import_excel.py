@@ -270,8 +270,19 @@ def _instructor(nom_xom: str) -> str | None:
 
 
 # ------------------------------------------- 3. guruhlar va bloklar
+def _slot_kaliti(y) -> tuple:
+	"""Yacheykaning slot kaliti: kun + dars + fan matni + O'QITUVCHILAR TO'PLAMI.
+
+	O'qituvchilar kalitga kiradi, chunki bitta slotda bitta fanning bir nechta
+	mustaqil oqimi bo'lishi mumkin (masalan dushanba 1-dars ENGLISH: 3A ni
+	Adilova/Glory, 5A+5B ni Boboyeva/Djiyenbayeva o'qitadi) — ular alohida
+	bloklar. Faqat fan matni bo'yicha guruhlasak ular bitta blokka qo'shilib
+	ketadi va o'qituvchilar Excel bilan mos kelmay qoladi."""
+	return (y["kun"], y["dars"], y["fan_matn"], tuple(y["oqituvchilar"]))
+
+
 def _slot_bloklari(yacheykalar):
-	"""(kun, dars, fan_matn) -> blok kaliti (fan_kodi, sinflar tuple).
+	"""slot kaliti -> blok kaliti (fan_kodi, sinflar tuple).
 
 	MUHIM: bitta sinf bir fan bo'yicha turli vaqtda turli blokda bo'lishi mumkin
 	(masalan ENGLISH: 3A yolg'iz, yoki 3A+5A+5B birga) — shuning uchun blok
@@ -281,7 +292,7 @@ def _slot_bloklari(yacheykalar):
 	vaqt_boyicha = defaultdict(set)
 	for y in yacheykalar:
 		if _daraja_soni(y["fan_matn"]):
-			vaqt_boyicha[(y["kun"], y["dars"], y["fan_matn"])].add(y["sinf_qisqa"])
+			vaqt_boyicha[_slot_kaliti(y)].add(y["sinf_qisqa"])
 	slot_kalit = {}
 	for slot, sinflar in vaqt_boyicha.items():
 		kod = _fan_kodi(slot[2])
@@ -326,6 +337,11 @@ def _blok_kaliti(yacheykalar):
 	return Counter(_slot_bloklari(yacheykalar).values())
 
 
+def _guruh_nomi(kod, daraja, sinflar) -> str:
+	"""Daraja/tanlov guruhining nomi: 'ENGLISH High 8-9'."""
+	return f"{kod} {daraja} {_blok_nomi(kod, sinflar).split(' ', 1)[-1]}"
+
+
 def _blok_nomi(kod, sinflar):
 	raqamlar = sorted({re.match(r"\d+", s).group(0) for s in sinflar if re.match(r"\d+", s)}, key=int)
 	oraliq = raqamlar[0] if len(raqamlar) == 1 else f"{raqamlar[0]}-{raqamlar[-1]}"
@@ -343,7 +359,7 @@ def guruhlar_yarat(yacheykalar, academic_year, dry_run=0):
 	for y in yacheykalar:
 		if not _daraja_soni(y["fan_matn"]):
 			continue
-		kalit = slot_kalit.get((y["kun"], y["dars"], y["fan_matn"]))
+		kalit = slot_kalit.get(_slot_kaliti(y))
 		if not kalit:
 			continue
 		for t in y["oqituvchilar"]:
@@ -367,7 +383,7 @@ def guruhlar_yarat(yacheykalar, academic_year, dry_run=0):
 
 		guruh_qatorlari = []
 		for daraja, oqituvchi in sorted(darajalar[kalit].items()):
-			guruh_nomi = f"{kod} {daraja} {_blok_nomi(kod, sinflar).split(' ', 1)[-1]}"
+			guruh_nomi = _guruh_nomi(kod, daraja, sinflar)
 			guruh_qatorlari.append(
 				{"daraja": daraja, "guruh_nomi": guruh_nomi, "oqituvchi": oqituvchi}
 			)
@@ -494,7 +510,7 @@ def yozuvlar_yarat(yacheykalar, versiya, dry_run=0, xotira_bloklar=None):
 
 		if _daraja_soni(y["fan_matn"]):
 			# Daraja darsi: blok bo'yicha bir marta (slot kaliti orqali aniq blok)
-			kalit = slot_kalit.get((y["kun"], y["dars"], y["fan_matn"]))
+			kalit = slot_kalit.get(_slot_kaliti(y))
 			blok = blok_top(kalit) if kalit else None
 			if not blok:
 				natija["xato"].append(f"{y['kun']} {y['dars']} {y['sinf_qisqa']}: blok topilmadi ({fan_kod})")
@@ -503,19 +519,12 @@ def yozuvlar_yarat(yacheykalar, versiya, dry_run=0, xotira_bloklar=None):
 			if slot in korilgan_bloklar:
 				continue
 			korilgan_bloklar.add(slot)
-			if xotira_bloklar is not None:
-				xb = next((b for b in xotira_bloklar if b["nomi"] == blok), None)
-				guruhlar = [
-					frappe._dict(guruh=g["guruh_nomi"], oqituvchi=g["oqituvchi"])
-					for g in (xb["guruhlar"] if xb else [])
-				]
-			else:
-				guruhlar = frappe.get_all(
-					"Dars Bloki Guruhi", filters={"parent": blok},
-					fields=["guruh", "oqituvchi"], order_by="idx",
-				)
-			for g in guruhlar:
-				_yoz(versiya, y, g.guruh, fan_kod, g.oqituvchi, blok, natija, dry_run)
+			# O'qituvchi SHU SLOTNING yacheykasidan olinadi (blok qatorlaridan emas):
+			# bir xil blokda darajalar o'qituvchisi slotdan slotga almashishi mumkin.
+			for t in y["oqituvchilar"]:
+				daraja = t.split(":", 1)[0].strip() if ":" in t else "—"
+				guruh = _guruh_nomi(fan_kod, daraja, kalit[1])
+				_yoz(versiya, y, guruh, fan_kod, _instructor(t), blok, natija, dry_run)
 		else:
 			oqituvchi_xom = y["oqituvchilar"][0] if y["oqituvchilar"] else None
 			oqituvchi = _instructor(oqituvchi_xom) if oqituvchi_xom else None
@@ -727,3 +736,311 @@ def oxirgi_natija():
 	"""Oxirgi import natijasi (sahifa yangilansa ham ko'rinsin)."""
 	_import_guard()
 	return frappe.cache().get_value(f"jadval_import_natija:{frappe.session.user}")
+
+
+# ------------------------------------- 5. sinxron: Excel = yagona haqiqat
+#
+# import_all faqat YETISHMAYOTGANINI qo'shadi ("bor_edi" deb o'tkazadi), ya'ni
+# jadval o'zgargan bo'lsa (fan/o'qituvchi almashgan, dars olib tashlangan)
+# bazadagi eski holat qolib ketadi. sinxron() esa bazani Excel'ga 1:1
+# keltiradi: ortiqchasini o'chiradi, farqlisini yangilaydi, yo'g'ini qo'shadi.
+def _blok_xaritasi():
+	"""(fan, sinflar frozenset) -> Dars Bloki nomi."""
+	xarita = {}
+	for b in frappe.get_all("Dars Bloki", fields=["name", "fan"]):
+		sinflar = frozenset(
+			frappe.get_all("Dars Bloki Sinfi", filters={"parent": b.name}, pluck="sinf")
+		)
+		xarita[(b.fan, sinflar)] = b.name
+	return xarita
+
+
+def _istalgan_yozuvlar(yacheykalar):
+	"""Excel'dan kutilayotgan yozuvlar: (kun, dars, guruh) -> {fan, oqituvchi, blok}."""
+	slot_kalit = _slot_bloklari(yacheykalar)
+	qoshma = _qoshma_slotlar(yacheykalar)
+	blok_xarita = _blok_xaritasi()
+	istak, muammo = {}, []
+
+	for y in yacheykalar:
+		kod = _fan_kodi(y["fan_matn"])
+		sinf = _sinf_tolik(y["sinf_qisqa"])
+		if not sinf:
+			muammo.append(f"{y['sinf_qisqa']}: sinf bazada topilmadi")
+			continue
+
+		if _daraja_soni(y["fan_matn"]):
+			kalit = slot_kalit.get(_slot_kaliti(y))
+			toliq = frozenset(filter(None, (_sinf_tolik(s) for s in kalit[1]))) if kalit else frozenset()
+			blok = blok_xarita.get((kod, toliq))
+			if not blok:
+				muammo.append(f"{y['kun']} {y['dars']} {kod}: blok topilmadi ({', '.join(kalit[1]) if kalit else '?'})")
+				continue
+			for t in y["oqituvchilar"]:
+				daraja = t.split(":", 1)[0].strip() if ":" in t else "—"
+				guruh = _guruh_nomi(kod, daraja, kalit[1])
+				istak[(y["kun"], y["dars"], guruh)] = {
+					"fan": kod, "oqituvchi": _instructor(t), "oqituvchi_xom": _oqituvchi_nomi(t), "blok": blok,
+				}
+			continue
+
+		oqituvchi_xom = y["oqituvchilar"][0] if y["oqituvchilar"] else None
+		q = qoshma.get((y["kun"], y["dars"], y["fan_matn"], oqituvchi_xom)) if oqituvchi_xom else None
+		if q:
+			nomi = f"{kod.replace('/', '-').strip()} {'+'.join(q)} (qo'shma)"
+			guruh = nomi
+			blok = nomi if frappe.db.exists("Dars Bloki", nomi) else None
+		else:
+			guruh, blok = sinf, None
+		istak[(y["kun"], y["dars"], guruh)] = {
+			"fan": kod,
+			"oqituvchi": _instructor(oqituvchi_xom) if oqituvchi_xom else None,
+			"oqituvchi_xom": _oqituvchi_nomi(oqituvchi_xom) if oqituvchi_xom else None,
+			"blok": blok,
+		}
+	return istak, muammo
+
+
+def bloklar_sinxron(yacheykalar, dry_run=0):
+	"""Dars Bloki qatorlarini (sinflar, daraja->guruh->o'qituvchi) Excel'ga moslaydi.
+
+	Blokdagi o'qituvchi — shu daraja uchun haftada eng ko'p uchraydigani
+	(slotdan slotga almashsa, yozuvlar baribir slot bo'yicha aniq yoziladi)."""
+	from collections import Counter, defaultdict
+
+	slot_kalit = _slot_bloklari(yacheykalar)
+	blok_xarita = _blok_xaritasi()
+	hisob = defaultdict(Counter)  # (blok, daraja) -> o'qituvchi hisobi
+	blok_sinflari = {}
+	for y in yacheykalar:
+		if not _daraja_soni(y["fan_matn"]):
+			continue
+		kalit = slot_kalit.get(_slot_kaliti(y))
+		if not kalit:
+			continue
+		kod, sinflar = kalit
+		toliq = frozenset(filter(None, (_sinf_tolik(s) for s in sinflar)))
+		blok = blok_xarita.get((kod, toliq))
+		if not blok:
+			continue
+		blok_sinflari[blok] = (kod, sinflar)
+		for t in y["oqituvchilar"]:
+			daraja = t.split(":", 1)[0].strip() if ":" in t else "—"
+			hisob[(blok, daraja)][_oqituvchi_nomi(t)] += 1
+
+	ozgardi = []
+	for blok, (kod, sinflar) in sorted(blok_sinflari.items()):
+		istak = {}
+		for (b, daraja), c in hisob.items():
+			if b != blok:
+				continue
+			istak[daraja] = (_guruh_nomi(kod, daraja, sinflar), _instructor(c.most_common(1)[0][0]))
+		bor = frappe.get_all(
+			"Dars Bloki Guruhi", filters={"parent": blok},
+			fields=["daraja", "guruh", "oqituvchi"], order_by="idx",
+		)
+		hozir = {r.daraja: (r.guruh, r.oqituvchi) for r in bor}
+		if hozir == istak:
+			continue
+		ozgardi.append({"blok": blok, "eski": hozir, "yangi": istak})
+		if dry_run:
+			continue
+		doc = frappe.get_doc("Dars Bloki", blok)
+		doc.guruhlar = []
+		for daraja, (guruh, oqituvchi) in sorted(istak.items()):
+			doc.append("guruhlar", {"daraja": daraja, "guruh": guruh, "oqituvchi": oqituvchi})
+		doc.save(ignore_permissions=True)
+	return ozgardi
+
+
+def _yozuv_sinxron(versiya, istak, dry_run=0):
+	"""Jadval Yozuvi'ni istakka keltiradi: o'chirish -> yangilash -> qo'shish."""
+	bor = {
+		(r.kun, r.dars_raqami, r.guruh): r
+		for r in frappe.get_all(
+			"Jadval Yozuvi", filters={"versiya": versiya},
+			fields=["name", "kun", "dars_raqami", "guruh", "fan", "oqituvchi", "blok"],
+		)
+	}
+	ochir = [r for k, r in bor.items() if k not in istak]
+	yangila = [
+		(k, bor[k], v)
+		for k, v in istak.items()
+		if k in bor and (bor[k].fan != v["fan"] or bor[k].oqituvchi != v["oqituvchi"] or (bor[k].blok or None) != (v["blok"] or None))
+	]
+	qosh = {k: v for k, v in istak.items() if k not in bor}
+	natija = {
+		"bazada": len(bor), "istak": len(istak),
+		"ochirildi": len(ochir), "yangilandi": len(yangila), "yaratildi": len(qosh),
+		"tegilmadi": len(istak) - len(yangila) - len(qosh),
+		"xato": [],
+		"ochirish_namuna": [f"{r.kun} {r.dars_raqami} {r.guruh} ({r.fan})" for r in ochir[:20]],
+	}
+	if dry_run:
+		natija["yangilash_namuna"] = [
+			f"{k[0]} {k[1]} {k[2]}: {o.fan}/{o.oqituvchi} -> {v['fan']}/{v['oqituvchi']}"
+			for k, o, v in yangila[:20]
+		]
+		natija["qoshish_namuna"] = [f"{k[0]} {k[1]} {k[2]} ({v['fan']})" for k, v in list(qosh.items())[:20]]
+		return natija
+
+	for r in ochir:
+		frappe.delete_doc("Jadval Yozuvi", r.name, force=1, ignore_permissions=True)
+
+	# O'qituvchi almashinuvi (masalan High<->Middle) vaqtincha konflikt bermasin:
+	# avval o'zgaradigan qatorlardan o'qituvchini olib tashlaymiz, keyin yozamiz.
+	for _k, o, _v in yangila:
+		frappe.db.set_value("Jadval Yozuvi", o.name, "oqituvchi", None, update_modified=False)
+
+	for k, o, v in yangila:
+		try:
+			doc = frappe.get_doc("Jadval Yozuvi", o.name)
+			doc.fan = v["fan"] if frappe.db.exists("Course", v["fan"]) else None
+			doc.oqituvchi = v["oqituvchi"]
+			doc.blok = v["blok"]
+			doc.save(ignore_permissions=True)
+		except Exception as e:
+			natija["xato"].append(f"yangilash {k[0]} {k[1]} {k[2]}: {str(e)[:150]}")
+
+	for k, v in qosh.items():
+		try:
+			frappe.get_doc(
+				{
+					"doctype": "Jadval Yozuvi", "versiya": versiya,
+					"kun": k[0], "dars_raqami": k[1], "guruh": k[2],
+					"fan": v["fan"] if frappe.db.exists("Course", v["fan"]) else None,
+					"oqituvchi": v["oqituvchi"], "blok": v["blok"],
+				}
+			).insert(ignore_permissions=True)
+		except Exception as e:
+			natija["xato"].append(f"qo'shish {k[0]} {k[1]} {k[2]}: {str(e)[:150]}")
+	return natija
+
+
+def sinxron(path, versiya_nomi=None, academic_year=None, dry_run=1):
+	"""Bazadagi jadvalni Excel bilan 1:1 qiladi (Excel — yagona haqiqat).
+
+	bench --site <sayt> execute target_zenit.dars_jadvali.import_excel.sinxron \\
+	    --kwargs "{'path':'Umumiy_dars_jadvali.xlsx','dry_run':1}"
+	"""
+	if not frappe.db.has_column("Student Group", "custom_guruh_turi"):
+		from target_zenit.dars_jadvali.setup import hammasi as _setup
+
+		_setup()
+
+	academic_year = academic_year or frappe.db.get_value("Academic Year", {}, "name")
+	versiya = versiya_nomi or frappe.db.get_value("Jadval Versiyasi", {"holat": "Faol"}, "name")
+	if not versiya:
+		frappe.throw("Faol Jadval Versiyasi topilmadi — versiya_nomi bering.")
+	sinflar, yacheykalar = _oqish(path)
+
+	hisobot = {
+		"fayl": path, "versiya": versiya, "dry_run": bool(dry_run),
+		"yacheykalar": len(yacheykalar), "sinflar": len(sinflar),
+	}
+	hisobot["1_fanlar"] = fanlar_yarat(yacheykalar, dry_run)
+	oq = oqituvchilar_yarat(yacheykalar, dry_run)
+	hisobot["2_oqituvchilar"] = {
+		"jami": oq["jami"], "yangi": oq["yangi"],
+		"employee_siz": oq["employee_siz"], "vakant": oq["vakant"],
+	}
+	g = guruhlar_yarat(yacheykalar, academic_year, dry_run)
+	hisobot["3_guruhlar"] = {
+		"bloklar": len(g["bloklar"]), "guruhlar": len(set(g["guruhlar"])),
+		"sinf_topilmadi": g["sinf_topilmadi"],
+	}
+	hisobot["4_blok_qatorlari"] = bloklar_sinxron(yacheykalar, dry_run)
+
+	istak, muammo = _istalgan_yozuvlar(yacheykalar)
+	hisobot["5_yozuvlar"] = _yozuv_sinxron(versiya, istak, dry_run)
+	hisobot["muammolar"] = muammo[:20]
+
+	# Excel'da ishlatilmayotgan blok/guruhlar (o'chirmaymiz — faqat xabar beramiz)
+	ishlatilgan_guruh = {k[2] for k in istak}
+	ishlatilgan_blok = {v["blok"] for v in istak.values() if v["blok"]}
+	bosh_blok = [b for b in frappe.get_all("Dars Bloki", pluck="name") if b not in ishlatilgan_blok]
+	bosh_guruh = []
+	for sg in frappe.get_all(
+		"Student Group",
+		filters={"custom_guruh_turi": ["in", ["Daraja", "Tanlov", "Qo'shma"]]},
+		fields=["name"],
+	):
+		if sg.name in ishlatilgan_guruh:
+			continue
+		oquvchi = frappe.db.count("Student Group Student", {"parent": sg.name})
+		bosh_guruh.append(f"{sg.name} (o'quvchi: {oquvchi})")
+	hisobot["ishlatilmayotgan"] = {"bloklar": bosh_blok, "guruhlar": sorted(bosh_guruh)}
+
+	if not dry_run:
+		frappe.db.commit()
+	print(json.dumps(hisobot, ensure_ascii=False, indent=1, default=str))
+	return hisobot
+
+
+def tekshir(path, versiya=None, chiqar=20):
+	"""1:1 tekshiruv: Excel yacheykalari vs bazadagi jadval (fan + o'qituvchilar).
+
+	Har (kun, dars, sinf) uchun Excel'dagi fan/o'qituvchi to'plamini bazadan
+	qayta yig'ilgani bilan solishtiradi. 0 farq = jadval aynan mos."""
+	from collections import defaultdict
+
+	versiya = versiya or frappe.db.get_value("Jadval Versiyasi", {"holat": "Faol"}, "name")
+	_sinflar_ex, yacheykalar = _oqish(path)
+
+	ex = defaultdict(lambda: {"fan": set(), "oqituvchi": set()})
+	for y in yacheykalar:
+		sinf = _sinf_tolik(y["sinf_qisqa"]) or y["sinf_qisqa"]
+		k = (y["kun"], y["dars"], sinf)
+		ex[k]["fan"].add(_fan_kodi(y["fan_matn"]))
+		for t in y["oqituvchilar"]:
+			nom = _oqituvchi_nomi(t)
+			inst = _instructor(nom)
+			ex[k]["oqituvchi"].add(inst or f"?{nom}")
+
+	blok_sinf = defaultdict(set)
+	for r in frappe.get_all("Dars Bloki Sinfi", fields=["parent", "sinf"]):
+		blok_sinf[r.parent].add(r.sinf)
+	sg = {
+		d.name: d
+		for d in frappe.get_all(
+			"Student Group", fields=["name", "custom_guruh_turi", "custom_azo_sinflar"]
+		)
+	}
+	db = defaultdict(lambda: {"fan": set(), "oqituvchi": set()})
+	rows = frappe.get_all(
+		"Jadval Yozuvi", filters={"versiya": versiya},
+		fields=["kun", "dars_raqami", "guruh", "fan", "oqituvchi", "blok"],
+	)
+	for r in rows:
+		if r.blok and blok_sinf.get(r.blok):
+			sinf_royxat = blok_sinf[r.blok]
+		else:
+			s = sg.get(r.guruh)
+			if s and s.custom_guruh_turi in ("Daraja", "Tanlov", "Qo'shma") and s.custom_azo_sinflar:
+				sinf_royxat = {x.strip() for x in s.custom_azo_sinflar.split(",") if x.strip()}
+			else:
+				sinf_royxat = {r.guruh}
+		for s_nomi in sinf_royxat:
+			k = (r.kun, r.dars_raqami, s_nomi)
+			db[k]["fan"].add(r.fan)
+			if r.oqituvchi:
+				db[k]["oqituvchi"].add(r.oqituvchi)
+
+	farqlar = []
+	for k in sorted(set(ex) | set(db), key=lambda x: (KUNLAR.index(x[0]) if x[0] in KUNLAR else 9, x[1], str(x[2]))):
+		e, d = ex.get(k, {"fan": set(), "oqituvchi": set()}), db.get(k, {"fan": set(), "oqituvchi": set()})
+		if e["fan"] != d["fan"] or e["oqituvchi"] != d["oqituvchi"]:
+			farqlar.append(
+				{
+					"slot": f"{k[0]} {k[1]}-dars {k[2]}",
+					"excel_fan": sorted(e["fan"]), "baza_fan": sorted(x for x in d["fan"] if x),
+					"excel_oqituvchi": sorted(e["oqituvchi"]), "baza_oqituvchi": sorted(d["oqituvchi"]),
+				}
+			)
+	xulosa = {
+		"versiya": versiya, "excel_slot": len(ex), "baza_slot": len(db),
+		"baza_yozuv": len(rows), "farqli_slot": len(farqlar),
+		"farqlar": farqlar[: int(chiqar)],
+	}
+	print(json.dumps(xulosa, ensure_ascii=False, indent=1))
+	return xulosa
