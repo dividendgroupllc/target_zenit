@@ -16,18 +16,41 @@ PROMOTE_RE = re.compile(r"^G(\d{1,2})([A-Za-z]+)$")
 FINAL_GRADE = 11  # 11-sinf ko'chirilmaydi (bitiruvchi)
 
 
+def _sinf_guruhlari(nomlar: list[str]) -> set[str]:
+	"""Berilgan guruhlardan faqat SINF guruhlarini qaytaradi.
+
+	NEGA KERAK (2026-11-12 da topilgan nuqson): bu yerda avval o'quvchining
+	BARCHA a'zoliklari olinardi va `custom_sinf_guruh` dan boshqasi
+	o'chirilardi. Natijada o'quvchi kartochkasini shunchaki saqlash (ism
+	tahriri, ketgan sanasi, to'lov maydoni — nima bo'lsa ham) uni **daraja /
+	tanlov / qo'shma** guruhlaridan chiqarib tashlardi: «ENGLISH Low 4»,
+	«MATH High 8-9» kabi a'zoliklar jimgina yo'qolardi va Moodle kursidan
+	ham chiqib ketardi. Shu modulning ishi — faqat SINF a'zoligini bitta
+	qilib ushlab turish; daraja guruhlari zavuch/o'quv bo'limi qo'lida
+	([[target_zenit]] dars jadvali moduli)."""
+	if not nomlar:
+		return set()
+	turlar = frappe.get_all(
+		"Student Group", filters={"name": ["in", list(nomlar)]},
+		fields=["name", "custom_guruh_turi"],
+	)
+	return {r.name for r in turlar if (r.custom_guruh_turi or "Sinf") == "Sinf"}
+
+
 def on_student_update(doc, method=None):
 	group = doc.get(FIELD)
 	if not group:
 		return
 
-	current = frappe.get_all(
+	hammasi = frappe.get_all(
 		"Student Group Student", filters={"student": doc.name}, pluck="parent"
 	)
+	# Daraja/tanlov/qo'shma guruhlariga TEGILMAYDI
+	current = sorted(_sinf_guruhlari(hammasi))
 	if current == [group]:
 		return
 
-	# Boshqa guruhlardan chiqarish
+	# Boshqa SINF guruhlaridan chiqarish
 	for g in set(current) - {group}:
 		grp = frappe.get_doc("Student Group", g)
 		grp.students = [r for r in grp.students if r.student != doc.name]

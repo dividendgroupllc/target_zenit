@@ -17,6 +17,7 @@ class TZXodimQarzPanel {
 		this.fTur = "qarzdor"; // qarzdor | kompaniya | hamma
 		this.fLavozim = "";    // lavozim (guruh) filtri
 		this.fKategoriya = ""; // ish haqi kategoriyasi filtri
+		this.fOy = "";         // oy filtri (YYYY-MM) — serverda qo'llanadi
 		this.make_skeleton();
 		this.load();
 	}
@@ -33,6 +34,12 @@ class TZXodimQarzPanel {
 		if (v < -1000) return `<span class="pill st-blue">Kompaniya qarzdor</span>`;
 		return `<span class="pill st-mut">0</span>`;
 	}
+	oyNomi(oy) {
+		const [y, m] = String(oy || "").split("-");
+		const nomlar = ["", "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
+			"Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
+		return nomlar[Number(m)] ? `${nomlar[Number(m)]} ${y}` : oy;
+	}
 
 	make_skeleton() {
 		this.wrapper.find(".page-head").hide();
@@ -45,7 +52,8 @@ class TZXodimQarzPanel {
 	load() {
 		frappe.call({
 			method: `${XQ_M}.get_data`,
-			callback: (r) => { this.data = r.message || { rows: [], stats: {} }; this.render(); },
+			args: { oy: this.fOy },
+			callback: (r) => { this.data = r.message || { rows: [], stats: {} }; this.selected = null; this.render(); },
 			error: () => this.body.html(`<div class="loading">Xatolik. Sahifani yangilang.</div>`),
 		});
 	}
@@ -85,7 +93,8 @@ class TZXodimQarzPanel {
 			<div class="topbar">
 				<div>
 					<h1>Xodimlar qarzdorligi</h1>
-					<div class="sub">O'qituvchi va xodimlar — bitta jadvalda · GL asosida jonli hisob</div>
+					<div class="sub">O'qituvchi va xodimlar — bitta jadvalda · GL asosida jonli hisob${
+						this.fOy ? ` · <b>${this.esc(this.oyNomi(this.fOy))}</b> oyi kesimida` : ""}</div>
 				</div>
 				<div class="spacer"></div>
 				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
@@ -108,6 +117,11 @@ class TZXodimQarzPanel {
 
 			<div class="controls mb">
 				<input type="text" class="q" placeholder="Qidiruv: ism, lavozim, telefon…" value="${this.esc(this.q)}">
+				<select class="foy">
+					<option value="">Barcha oylar</option>
+					${(this.data.oylar || []).map((o) =>
+						`<option value="${this.esc(o)}" ${this.fOy === o ? "selected" : ""}>${this.esc(this.oyNomi(o))}</option>`).join("")}
+				</select>
 				<select class="fkategoriya">
 					<option value="">Barcha kategoriyalar</option>
 					${this.kategoriyalar().map((k) =>
@@ -130,6 +144,7 @@ class TZXodimQarzPanel {
 		this.render_list();
 		this.body.find(`[data-act="reload"]`).on("click", () => this.load());
 		this.body.find(".q").on("input", frappe.utils.debounce((e) => { this.q = e.target.value; this.render_list(); }, 250));
+		this.body.find(".foy").on("change", (e) => { this.fOy = e.target.value; this.load(); });
 		this.body.find(".flavozim").on("change", (e) => { this.fLavozim = e.target.value; this.render_list(); });
 		this.body.find(".fkategoriya").on("change", (e) => { this.fKategoriya = e.target.value; this.render_list(); });
 		this.body.find(".kpi.click").on("click", (e) => { this.fTur = $(e.currentTarget).data("t"); this.render(); });
@@ -173,12 +188,7 @@ class TZXodimQarzPanel {
 				const d = resp.message || { months: [], gl: [] };
 				const months = d.months || [];
 				const gl = d.gl || [];
-				const oyNomi = (oy) => {
-					const [y, m] = String(oy || "").split("-");
-					const nomlar = ["", "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
-						"Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
-					return nomlar[Number(m)] ? `${nomlar[Number(m)]} ${y}` : oy;
-				};
+				const oyNomi = (oy) => this.oyNomi(oy);
 				this.body.find(".detail").html(`
 					<div class="d-head">
 						<div><div class="d-name">${this.esc(r.ism)} <span class="mini">${this.esc(r.lavozim || "")}</span></div></div>
