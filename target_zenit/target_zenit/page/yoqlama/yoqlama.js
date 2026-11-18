@@ -108,7 +108,8 @@ class TZYoqlama {
 			return `Dars jadvali bo'yicha: shu oyda ${r.kerak_kun} dars kuni`
 				+ (r.fanlar && r.fanlar.length ? ` · ${r.fanlar.join(", ")}` : "");
 		}
-		const m = { oy: "shu oy uchun kiritilgan norma", xodim: "xodimning doimiy normasi",
+		const m = { oy: "oylik tabelda shu oy uchun qo'lda kiritilgan norma",
+			xodim: "xodimning doimiy normasi",
 			default: "default norma (o'qituvchi 21, boshqalar 26)" }[r.kerak_manba] || "norma";
 		return `Norma ish kuni — ${m}`;
 	}

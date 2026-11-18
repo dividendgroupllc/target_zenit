@@ -17,8 +17,7 @@ class TZXodimQarzPanel {
 		this.fTur = "qarzdor"; // qarzdor | kompaniya | hamma
 		this.fLavozim = new Set();    // lavozim filtri — bir nechtasi birga tanlanadi
 		this.fKategoriya = new Set(); // kategoriya filtri — bir nechtasi birga tanlanadi
-		this.fDan = "";               // davr boshi (YYYY-MM-DD) — serverda qo'llanadi
-		this.fGacha = "";             // davr oxiri (YYYY-MM-DD) — serverda qo'llanadi
+		this.fOylar = new Set();      // oy filtri (YYYY-MM) — serverda qo'llanadi, multi
 		this.make_skeleton();
 		this.load();
 	}
@@ -53,7 +52,7 @@ class TZXodimQarzPanel {
 	load() {
 		frappe.call({
 			method: `${XQ_M}.get_data`,
-			args: { from_date: this.fDan, to_date: this.fGacha },
+			args: { oylar: JSON.stringify([...this.fOylar]) },
 			callback: (r) => { this.data = r.message || { rows: [], stats: {} }; this.selected = null; this.render(); },
 			error: () => this.body.html(`<div class="loading">Xatolik. Sahifani yangilang.</div>`),
 		});
@@ -94,22 +93,28 @@ class TZXodimQarzPanel {
 	}
 
 	// --- Multi-tanlov dropdown (qidiruv + checkbox ro'yxat) ---
-	mselSet(k) { return k === "lavozim" ? this.fLavozim : this.fKategoriya; }
+	// "oy" boshqalardan farq qiladi: filtr serverda qo'llanadi, shuning uchun
+	// belgilashda faqat tugma yangilanadi, so'rov esa popup YOPILGANDA ketadi
+	// (bir nechta oyni tanlab, bitta yuklash).
+	mselSet(k) { return k === "lavozim" ? this.fLavozim : k === "oy" ? this.fOylar : this.fKategoriya; }
 
 	mselLabel(k) {
 		const set = this.mselSet(k);
-		const bosh = k === "lavozim" ? "Barcha lavozimlar" : "Barcha kategoriyalar";
-		const nom = k === "lavozim" ? "Lavozim" : "Kategoriya";
+		const nomlar = { lavozim: ["Barcha lavozimlar", "Lavozim", "Lavozimsiz"],
+			kategoriya: ["Barcha kategoriyalar", "Kategoriya", "Belgilanmagan"],
+			oy: ["Barcha oylar", "Oy", ""] };
+		const [bosh, nom, noneLabel] = nomlar[k];
 		if (!set.size) return bosh;
 		if (set.size === 1) {
 			const v = [...set][0];
-			return `${nom}: ${v === "__none" ? (k === "lavozim" ? "Lavozimsiz" : "Belgilanmagan") : v}`;
+			return `${nom}: ${v === "__none" ? noneLabel : k === "oy" ? this.oyNomi(v) : v}`;
 		}
 		return `${nom}: ${set.size} ta`;
 	}
 
 	mselHtml(k, items, searchable) {
 		const set = this.mselSet(k);
+		const labelFn = k === "oy" ? (v) => this.oyNomi(v) : (v) => v;
 		const noneLabel = k === "lavozim" ? "Lavozimsiz" : "Belgilanmagan";
 		const it = (v, label) => `
 			<label class="msel-it"><input type="checkbox" value="${this.esc(v)}" ${set.has(v) ? "checked" : ""}>
@@ -120,8 +125,8 @@ class TZXodimQarzPanel {
 				<div class="msel-pop" hidden>
 					${searchable ? `<input type="text" class="msel-q" placeholder="Qidirish…">` : ""}
 					<div class="msel-list">
-						${it("__none", noneLabel)}
-						${items.map((v) => it(v, v)).join("")}
+						${k === "oy" ? "" : it("__none", noneLabel)}
+						${items.map((v) => it(v, labelFn(v))).join("")}
 					</div>
 					<div class="msel-foot">
 						<button type="button" class="msel-clear">Tozalash</button>
@@ -131,15 +136,29 @@ class TZXodimQarzPanel {
 			</div>`;
 	}
 
+	// Oy popupi yopilganda: tanlov ochilgandagidan farq qilsa — serverdan qayta yuklash
+	oy_snap() { return JSON.stringify([...this.fOylar].sort()); }
+	close_pops() {
+		this.body.find(".msel-pop").each((_, p) => { p.hidden = true; });
+		if (this._oySnap !== undefined && this._oySnap !== this.oy_snap()) {
+			this._oySnap = undefined;
+			this.load();
+		}
+	}
+
 	bind_msel() {
 		const self = this;
 		this.body.find(".msel-btn").on("click", function (e) {
 			e.stopPropagation();
-			const pop = $(this).siblings(".msel-pop")[0];
+			const msel = $(this).closest(".msel");
+			const pop = msel.find(".msel-pop")[0];
 			const ochiqEdi = !pop.hidden;
-			self.body.find(".msel-pop").each((_, p) => { p.hidden = true; });
-			pop.hidden = ochiqEdi;
-			if (!ochiqEdi) $(pop).find(".msel-q").trigger("focus");
+			self.close_pops();
+			if (!ochiqEdi) {
+				pop.hidden = false;
+				if (msel.data("k") === "oy") self._oySnap = self.oy_snap();
+				$(pop).find(".msel-q").trigger("focus");
+			}
 		});
 		this.body.find(".msel-pop").on("click", (e) => e.stopPropagation());
 		this.body.find(".msel-pop input[type=checkbox]").on("change", function () {
@@ -147,7 +166,7 @@ class TZXodimQarzPanel {
 			const set = self.mselSet(k);
 			if (this.checked) set.add(this.value); else set.delete(this.value);
 			self.msel_btn_yangila(k);
-			self.render_list();
+			if (k !== "oy") self.render_list();
 		});
 		this.body.find(".msel-q").on("input", function () {
 			const q = this.value.trim().toLowerCase();
@@ -158,14 +177,15 @@ class TZXodimQarzPanel {
 		this.body.find(".msel-clear").on("click", function () {
 			const k = $(this).closest(".msel").data("k");
 			self.mselSet(k).clear();
+			if (k === "oy") { self._oySnap = undefined; self.load(); return; }
 			$(this).closest(".msel-pop").find("input[type=checkbox]").prop("checked", false);
 			self.msel_btn_yangila(k);
 			self.render_list();
 		});
-		this.body.find(".msel-ok").on("click", function () { $(this).closest(".msel-pop")[0].hidden = true; });
+		this.body.find(".msel-ok").on("click", () => this.close_pops());
 		if (!this._mselDoc) {
 			this._mselDoc = true;
-			$(document).on("click.tzxq", () => this.body.find(".msel-pop").each((_, p) => { p.hidden = true; }));
+			$(document).on("click.tzxq", () => this.close_pops());
 		}
 	}
 
@@ -182,8 +202,8 @@ class TZXodimQarzPanel {
 				<div>
 					<h1>Xodimlar qarzdorligi</h1>
 					<div class="sub">O'qituvchi va xodimlar — bitta jadvalda · GL asosida jonli hisob${
-						this.fDan || this.fGacha
-							? ` · <b>${this.fDan ? this.dmy(this.fDan) : "boshidan"} — ${this.fGacha ? this.dmy(this.fGacha) : "hozirgacha"}</b> davri`
+						this.fOylar.size
+							? ` · <b>${[...this.fOylar].sort().map((o) => this.esc(this.oyNomi(o))).join(", ")}</b> kesimida`
 							: ""}</div>
 				</div>
 				<div class="spacer"></div>
@@ -207,12 +227,7 @@ class TZXodimQarzPanel {
 
 			<div class="controls mb">
 				<input type="text" class="q" placeholder="Qidiruv: ism, lavozim, telefon…" value="${this.esc(this.q)}">
-				<div class="dates">
-					<input type="date" class="fdan" value="${this.esc(this.fDan)}" title="Davr boshi">
-					<span class="dsep">—</span>
-					<input type="date" class="fgacha" value="${this.esc(this.fGacha)}" title="Davr oxiri">
-					${this.fDan || this.fGacha ? `<button type="button" class="dclear" title="Davrni tozalash">✕</button>` : ""}
-				</div>
+				${this.mselHtml("oy", this.data.oylar || [], true)}
 				${this.mselHtml("kategoriya", this.kategoriyalar(), false)}
 				${this.mselHtml("lavozim", this.lavozimlar(), true)}
 			</div>
@@ -225,9 +240,6 @@ class TZXodimQarzPanel {
 		this.render_list();
 		this.body.find(`[data-act="reload"]`).on("click", () => this.load());
 		this.body.find(".q").on("input", frappe.utils.debounce((e) => { this.q = e.target.value; this.render_list(); }, 250));
-		this.body.find(".fdan").on("change", (e) => { this.fDan = e.target.value; this.load(); });
-		this.body.find(".fgacha").on("change", (e) => { this.fGacha = e.target.value; this.load(); });
-		this.body.find(".dclear").on("click", () => { this.fDan = ""; this.fGacha = ""; this.load(); });
 		this.bind_msel();
 		this.body.find(".kpi.click").on("click", (e) => { this.fTur = $(e.currentTarget).data("t"); this.render(); });
 	}

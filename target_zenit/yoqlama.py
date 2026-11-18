@@ -57,11 +57,16 @@ def _norma_map(yil, oy, nomlar):
 def _kerak_kun(x, kunlar, dars_kunlari, norma_map, kirgan, ketgan):
 	"""Xodim shu oyda NECHA KUN kelishi kerak + bu son qayerdan olingani.
 
-	Dars jadvalida kunlari bor xodim (o'qituvchi) — jadval bo'yicha: oyda
+	USTUNLIK TARTIBI (2026-11-18): oylik tabelda shu oy uchun QO'LDA kiritilgan
+	norma ("Tabel Ish Kuni") hamma narsadan ustun — jadvalli o'qituvchida ham.
+	Aks holda tabelda "kelishi kerak kun"ni o'zgartirish yo'qlamadagi "Kerak"ka
+	ta'sir qilmasdi (foydalanuvchi talabi). Qo'lda kiritilmagan bo'lsa:
+	dars jadvalida kunlari bor xodim (o'qituvchi) — jadval bo'yicha: oyda
 	uning dars kunlari necha marta keladi (ishga kirgan/ketgan sanasi
-	hisobga olinadi). Jadvali yo'q xodim — oylik tabeldagi norma ish kuni
-	zanjiri: "Tabel Ish Kuni" -> Employee.custom_ish_kuni -> default
-	(o'qituvchi 21, boshqalar 26)."""
+	hisobga olinadi); jadvali yo'q xodim — Employee.custom_ish_kuni ->
+	default (o'qituvchi 21, boshqalar 26)."""
+	if x.name in norma_map:
+		return norma_map[x.name], "oy"
 	if dars_kunlari:
 		n = 0
 		for kd in kunlar:
@@ -74,8 +79,6 @@ def _kerak_kun(x, kunlar, dars_kunlari, norma_map, kirgan, ketgan):
 				continue
 			n += 1
 		return n, "jadval"
-	if x.name in norma_map:
-		return norma_map[x.name], "oy"
 	if cint(x.get("custom_ish_kuni")):
 		return cint(x.get("custom_ish_kuni")), "xodim"
 	from target_zenit.target_zenit.api.oylik_tabel import _default_ish_kuni

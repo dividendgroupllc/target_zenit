@@ -9,7 +9,8 @@
 # ATAYLAB qo'shilmaydi: ular o'sha xodim yozuvining ikkinchi tomoni (ikki marta sanash).
 from __future__ import annotations
 
-import datetime
+import json
+import re
 
 import frappe
 from frappe.utils import flt
@@ -28,13 +29,25 @@ def _guard():
 		frappe.throw("Ruxsat yo'q.", frappe.PermissionError)
 
 
+# Qatorning "oyi": JE/PE'dagi custom_payment_month birinchi, bo'lmasa posting_date
+# oyi — get_detail'dagi oy ustuni bilan bir xil mantiq (filtr va detal mos kelishi
+# uchun). LEFT(date,7) = 'YYYY-MM'; DATE_FORMAT emas — parametrsiz so'rovda %%
+# unescape bo'lmay, literal '%Y-%m' qiymat chiqib ketadi.
+OY_EXPR = """COALESCE(NULLIF(TRIM(je.custom_payment_month), ''),
+	         NULLIF(TRIM(pe.custom_payment_month), ''),
+	         LEFT(ge.posting_date, 7))"""
+
+OY_JOINS = """LEFT JOIN `tabJournal Entry` je ON je.name = ge.voucher_no AND ge.voucher_type='Journal Entry'
+	   LEFT JOIN `tabPayment Entry` pe ON pe.name = ge.voucher_no AND ge.voucher_type='Payment Entry'"""
+
+
 @frappe.whitelist()
-def get_data(from_date=None, to_date=None):
+def get_data(oylar=None):
 	"""Xodimlar saldosi — FAQAT party_type='Employee' GL qatorlaridan (UZS schyotlar).
 
-	from_date/to_date ("YYYY-MM-DD") berilsa qatorlar posting_date bo'yicha shu
-	oraliqda filtlanadi: saldo "shu davr harakatlari" ma'nosini oladi (butun
-	tarix saldosi emas). Ikkalasi ham ixtiyoriy — faqat bittasi ham bo'laveradi.
+	oylar (JSON ro'yxat, masalan ["2026-09","2026-10"]) berilsa faqat shu oylarga
+	tegishli qatorlar yig'iladi: saldo "shu oylar uchun hisoblangan vs to'langan"
+	ma'nosini oladi. Bo'sh ro'yxat/None — butun tarix.
 
 	MUHIM (2026-10-08 tuzatildi): avval "Jalilov B / <FIO>" Customer qatorlari ham
 	qo'shilardi — bu IKKI MARTA sanash edi. Chunki "ortiqcha to'lov investorga
@@ -45,31 +58,39 @@ def get_data(from_date=None, to_date=None):
 	summa ikkilanadi (misol: Abraham Ilao haqiqatda 0, panel -15 123 182 ko'rsatgan).
 	34 ta Jalilov qatoridan 32 tasi aynan shunday juftlikda edi."""
 	_guard()
-	conds, params = [], {}
-	for kalit, belgi, qiymat in (("from_date", ">=", from_date), ("to_date", "<=", to_date)):
-		qiymat = (qiymat or "").strip()
-		if not qiymat:
-			continue
-		try:
-			datetime.date.fromisoformat(qiymat)
-		except ValueError:
-			frappe.throw("Sana noto'g'ri (YYYY-MM-DD kutilgan).")
-		params[kalit] = qiymat
-		conds.append(f"AND ge.posting_date {belgi} %({kalit})s")
+	if isinstance(oylar, str):
+		oylar = json.loads(oylar) if oylar.strip() else []
+	oylar = [str(o).strip() for o in (oylar or []) if str(o).strip()]
+	for o in oylar:
+		if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", o):
+			frappe.throw("Oy formati noto'g'ri (YYYY-MM kutilgan).")
 
+	oy_cond = f"AND {OY_EXPR} IN %(oylar)s" if oylar else ""
 	emp_gl = frappe.db.sql(
 		f"""SELECT ge.party,
 		          SUM(ge.debit_in_account_currency) debit,
 		          SUM(ge.credit_in_account_currency) credit,
 		          MAX(ge.posting_date) oxirgi
 		   FROM `tabGL Entry` ge JOIN `tabAccount` a ON a.name = ge.account
+		   {OY_JOINS}
 		   WHERE ge.party_type='Employee' AND ge.is_cancelled=0
 		     AND a.account_currency='UZS'
-		     {" ".join(conds)}
+		     {oy_cond}
 		   GROUP BY ge.party""",
-		params,
+		{"oylar": oylar},
 		as_dict=True,
 	)
+
+	# Tanlagich uchun mavjud oylar — doim to'liq ro'yxat, filtrdan qat'i nazar
+	mavjud_oylar = frappe.db.sql(
+		f"""SELECT DISTINCT {OY_EXPR} oy
+		   FROM `tabGL Entry` ge JOIN `tabAccount` a ON a.name = ge.account
+		   {OY_JOINS}
+		   WHERE ge.party_type='Employee' AND ge.is_cancelled=0
+		     AND a.account_currency='UZS'
+		   ORDER BY oy DESC""",
+	)
+	mavjud_oylar = [r[0] for r in mavjud_oylar if r[0]]
 
 	employees = frappe.get_all(
 		"Employee",
@@ -127,6 +148,7 @@ def get_data(from_date=None, to_date=None):
 	return {
 		"rows": out,
 		"stats": stats,
+		"oylar": mavjud_oylar,
 		# Filtr ro'yxati Employee maydonidan — qotib yozilmaydi (kadrlar yangi
 		# kategoriya qo'shsa panelda ham o'zi paydo bo'ladi)
 		"kategoriyalar": ish_haqi_kategoriyalari([r.get("kategoriya") for r in out]),

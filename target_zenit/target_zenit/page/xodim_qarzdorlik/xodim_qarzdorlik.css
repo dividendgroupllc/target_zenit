@@ -148,17 +148,7 @@
 .tz-qarz .tl-body { font-size:13px; color:var(--ink-2); margin-top:2px; white-space:pre-wrap; }
 .tz-qarz .tl-ptp { font-size:12px; color:var(--good-ink); margin-top:2px; font-weight:600; }
 
-/* davr (sana oralig'i) filtri */
-.tz-qarz .controls .dates { display:flex; align-items:center; gap:6px; }
-.tz-qarz .controls .dates input[type="date"] { background:var(--card); color:var(--ink);
-  border:1px solid var(--line-strong); border-radius:10px; padding:7px 10px; font-size:13px; }
-[data-theme="dark"] .tz-qarz .controls .dates input[type="date"] { color-scheme:dark; }
-.tz-qarz .controls .dsep { color:var(--muted); }
-.tz-qarz .controls .dclear { background:var(--card); border:1px solid var(--line-strong); border-radius:10px;
-  padding:6px 10px; font-size:12px; cursor:pointer; color:var(--muted); }
-.tz-qarz .controls .dclear:hover { color:var(--bad-ink); border-color:var(--bad); }
-
-/* multi-tanlov dropdown (kategoriya/lavozim) */
+/* multi-tanlov dropdown (oy/kategoriya/lavozim) */
 .tz-qarz .msel { position:relative; }
 .tz-qarz .msel-btn { background:var(--card); color:var(--ink); border:1px solid var(--line-strong);
   border-radius:10px; padding:8px 12px; font-size:13px; cursor:pointer; }

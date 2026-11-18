@@ -68,7 +68,7 @@ def get_data(versiya: str | None = None):
 		fields=[
 			"name", "kun", "dars_raqami", "guruh", "guruh_nomi", "fan",
 			"oqituvchi", "oqituvchi_nomi", "blok", "sinflar", "xona",
-			"boshlanish", "tugash",
+			"boshlanish", "tugash", "qulf",
 		],
 		limit_page_length=0,
 	)
@@ -91,6 +91,7 @@ def get_data(versiya: str | None = None):
 					"oqituvchi": oq_nom.get(y.oqituvchi) or y.oqituvchi_nomi or y.oqituvchi,
 					"blok": y.blok,
 					"xona": y.xona,
+					"qulf": y.qulf,
 				}
 			)
 		if y.oqituvchi:

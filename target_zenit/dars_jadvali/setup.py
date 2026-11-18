@@ -175,6 +175,7 @@ def hammasi():
 	custom_fieldlar()
 	qongiroqlar()
 	sinf_guruhlarini_belgila()
+	fan_qiyinchiligi()
 	# BAHOLASH BOSQICHLARI OLIB TASHLANDI (2026-11-08): davomat, baho, uy
 	# vazifa va dars o'tish MOODLE'ga ko'chdi. Frappe'dagi nusxalari hech
 	# qachon ishlatilmagan (0 qator) va faqat chalkashlik berardi —
@@ -182,6 +183,50 @@ def hammasi():
 	# `Baholash Sozlamalari` doctype'lari bilan birga o'chirildi.
 	frappe.db.commit()
 	print("Dars jadvali setup tugadi.")
+
+
+# ------------------------------------------------- SanPiN/Sivkov qiyinchilik shkalasi
+# Har fan uchun taxminiy boshlang'ich ball (1-4 sinf, 5-11 sinf) — fan nomidagi
+# kalit so'z bo'yicha. Zavuch keyin «Fan Qiyinchiligi» ro'yxatida o'zi tahrirlaydi.
+SIVKOV = [
+	(("MATH", "ALGEBRA", "GEOMETR", "MATEM"), 8, 11),
+	(("ENGLISH", "RUS", "CHINES", "ARAB", "KOREA", "GERMAN", "FRENCH", "TILI", "LANG"), 7, 10),
+	(("PHYSIC", "FIZIKA", "CHEMIST", "KIMYO"), 7, 9),
+	(("HISTORY", "HIST", "TARIX"), 6, 8),
+	(("ECONOM", "ECO", "BUS", "FINANC", "LAW", "HUQUQ"), 6, 8),
+	(("IT", "ICT", "INFORMAT", "PROGRAMM", "ROBOT", "PYTHON", "AI"), 6, 7),
+	(("BIOLOG", "SCIENCE", "TABIAT", "NATURAL", "GEOGRAPH"), 5, 6),
+	(("LITERATURE", "ADABIYOT", "READING", "PRES"), 5, 6),
+	(("CHESS", "SHAXMAT"), 4, 4),
+	(("P.E", "GYM", "SPORT", "SWIM", "DANCE", "JISMONIY"), 2, 4),
+	(("ART", "DRAW", "RASM", "CRAFT", "MEHNAT"), 2, 2),
+	(("MUSIC", "ASHULA", "MUSIQA"), 1, 1),
+	(("HOMEWORK", "TUTOR", "PERSONAL"), 1, 1),
+]
+
+
+def fan_qiyinchiligi():
+	"""Mavjud Course'lar uchun Fan Qiyinchiligi yozuvlarini urug'laydi (idempotent).
+	Mavjud yozuvga TEGMAYDI — zavuch qo'lda o'zgartirgan ball saqlanadi."""
+	if not frappe.db.exists("DocType", "Fan Qiyinchiligi"):
+		print("Fan Qiyinchiligi doctype hali yo'q — o'tkazib yuborildi")
+		return
+	yangi = 0
+	for c in frappe.get_all("Course", pluck="name"):
+		if frappe.db.exists("Fan Qiyinchiligi", c):
+			continue
+		nom = c.upper()
+		b14, b511 = 5, 5
+		for kalitlar, bb, by in SIVKOV:
+			if any(k in nom for k in kalitlar):
+				b14, b511 = bb, by
+				break
+		frappe.get_doc({
+			"doctype": "Fan Qiyinchiligi", "fan": c,
+			"ball_boshlangich": b14, "ball_yuqori": b511,
+		}).insert(ignore_permissions=True)
+		yangi += 1
+	print(f"Fan qiyinchiligi (Sivkov): {yangi} ta yangi yozuv")
 
 
 # ---------------------------------------------------------------- Zavuch roli

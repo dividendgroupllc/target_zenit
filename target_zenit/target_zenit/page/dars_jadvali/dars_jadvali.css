@@ -76,6 +76,44 @@
   .tz-jadval table.grid td { min-width:96px; }
 }
 
+/* ------- muharrir: karta "qo'lda" rejimi (aSc uslubi rang bo'yash) ------- */
+.tz-jadval .mvbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  background:var(--brand-wash); border:1px solid var(--brand); border-radius:10px;
+  padding:8px 12px; margin-bottom:10px; font-size:13px; }
+.tz-jadval .mvbar .mv-ico { font-size:16px; }
+.tz-jadval .mv-sub { color:var(--ink-2); font-size:11px; }
+.tz-jadval .mvbar .mv-hint { color:var(--ink-2); font-size:11px; }
+.tz-jadval table.mv-mode td { transition:background .12s; }
+.tz-jadval td.mv-ok { background:rgba(18,161,80,.14) !important; cursor:pointer;
+  box-shadow:inset 0 0 0 1px rgba(18,161,80,.45); }
+.tz-jadval td.mv-ok:hover { background:rgba(18,161,80,.28) !important; }
+.tz-jadval td.mv-afzal { background:rgba(18,161,80,.30) !important; cursor:pointer;
+  box-shadow:inset 0 0 0 2px var(--good); }
+.tz-jadval td.mv-afzal:hover { background:rgba(18,161,80,.42) !important; }
+.tz-jadval td.mv-swap { background:rgba(221,154,31,.18) !important; cursor:pointer;
+  box-shadow:inset 0 0 0 1px var(--warn); position:relative; }
+.tz-jadval td.mv-swap:hover { background:rgba(221,154,31,.32) !important; }
+.tz-jadval td.mv-swap::after { content:"↔"; position:absolute; top:1px; right:4px;
+  font-size:11px; font-weight:700; color:var(--warn-ink); }
+.tz-jadval td.mv-band { background:rgba(216,68,60,.10) !important; cursor:not-allowed; }
+.tz-jadval td.mv-band .lesson { opacity:.55; }
+.tz-jadval td.mv-oz { box-shadow:inset 0 0 0 2px var(--blue); }
+.tz-jadval td.mv-dim { opacity:.3; pointer-events:none; }
+.tz-jadval .lesson .lk { font-size:9px; margin-left:3px; }
+.tz-jadval td.bosh { cursor:pointer; }
+.tz-jadval td.bosh:hover { background:var(--brand-wash); }
+
+/* dars menyusi dialogi */
+.tz-jadval.tz-menu .mi, .tz-jadval .tz-menu .mi { display:flex; gap:8px; font-size:13px; margin-bottom:6px; }
+.tz-jadval .tz-menu .mi-l, .tz-menu .mi-l { color:var(--muted); min-width:84px; }
+.tz-menu .menu-btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.tz-jadval .refresh.danger { color:var(--bad-ink); border-color:var(--bad); }
+.tz-jadval .refresh.mini { padding:3px 9px; font-size:12px; border-radius:8px; }
+.tz-jadval .sec-t { font-size:11px; text-transform:uppercase; letter-spacing:.4px;
+  color:var(--muted); font-weight:700; margin:4px 0 6px; }
+.tz-jadval .mt { margin-top:14px; }
+.tz-jadval tr.dim td { color:var(--muted); }
+
 /* import tugmasi + spinner */
 .tz-jadval .refresh.primary { background:var(--brand); color:#fff; border-color:var(--brand); font-weight:600; }
 .tz-jadval .refresh.primary:hover { background:var(--brand-ink); }

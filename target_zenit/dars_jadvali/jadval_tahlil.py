@@ -4,6 +4,8 @@
 # vakant darslar; fan bo'yicha malaka sig'imi. FAQAT O'QISH.
 from __future__ import annotations
 
+from itertools import pairwise
+
 import frappe
 from frappe import _
 
@@ -139,7 +141,7 @@ def tahlil(versiya: str | None = None) -> dict:
 		               "umumiy_sigim": cap, "kam": talab > cap})
 
 	return {
-		"versiya": versiya, "ndars": ndars, "grid_sigim": grid_sigim,
+		"versiya": versiya, "ndars": ndars, "grid_sigim": grid_sigim, "sanpin": sanpin_tahlil(versiya),
 		"stats": {
 			"jami_dars": len(yozuvlar), "vakant": oq_vakant,
 			"oq_muammo": oq_muammo, "sinf_muammo": sinf_muammo,
@@ -148,4 +150,84 @@ def tahlil(versiya: str | None = None) -> dict:
 		"oqituvchilar": oqituvchilar,
 		"sinflar": sinflar,
 		"fanlar": fanlar,
+	}
+
+
+# ------------------------------------------------- SanPiN / Sivkov qiyinchilik tahlili
+OGIR_BALL = 9  # shu balldan boshlab fan "og'ir" hisoblanadi (ketma-ketlik tekshiruvi)
+
+
+def _sinf_darajasi(nom: str) -> int:
+	"""'10 A(full)' -> 10. Raqamsiz (Pre school) -> 0."""
+	import re
+
+	m = re.match(r"\s*(\d+)", nom or "")
+	return int(m.group(1)) if m else 0
+
+
+def sanpin_tahlil(versiya: str | None = None) -> dict:
+	"""Har sinf uchun kunlik qiyinchilik balli (Sivkov/SanPiN shkalasi) +
+	ogohlantirishlar: cho'qqi hafta boshida/oxirida, og'ir fanlar ketma-ket.
+	Post-sovet tizimlarining (Ректор/НИКА) o'ziga xos qatlami — tekshiruv
+	spravkasi uchun ham ishlatiladi."""
+	versiya = _faol_versiya(versiya)
+	if not frappe.db.exists("DocType", "Fan Qiyinchiligi"):
+		return {"sinflar": [], "shkala_bor": False}
+	shkala = {
+		r.fan: (r.ball_boshlangich or 5, r.ball_yuqori or 5)
+		for r in frappe.get_all(
+			"Fan Qiyinchiligi", fields=["fan", "ball_boshlangich", "ball_yuqori"],
+			limit_page_length=0)
+	}
+	yozuvlar = frappe.get_all(
+		"Jadval Yozuvi", filters={"versiya": versiya},
+		fields=["kun", "dars_raqami", "sinflar", "fan"], limit_page_length=0)
+
+	sinf_nomlari = {g.name: g.student_group_name or g.name for g in frappe.get_all(
+		"Student Group", filters={"custom_guruh_turi": "Sinf"},
+		fields=["name", "student_group_name"], limit_page_length=0)}
+
+	# (sinf, kun, dars) -> eng og'ir parallel dars (daraja guruhlari bitta slot)
+	slot = {}
+	for y in yozuvlar:
+		for s in (y.sinflar or "").split(","):
+			s = s.strip()
+			if s not in sinf_nomlari:
+				continue
+			daraja = _sinf_darajasi(sinf_nomlari[s])
+			b = shkala.get(y.fan, (5, 5))[0 if 1 <= daraja <= 4 else 1]
+			key = (s, y.kun, int(y.dars_raqami or 0))
+			if key not in slot or b > slot[key][0]:
+				slot[key] = (b, y.fan)
+
+	natija = []
+	for s, nomi in sorted(sinf_nomlari.items(), key=lambda x: (_sinf_darajasi(x[1]), x[1])):
+		kunlik = {}
+		ogohlar = []
+		for kun in KUNLAR:
+			darslar = sorted(
+				(d, v) for (ss, kk, d), v in slot.items() if ss == s and kk == kun)
+			kunlik[kun] = sum(v[0] for _d, v in darslar)
+			# og'ir fanlar ketma-ket
+			for (d1, v1), (d2, v2) in pairwise(darslar):
+				if d2 == d1 + 1 and v1[0] >= OGIR_BALL and v2[0] >= OGIR_BALL and v1[1] != v2[1]:
+					ogohlar.append(f"{kun} {d1}–{d2}: {v1[1]} + {v2[1]} ketma-ket (ikkalasi og'ir)")
+		if not any(kunlik.values()):
+			continue
+		eng_ogir = max(KUNLAR, key=lambda k: kunlik[k])
+		if eng_ogir in ("Dushanba", "Juma"):
+			ogohlar.insert(0,
+				f"Eng og'ir kun — {eng_ogir} ({kunlik[eng_ogir]} ball). "
+				"SanPiN: cho'qqi seshanba–chorshanbada bo'lishi kerak.")
+		natija.append({
+			"sinf": nomi, "daraja": _sinf_darajasi(nomi),
+			"kunlik": kunlik, "jami": sum(kunlik.values()),
+			"eng_ogir": eng_ogir, "ogohlar": ogohlar[:6],
+		})
+
+	return {
+		"sinflar": natija,
+		"shkala_bor": True,
+		"kunlar": KUNLAR,
+		"muammoli": sum(1 for r in natija if r["ogohlar"]),
 	}

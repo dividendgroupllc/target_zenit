@@ -1,0 +1,103 @@
+{
+ "actions": [],
+ "autoname": "field:fan",
+ "creation": "2026-11-18 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "fan",
+  "column_break_1",
+  "ball_boshlangich",
+  "ball_yuqori",
+  "izoh"
+ ],
+ "fields": [
+  {
+   "fieldname": "fan",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Fan",
+   "options": "Course",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "5",
+   "description": "1–4-sinflar uchun Sivkov/SanPiN qiyinchilik balli",
+   "fieldname": "ball_boshlangich",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Ball (1–4 sinf)"
+  },
+  {
+   "default": "5",
+   "description": "5–11-sinflar uchun qiyinchilik balli",
+   "fieldname": "ball_yuqori",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Ball (5–11 sinf)"
+  },
+  {
+   "fieldname": "izoh",
+   "fieldtype": "Data",
+   "label": "Izoh"
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-18 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "target_zenit",
+ "name": "Fan Qiyinchiligi",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Academics User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Zavuch",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "O'qituvchi"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "fan",
+ "track_changes": 1
+}

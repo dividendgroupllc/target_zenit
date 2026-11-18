@@ -1,11 +1,17 @@
 // Copyright (c) 2026, Target Zenit — Dars jadvali (zavuch paneli)
 // Sinflar x darslar to'ri, kun bo'yicha. Manba: Jadval Yozuvi (haftalik shablon).
+// Muharrir qatlami (jahon standartlari: aSc/Untis/Prime): karta ko'tarilganda
+// slotlar jonli bo'yaladi (yashil=mumkin/qizil=band+NEGA), lock/pin, undo,
+// bo'sh katakka "bu yerga nima sig'adi" teskari qidiruv.
 frappe.pages["dars-jadvali"].on_page_load = function (wrapper) {
 	new TZDarsJadvali(wrapper);
 };
 
 const DJ_M = "target_zenit.target_zenit.page.dars_jadvali.dars_jadvali";
 const IMP_M = "target_zenit.dars_jadvali.import_excel";
+const MH_M = "target_zenit.dars_jadvali.muharrir";
+const OJ_M = "target_zenit.dars_jadvali.oqituvchi_jadval";
+const MH_ROLLAR = ["System Manager", "Zavuch", "Academics User", "Education Manager", "Xojakbar_Operator"];
 
 class TZDarsJadvali {
 	constructor(wrapper) {
@@ -15,7 +21,9 @@ class TZDarsJadvali {
 		this.kun = "Dushanba";
 		this.versiya = null;
 		this.fSinf = "";
-		this.fOqituvchi = "";
+		this.moving = null;      // kochirish_xarita natijasi (karta "qo'lda")
+		this.undo = [];          // [{yozuv, kun, dars}] — ko'chirishlarni qaytarish
+		this.canEdit = MH_ROLLAR.some((r) => frappe.user_roles.includes(r));
 		this.make_skeleton();
 		this.load();
 		this.listen_import();
@@ -107,6 +115,7 @@ class TZDarsJadvali {
 					${(d.kunlar || []).map((k) => `<button class="chip ${this.kun === k ? "on" : ""}" data-kun="${k}">${k}</button>`).join("")}
 				</div>
 				<div class="spacer"></div>
+				${this.canEdit ? `<button class="refresh" data-act="undo" ${this.undo.length ? "" : "disabled"}>↶ Qaytarish${this.undo.length ? ` (${this.undo.length})` : ""}</button>` : ""}
 				<select class="fsinf">
 					<option value="">Barcha sinflar</option>
 					${(d.sinflar || []).map((s) => `<option value="${this.esc(s)}" ${this.fSinf === s ? "selected" : ""}>${this.esc(s)}</option>`).join("")}
@@ -115,10 +124,35 @@ class TZDarsJadvali {
 				<button class="refresh primary" data-act="import">⬆ Exceldan import</button>
 			</div>
 
+			<div class="mvbar-wrap"></div>
 			<div class="jadval-wrap card"></div>
 		`);
+		this.render_mvbar();
 		this.render_grid();
 		this.bind();
+	}
+
+	// ------------- ko'chirish banneri ("karta qo'lda") -------------
+	render_mvbar() {
+		const w = this.body.find(".mvbar-wrap");
+		if (!this.moving) { w.empty(); return; }
+		const m = this.moving;
+		const blok = m.blok_hajmi > 1 ? ` · blok: ${m.blok_hajmi} parallel dars birga ko'chadi` : "";
+		w.html(`<div class="mvbar">
+			<span class="mv-ico">✋</span>
+			<b>${this.esc(m.fan)}</b>&nbsp;— ${this.esc(m.guruh_nomi)}
+			<span class="mv-sub">(hozir: ${this.esc(m.kun)} ${m.dars_raqami}-dars${blok})</span>
+			<span class="mv-hint">Yashil = bo'sh joy · Sariq ↔ = almashuv · kun tablari bilan boshqa kunga ham o'tiladi</span>
+			<span class="spacer"></span>
+			<button class="refresh" data-act="mv-cancel">Bekor (Esc)</button>
+		</div>`);
+		w.find(`[data-act="mv-cancel"]`).on("click", () => this.cancel_move());
+	}
+
+	cancel_move() {
+		this.moving = null;
+		$(document).off("keyup.tzmv");
+		this.render();
 	}
 
 	render_grid() {
@@ -127,16 +161,30 @@ class TZDarsJadvali {
 		const rows = (d.darslar || []).map((no) => {
 			const kataklar = sinflar.map((s) => {
 				const list = (d.katak || {})[`${s}|${this.kun}|${no}`] || [];
-				if (!list.length) return `<td class="bosh"></td>`;
+				// Muharrir overlay: karta qo'lda bo'lsa slot holati bo'yaladi
+				let mvCls = "", mvTitle = "";
+				if (this.moving) {
+					if ((this.moving.sinflar || []).includes(s)) {
+						const st = (this.moving.xarita || {})[`${this.kun}|${no}`] || {};
+						if (st.holat === "oz") mvCls = "mv-oz";
+						else if (st.holat === "ok") mvCls = "mv-ok";
+						else if (st.holat === "afzal") mvCls = "mv-afzal";
+						else if (st.holat === "almashuv") { mvCls = "mv-swap"; mvTitle = "↔ Almashuv: " + (st.bilan || []).join("; "); }
+						else { mvCls = "mv-band"; mvTitle = (st.sabab || []).join("\n"); }
+					} else mvCls = "mv-dim";
+				}
+				const attrs = `data-sinf="${this.esc(s)}" data-no="${no}" class="${list.length ? (list.length > 1 ? "multi" : "") : "bosh"} ${mvCls}" ${mvTitle ? `title="${this.esc(mvTitle)}"` : ""}`;
+				if (!list.length) return `<td ${attrs}></td>`;
 				const inner = list.map((x) => {
 					const h = this.rang(x.fan);
 					const blok = x.blok ? ` <span class="bk">${this.esc(x.guruh_nomi || "").split(" ")[1] || ""}</span>` : "";
+					const lk = x.qulf ? `<span class="lk" title="Qulflangan">🔒</span>` : "";
 					return `<div class="lesson" style="--h:${h}" data-name="${this.esc(x.name)}" title="${this.esc(x.guruh_nomi || "")}">
-						<div class="fan">${this.esc(x.fan)}${blok}</div>
+						<div class="fan">${this.esc(x.fan)}${blok}${lk}</div>
 						<div class="oqit">${this.esc(x.oqituvchi || "—")}</div>
 					</div>`;
 				}).join("");
-				return `<td class="${list.length > 1 ? "multi" : ""}">${inner}</td>`;
+				return `<td ${attrs}>${inner}</td>`;
 			}).join("");
 			const v = sinflar.length ? this.vaqt(sinflar[0], no) : "";
 			return `<tr><th class="dars-no"><b>${no}</b><span>${this.esc(v)}</span></th>${kataklar}</tr>`;
@@ -144,15 +192,39 @@ class TZDarsJadvali {
 
 		this.body.find(".jadval-wrap").html(`
 			<div class="scroll-x">
-			<table class="grid">
+			<table class="grid ${this.moving ? "mv-mode" : ""}">
 				<thead><tr><th class="dars-no">№</th>${sinflar.map((s) => `<th>${this.esc(s.replace(/\s*\((full|hybrid)\)/, ""))}<span>${this.esc(/hybrid/.test(s) ? "hybrid" : "full")}</span></th>`).join("")}</tr></thead>
 				<tbody>${rows}</tbody>
 			</table></div>
 		`);
+
+		if (this.moving) {
+			// Faqat mumkin bo'lgan kataklar bosiladi
+			this.body.find("td.mv-ok, td.mv-afzal").on("click", (e) => {
+				const no = Number($(e.currentTarget).data("no"));
+				this.do_move(this.kun, no);
+			});
+			this.body.find("td.mv-swap").on("click", (e) => {
+				const no = Number($(e.currentTarget).data("no"));
+				const st = (this.moving.xarita || {})[`${this.kun}|${no}`] || {};
+				const bilan = (st.bilan || []).map((b) => this.esc(b)).join("; ");
+				frappe.confirm(
+					`<b>${this.esc(this.moving.fan)} — ${this.esc(this.moving.guruh_nomi)}</b> ↔ <b>${bilan}</b><br>O'rinlari almashtirilsinmi?`,
+					() => this.do_swap(this.kun, no)
+				);
+			});
+			return;
+		}
 		this.body.find(".lesson").on("click", (e) => {
-			const n = $(e.currentTarget).data("name");
-			frappe.set_route("Form", "Jadval Yozuvi", n);
+			e.stopPropagation();
+			this.lesson_menu($(e.currentTarget).data("name"));
 		});
+		if (this.canEdit) {
+			this.body.find("td.bosh").on("click", (e) => {
+				const td = $(e.currentTarget);
+				this.katak_dialog(td.data("sinf"), Number(td.data("no")));
+			});
+		}
 	}
 
 	bind() {
@@ -162,9 +234,195 @@ class TZDarsJadvali {
 			this.render();
 		});
 		this.body.find(".fsinf").on("change", (e) => { this.fSinf = e.target.value; this.render_grid(); });
-		this.body.find(".fversiya").on("change", (e) => { this.versiya = e.target.value; this.load(); });
+		this.body.find(".fversiya").on("change", (e) => { this.versiya = e.target.value; this.undo = []; this.load(); });
 		this.body.find(`[data-act="yuklama"]`).on("click", () => this.yuklama_dialog());
 		this.body.find(`[data-act="import"]`).on("click", () => this.import_dialog());
+		this.body.find(`[data-act="undo"]`).on("click", () => this.undo_move());
+	}
+
+	// ---------------- muharrir: dars menyusi / ko'chirish / qulf ----------------
+	lesson_info(name) {
+		for (const key in this.data.katak || {}) {
+			for (const x of this.data.katak[key]) {
+				if (x.name === name) return x;
+			}
+		}
+		return null;
+	}
+
+	lesson_menu(name) {
+		const x = this.lesson_info(name);
+		if (!x) return;
+		if (!this.canEdit) {
+			frappe.set_route("Form", "Jadval Yozuvi", name);
+			return;
+		}
+		const dlg = new frappe.ui.Dialog({
+			title: `${x.fan} — ${x.guruh_nomi || x.guruh}`,
+			size: "small",
+			fields: [{
+				fieldtype: "HTML",
+				options: `<div class="tz-jadval tz-menu">
+					<div class="mi"><span class="mi-l">O'qituvchi</span><b>${this.esc(x.oqituvchi || "—")}</b></div>
+					${x.blok ? `<div class="mi"><span class="mi-l">Blok</span><b>${this.esc(x.blok)}</b> <span class="mv-sub">(parallel darslar birga ko'chadi)</span></div>` : ""}
+					${x.qulf ? `<div class="mi"><span class="mi-l">Holat</span><b>🔒 Qulflangan</b></div>` : ""}
+					<div class="menu-btns">
+						<button class="refresh primary" data-m="move" ${x.qulf ? "disabled" : ""}>✋ Ko'chirish</button>
+						<button class="refresh" data-m="lock">${x.qulf ? "🔓 Qulfni ochish" : "🔒 Qulflash"}</button>
+						<button class="refresh" data-m="form">📄 Hujjat</button>
+						<button class="refresh danger" data-m="del">🗑 O'chirish</button>
+					</div>
+				</div>`,
+			}],
+		});
+		dlg.show();
+		dlg.$body.find(`[data-m="move"]`).on("click", () => { dlg.hide(); this.start_move(name); });
+		dlg.$body.find(`[data-m="lock"]`).on("click", () => {
+			dlg.hide();
+			frappe.call({ method: `${MH_M}.qulf_toggle`, args: { yozuv: name }, callback: () => this.load() });
+		});
+		dlg.$body.find(`[data-m="form"]`).on("click", () => { dlg.hide(); frappe.set_route("Form", "Jadval Yozuvi", name); });
+		dlg.$body.find(`[data-m="del"]`).on("click", () => {
+			dlg.hide();
+			frappe.confirm(`«${this.esc(x.fan)} — ${this.esc(x.guruh_nomi || x.guruh)}» darsini o'chirasizmi?`, () => {
+				frappe.call({ method: `${OJ_M}.dars_ochir`, args: { name }, callback: () => this.load() });
+			});
+		});
+	}
+
+	start_move(name) {
+		frappe.call({
+			method: `${MH_M}.kochirish_xarita`,
+			args: { yozuv: name },
+			freeze: true,
+			callback: (r) => {
+				const m = r.message;
+				if (!m) return;
+				if (m.qulf) { frappe.msgprint("Dars qulflangan — avval qulfni oching."); return; }
+				this.moving = m;
+				$(document).on("keyup.tzmv", (e) => { if (e.key === "Escape") this.cancel_move(); });
+				this.render();
+			},
+		});
+	}
+
+	do_move(kun, no, yozuv) {
+		const target = yozuv || (this.moving && this.moving.yozuv);
+		if (!target) return;
+		frappe.call({
+			method: `${MH_M}.dars_kochir`,
+			args: { yozuv: target, kun, dars_raqami: no },
+			freeze: true,
+			callback: (r) => {
+				const res = r.message || {};
+				if (res.eski) this.undo.push({ yozuv: target, kun: res.eski.kun, dars: res.eski.dars_raqami });
+				this.moving = null;
+				$(document).off("keyup.tzmv");
+				this.load();
+			},
+		});
+	}
+
+	do_swap(kun, no) {
+		const target = this.moving && this.moving.yozuv;
+		if (!target) return;
+		frappe.call({
+			method: `${MH_M}.dars_almashtir`,
+			args: { yozuv: target, kun, dars_raqami: no },
+			freeze: true,
+			callback: (r) => {
+				const res = r.message || {};
+				if (res.eski) this.undo.push({ yozuv: target, kun: res.eski.kun, dars: res.eski.dars_raqami, swap: 1 });
+				this.moving = null;
+				$(document).off("keyup.tzmv");
+				this.load();
+			},
+		});
+	}
+
+	undo_move() {
+		const u = this.undo.pop();
+		if (!u) return;
+		frappe.call({
+			method: `${MH_M}.${u.swap ? "dars_almashtir" : "dars_kochir"}`,
+			args: { yozuv: u.yozuv, kun: u.kun, dars_raqami: u.dars },
+			freeze: true,
+			callback: () => this.load(),
+			error: () => this.undo.push(u),
+		});
+	}
+
+	// -------- bo'sh katak: "bu yerga nima sig'adi?" (aSc teskari qidiruv) --------
+	katak_dialog(sinf, no) {
+		frappe.call({
+			method: `${MH_M}.katak_kandidatlar`,
+			args: { sinf, kun: this.kun, dars_raqami: no, versiya: this.versiya },
+			freeze: true,
+			callback: (r) => {
+				const d = r.message || {};
+				const koch = (d.kochirish || []);
+				const mumkin = koch.filter((k) => k.mumkin);
+				const yoq = koch.filter((k) => !k.mumkin);
+				const dlg = new frappe.ui.Dialog({
+					title: `${sinf.replace(/\s*\((full|hybrid)\)/, "")} · ${this.kun} ${no}-dars — nima sig'adi?`,
+					size: "large",
+					fields: [{ fieldtype: "HTML", fieldname: "body" }],
+				});
+				const rows_m = mumkin.map((k) => `
+					<tr><td><b>${this.esc(k.fan)}</b> — ${this.esc(k.guruh_nomi)}${k.blok_hajmi > 1 ? ` <span class="mv-sub">(blok ×${k.blok_hajmi})</span>` : ""}</td>
+					<td class="mv-sub">${this.esc(k.kun)} ${k.dars_raqami}-dars</td>
+					<td class="r"><button class="refresh mini" data-koch="${this.esc(k.yozuv)}">→ bu yerga</button></td></tr>`).join("");
+				const rows_y = yoq.slice(0, 12).map((k) => `
+					<tr class="dim"><td>${this.esc(k.fan)} — ${this.esc(k.guruh_nomi)}</td>
+					<td class="mv-sub">${this.esc(k.kun)} ${k.dars_raqami}</td>
+					<td class="mv-sub">${this.esc((k.sabab || []).join("; "))}</td></tr>`).join("");
+				const rows_o = (d.bosh_oqituvchilar || []).slice(0, 25).map((o) => `
+					<tr><td>${this.esc(o.nomi)}</td>
+					<td class="r">${o.soat}${o.norma ? `/${o.norma}` : ""}</td>
+					<td class="mv-sub">${this.esc((o.fanlar || []).join(", "))}</td>
+					<td class="r"><button class="refresh mini" data-add="${this.esc(o.oqituvchi)}" data-nomi="${this.esc(o.nomi)}">+ dars</button></td></tr>`).join("");
+				dlg.fields_dict.body.$wrapper.html(`<div class="tz-jadval">
+					<div class="sec-t">Shu sinf darslaridan ko'chirish (${mumkin.length} ta mumkin)</div>
+					<table class="tbl mini-tbl"><tbody>${rows_m || `<tr><td class="mv-sub">Ko'chirsa bo'ladigan dars yo'q</td></tr>`}</tbody></table>
+					${rows_y ? `<details class="mt"><summary class="mv-sub">Sig'maydiganlar (${yoq.length}) — nega?</summary>
+						<table class="tbl mini-tbl"><tbody>${rows_y}</tbody></table></details>` : ""}
+					<div class="sec-t mt">Shu slotda bo'sh o'qituvchilar (${(d.bosh_oqituvchilar || []).length})</div>
+					<table class="tbl mini-tbl"><thead><tr><th>O'qituvchi</th><th class="r">Soat</th><th>Fanlari</th><th></th></tr></thead>
+					<tbody>${rows_o}</tbody></table>
+				</div>`);
+				dlg.show();
+				dlg.$body.find("[data-koch]").on("click", (e) => {
+					dlg.hide();
+					this.do_move(this.kun, no, $(e.currentTarget).data("koch"));
+				});
+				dlg.$body.find("[data-add]").on("click", (e) => {
+					const oqit = $(e.currentTarget).data("add");
+					const nomi = $(e.currentTarget).data("nomi");
+					dlg.hide();
+					this.dars_qosh_dialog(sinf, no, oqit, nomi);
+				});
+			},
+		});
+	}
+
+	dars_qosh_dialog(sinf, no, oqituvchi, nomi) {
+		const d = new frappe.ui.Dialog({
+			title: `Dars qo'shish: ${this.kun} ${no}-dars · ${sinf}`,
+			fields: [
+				{ fieldname: "fan", fieldtype: "Link", options: "Course", label: "Fan", reqd: 1 },
+				{ fieldname: "info", fieldtype: "HTML", options: `<div class="text-muted" style="font-size:12px">O'qituvchi: <b>${this.esc(nomi)}</b> · Guruh: ${this.esc(sinf)}</div>` },
+			],
+			primary_action_label: "Qo'shish",
+			primary_action: (v) => {
+				frappe.call({
+					method: `${OJ_M}.dars_qosh`,
+					args: { oqituvchi, kun: this.kun, dars_raqami: no, fan: v.fan, guruh: sinf, versiya: this.versiya },
+					freeze: true,
+					callback: () => { d.hide(); this.load(); },
+				});
+			},
+		});
+		d.show();
 	}
 
 	yuklama_dialog() {

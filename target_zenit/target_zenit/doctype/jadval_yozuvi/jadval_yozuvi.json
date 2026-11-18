@@ -24,7 +24,8 @@
   "tugash",
   "column_break_3",
   "sinflar",
-  "izoh"
+  "izoh",
+  "qulf"
  ],
  "fields": [
   {
@@ -158,10 +159,17 @@
    "fieldname": "izoh",
    "fieldtype": "Data",
    "label": "Izoh"
+  },
+  {
+   "default": "0",
+   "description": "Qulflangan dars muharrirda ko'chirilmaydi (kelajakda generator ham tegmaydi)",
+   "fieldname": "qulf",
+   "fieldtype": "Check",
+   "label": "Qulflangan"
   }
  ],
  "links": [],
- "modified": "2026-10-08 14:00:00.000000",
+ "modified": "2026-11-18 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Jadval Yozuvi",

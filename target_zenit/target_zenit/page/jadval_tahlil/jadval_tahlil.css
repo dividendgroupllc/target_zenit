@@ -26,3 +26,14 @@
 .tz-jt .pill.ok { background: #d7f0dd; color: #1a7f37; } .tz-jt .pill.full { background: #eef1f4; color: #555; }
 .tz-jt .pill.warn { background: #fff0cc; color: #8a6d00; } .tz-jt .pill.bad { background: #fadbd6; color: #c0392b; }
 .tz-jt .note { font-size: 11.5px; color: var(--muted); margin-top: 8px; padding: 0 4px; }
+
+/* SanPiN tab */
+.tz-jt .sp-head { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; margin:4px 0 10px; }
+.tz-jt .sp-cell { min-width:54px; }
+.tz-jt .sp-val { font-weight:600; }
+.tz-jt .sp-bar { height:4px; background:rgba(47,111,237,.12); border-radius:3px; margin-top:3px; }
+.tz-jt .sp-bar i { display:block; height:100%; background:#2f6fed; border-radius:3px; }
+.tz-jt .sp-top .sp-bar i { background:#c0392b; }
+.tz-jt .sp-top .sp-val { color:#c0392b; }
+.tz-jt .sp-og { margin:6px 0 0; padding-left:16px; font-size:12px; color:#8a6d00; }
+.tz-jt details summary { cursor:pointer; list-style:none; display:inline-block; }
