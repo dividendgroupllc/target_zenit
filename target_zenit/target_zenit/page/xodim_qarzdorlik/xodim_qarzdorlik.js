@@ -15,9 +15,10 @@ class TZXodimQarzPanel {
 		this.selected = null;
 		this.q = "";
 		this.fTur = "qarzdor"; // qarzdor | kompaniya | hamma
-		this.fLavozim = "";    // lavozim (guruh) filtri
-		this.fKategoriya = ""; // ish haqi kategoriyasi filtri
-		this.fOy = "";         // oy filtri (YYYY-MM) — serverda qo'llanadi
+		this.fLavozim = new Set();    // lavozim filtri — bir nechtasi birga tanlanadi
+		this.fKategoriya = new Set(); // kategoriya filtri — bir nechtasi birga tanlanadi
+		this.fDan = "";               // davr boshi (YYYY-MM-DD) — serverda qo'llanadi
+		this.fGacha = "";             // davr oxiri (YYYY-MM-DD) — serverda qo'llanadi
 		this.make_skeleton();
 		this.load();
 	}
@@ -52,7 +53,7 @@ class TZXodimQarzPanel {
 	load() {
 		frappe.call({
 			method: `${XQ_M}.get_data`,
-			args: { oy: this.fOy },
+			args: { from_date: this.fDan, to_date: this.fGacha },
 			callback: (r) => { this.data = r.message || { rows: [], stats: {} }; this.selected = null; this.render(); },
 			error: () => this.body.html(`<div class="loading">Xatolik. Sahifani yangilang.</div>`),
 		});
@@ -70,21 +71,108 @@ class TZXodimQarzPanel {
 		return this.data.kategoriyalar || [];
 	}
 
+	// Multi-tanlov mosligi: to'plam bo'sh — filtr yo'q; "__none" — qiymati bo'sh qatorlar
+	mselMos(set, qiymat) {
+		if (!set.size) return true;
+		if (!qiymat) return set.has("__none");
+		return set.has(qiymat);
+	}
+
 	filtered() {
 		const q = this.q.trim().toLowerCase();
 		return (this.data.rows || []).filter((r) => {
 			if (this.fTur === "qarzdor" && !(r.saldo > 1000)) return false;
 			if (this.fTur === "kompaniya" && !(r.saldo < -1000)) return false;
-			if (this.fLavozim === "__none" && r.lavozim) return false;
-			if (this.fLavozim && this.fLavozim !== "__none" && r.lavozim !== this.fLavozim) return false;
-			if (this.fKategoriya === "__none" && r.kategoriya) return false;
-			if (this.fKategoriya && this.fKategoriya !== "__none" && r.kategoriya !== this.fKategoriya) return false;
+			if (!this.mselMos(this.fLavozim, r.lavozim)) return false;
+			if (!this.mselMos(this.fKategoriya, r.kategoriya)) return false;
 			if (q) {
 				const hay = [r.ism, r.lavozim, r.kategoriya, r.telefon, r.employee].join(" ").toLowerCase();
 				if (!hay.includes(q)) return false;
 			}
 			return true;
 		});
+	}
+
+	// --- Multi-tanlov dropdown (qidiruv + checkbox ro'yxat) ---
+	mselSet(k) { return k === "lavozim" ? this.fLavozim : this.fKategoriya; }
+
+	mselLabel(k) {
+		const set = this.mselSet(k);
+		const bosh = k === "lavozim" ? "Barcha lavozimlar" : "Barcha kategoriyalar";
+		const nom = k === "lavozim" ? "Lavozim" : "Kategoriya";
+		if (!set.size) return bosh;
+		if (set.size === 1) {
+			const v = [...set][0];
+			return `${nom}: ${v === "__none" ? (k === "lavozim" ? "Lavozimsiz" : "Belgilanmagan") : v}`;
+		}
+		return `${nom}: ${set.size} ta`;
+	}
+
+	mselHtml(k, items, searchable) {
+		const set = this.mselSet(k);
+		const noneLabel = k === "lavozim" ? "Lavozimsiz" : "Belgilanmagan";
+		const it = (v, label) => `
+			<label class="msel-it"><input type="checkbox" value="${this.esc(v)}" ${set.has(v) ? "checked" : ""}>
+				<span>${this.esc(label)}</span></label>`;
+		return `
+			<div class="msel" data-k="${k}">
+				<button type="button" class="msel-btn ${set.size ? "on" : ""}">${this.esc(this.mselLabel(k))} <span class="car">▾</span></button>
+				<div class="msel-pop" hidden>
+					${searchable ? `<input type="text" class="msel-q" placeholder="Qidirish…">` : ""}
+					<div class="msel-list">
+						${it("__none", noneLabel)}
+						${items.map((v) => it(v, v)).join("")}
+					</div>
+					<div class="msel-foot">
+						<button type="button" class="msel-clear">Tozalash</button>
+						<button type="button" class="msel-ok">Yopish</button>
+					</div>
+				</div>
+			</div>`;
+	}
+
+	bind_msel() {
+		const self = this;
+		this.body.find(".msel-btn").on("click", function (e) {
+			e.stopPropagation();
+			const pop = $(this).siblings(".msel-pop")[0];
+			const ochiqEdi = !pop.hidden;
+			self.body.find(".msel-pop").each((_, p) => { p.hidden = true; });
+			pop.hidden = ochiqEdi;
+			if (!ochiqEdi) $(pop).find(".msel-q").trigger("focus");
+		});
+		this.body.find(".msel-pop").on("click", (e) => e.stopPropagation());
+		this.body.find(".msel-pop input[type=checkbox]").on("change", function () {
+			const k = $(this).closest(".msel").data("k");
+			const set = self.mselSet(k);
+			if (this.checked) set.add(this.value); else set.delete(this.value);
+			self.msel_btn_yangila(k);
+			self.render_list();
+		});
+		this.body.find(".msel-q").on("input", function () {
+			const q = this.value.trim().toLowerCase();
+			$(this).siblings(".msel-list").find(".msel-it").each(function () {
+				this.hidden = !!q && !$(this).text().toLowerCase().includes(q);
+			});
+		});
+		this.body.find(".msel-clear").on("click", function () {
+			const k = $(this).closest(".msel").data("k");
+			self.mselSet(k).clear();
+			$(this).closest(".msel-pop").find("input[type=checkbox]").prop("checked", false);
+			self.msel_btn_yangila(k);
+			self.render_list();
+		});
+		this.body.find(".msel-ok").on("click", function () { $(this).closest(".msel-pop")[0].hidden = true; });
+		if (!this._mselDoc) {
+			this._mselDoc = true;
+			$(document).on("click.tzxq", () => this.body.find(".msel-pop").each((_, p) => { p.hidden = true; }));
+		}
+	}
+
+	msel_btn_yangila(k) {
+		const btn = this.body.find(`.msel[data-k="${k}"] .msel-btn`);
+		btn.toggleClass("on", this.mselSet(k).size > 0);
+		btn.html(`${this.esc(this.mselLabel(k))} <span class="car">▾</span>`);
 	}
 
 	render() {
@@ -94,7 +182,9 @@ class TZXodimQarzPanel {
 				<div>
 					<h1>Xodimlar qarzdorligi</h1>
 					<div class="sub">O'qituvchi va xodimlar — bitta jadvalda · GL asosida jonli hisob${
-						this.fOy ? ` · <b>${this.esc(this.oyNomi(this.fOy))}</b> oyi kesimida` : ""}</div>
+						this.fDan || this.fGacha
+							? ` · <b>${this.fDan ? this.dmy(this.fDan) : "boshidan"} — ${this.fGacha ? this.dmy(this.fGacha) : "hozirgacha"}</b> davri`
+							: ""}</div>
 				</div>
 				<div class="spacer"></div>
 				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
@@ -117,23 +207,14 @@ class TZXodimQarzPanel {
 
 			<div class="controls mb">
 				<input type="text" class="q" placeholder="Qidiruv: ism, lavozim, telefon…" value="${this.esc(this.q)}">
-				<select class="foy">
-					<option value="">Barcha oylar</option>
-					${(this.data.oylar || []).map((o) =>
-						`<option value="${this.esc(o)}" ${this.fOy === o ? "selected" : ""}>${this.esc(this.oyNomi(o))}</option>`).join("")}
-				</select>
-				<select class="fkategoriya">
-					<option value="">Barcha kategoriyalar</option>
-					${this.kategoriyalar().map((k) =>
-						`<option value="${this.esc(k)}" ${this.fKategoriya === k ? "selected" : ""}>${this.esc(k)}</option>`).join("")}
-					<option value="__none" ${this.fKategoriya === "__none" ? "selected" : ""}>Belgilanmagan</option>
-				</select>
-				<select class="flavozim">
-					<option value="">Barcha lavozimlar</option>
-					<option value="__none" ${this.fLavozim === "__none" ? "selected" : ""}>Lavozimsiz</option>
-					${this.lavozimlar().map((l) =>
-						`<option value="${this.esc(l)}" ${this.fLavozim === l ? "selected" : ""}>${this.esc(l)}</option>`).join("")}
-				</select>
+				<div class="dates">
+					<input type="date" class="fdan" value="${this.esc(this.fDan)}" title="Davr boshi">
+					<span class="dsep">—</span>
+					<input type="date" class="fgacha" value="${this.esc(this.fGacha)}" title="Davr oxiri">
+					${this.fDan || this.fGacha ? `<button type="button" class="dclear" title="Davrni tozalash">✕</button>` : ""}
+				</div>
+				${this.mselHtml("kategoriya", this.kategoriyalar(), false)}
+				${this.mselHtml("lavozim", this.lavozimlar(), true)}
 			</div>
 
 			<div class="split">
@@ -144,9 +225,10 @@ class TZXodimQarzPanel {
 		this.render_list();
 		this.body.find(`[data-act="reload"]`).on("click", () => this.load());
 		this.body.find(".q").on("input", frappe.utils.debounce((e) => { this.q = e.target.value; this.render_list(); }, 250));
-		this.body.find(".foy").on("change", (e) => { this.fOy = e.target.value; this.load(); });
-		this.body.find(".flavozim").on("change", (e) => { this.fLavozim = e.target.value; this.render_list(); });
-		this.body.find(".fkategoriya").on("change", (e) => { this.fKategoriya = e.target.value; this.render_list(); });
+		this.body.find(".fdan").on("change", (e) => { this.fDan = e.target.value; this.load(); });
+		this.body.find(".fgacha").on("change", (e) => { this.fGacha = e.target.value; this.load(); });
+		this.body.find(".dclear").on("click", () => { this.fDan = ""; this.fGacha = ""; this.load(); });
+		this.bind_msel();
 		this.body.find(".kpi.click").on("click", (e) => { this.fTur = $(e.currentTarget).data("t"); this.render(); });
 	}
 
