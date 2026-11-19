@@ -142,7 +142,7 @@ class TZDarsJadvali {
 			<span class="mv-ico">✋</span>
 			<b>${this.esc(m.fan)}</b>&nbsp;— ${this.esc(m.guruh_nomi)}
 			<span class="mv-sub">(hozir: ${this.esc(m.kun)} ${m.dars_raqami}-dars${blok})</span>
-			<span class="mv-hint">Yashil = bo'sh joy · Sariq ↔ = almashuv · kun tablari bilan boshqa kunga ham o'tiladi</span>
+			<span class="mv-hint">Istalgan darsni bosib almashtiring · <span class="lg-ok">yashil</span>=bo'sh joy · <span class="lg-sw">↔ sariq</span>=toza almashuv · <span class="lg-wn">to'q sariq</span>=ogohli · kun tablari bilan boshqa kunga ham</span>
 			<span class="spacer"></span>
 			<button class="refresh" data-act="mv-cancel">Bekor (Esc)</button>
 		</div>`);
@@ -169,7 +169,8 @@ class TZDarsJadvali {
 						if (st.holat === "oz") mvCls = "mv-oz";
 						else if (st.holat === "ok") mvCls = "mv-ok";
 						else if (st.holat === "afzal") mvCls = "mv-afzal";
-						else if (st.holat === "almashuv") { mvCls = "mv-swap"; mvTitle = "↔ Almashuv: " + (st.bilan || []).join("; "); }
+						else if (st.holat === "swap_ok") { mvCls = "mv-swap"; mvTitle = "↔ Almashuv (toza): " + (st.bilan || []).join("; "); }
+						else if (st.holat === "swap_warn") { mvCls = "mv-swap-warn"; mvTitle = "↔ Almashuv mumkin, lekin: " + (st.sabab || []).join("; "); }
 						else { mvCls = "mv-band"; mvTitle = (st.sabab || []).join("\n"); }
 					} else mvCls = "mv-dim";
 				}
@@ -204,12 +205,15 @@ class TZDarsJadvali {
 				const no = Number($(e.currentTarget).data("no"));
 				this.do_move(this.kun, no);
 			});
-			this.body.find("td.mv-swap").on("click", (e) => {
+			this.body.find("td.mv-swap, td.mv-swap-warn").on("click", (e) => {
 				const no = Number($(e.currentTarget).data("no"));
 				const st = (this.moving.xarita || {})[`${this.kun}|${no}`] || {};
 				const bilan = (st.bilan || []).map((b) => this.esc(b)).join("; ");
+				const warn = (st.sabab && st.sabab.length)
+					? `<div class="swap-warn-box">⚠ ${st.sabab.map((s) => this.esc(s)).join("<br>⚠ ")}<br><br>Baribir almashtiramizmi? (konflikt bo'lsa saqlanmaydi)</div>`
+					: "";
 				frappe.confirm(
-					`<b>${this.esc(this.moving.fan)} — ${this.esc(this.moving.guruh_nomi)}</b> ↔ <b>${bilan}</b><br>O'rinlari almashtirilsinmi?`,
+					`<b>${this.esc(this.moving.fan)} — ${this.esc(this.moving.guruh_nomi)}</b><br>↕<br><b>${bilan}</b><br>o'rinlari almashtirilsinmi?${warn}`,
 					() => this.do_swap(this.kun, no)
 				);
 			});
@@ -337,6 +341,8 @@ class TZDarsJadvali {
 				$(document).off("keyup.tzmv");
 				this.load();
 			},
+			// Konflikt (hard) bo'lsa server xato beradi — ko'chirish rejimida qolamiz
+			error: () => {},
 		});
 	}
 

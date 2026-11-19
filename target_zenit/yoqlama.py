@@ -14,8 +14,20 @@ from frappe.utils import cint, flt, getdate, nowdate
 
 from target_zenit.kadrlar import ish_haqi_kategoriyalari
 
-ROLLAR = ["System Manager", "Zavuch", "Xojakbar_Operator", "HR Manager", "HR User"]
+ROLLAR = ["System Manager", "Zavuch", "Xojakbar_Operator", "HR Manager", "HR User",
+		  "Direktor"]
 HAFTA = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"]
+
+# FAQAT KO'RISH rollari (2026-11-19, foydalanuvchi talabi): direktor
+# (nurbekzamderektor) yo'qlamani ko'radi, lekin belgilay olmaydi.
+# Bu ro'yxatdagi rol faqat qo'shimcha huquq BERMAYDI — foydalanuvchida
+# tahrir roli (Zavuch, HR...) ham bo'lsa, tahrir ishlayveradi.
+KORISH_ROLLAR = {"direktor"}
+
+# FAQAT KO'RISH foydalanuvchilari (2026-11-19): ikkita zavuch bor, ikkalasida
+# ham Zavuch roli — rol orqali ajratib bo'lmaydi. Shu ro'yxatdagi user ROLIDAN
+# QAT'I NAZAR yozolmaydi (Zavuch roli boshqa joylar uchun unda qolaveradi).
+KORISH_FOYDALANUVCHILAR = {"nurbekzamdirektor@gmail.com"}
 
 
 # Bu rollar istalgan (o'tgan) kunni ham tahrirlay oladi.
@@ -29,6 +41,19 @@ def _guard(tahrir=False):
 	rollar = {r.lower() for r in frappe.get_roles()}
 	if not ({r.lower() for r in ROLLAR} & rollar):
 		frappe.throw(_("Yo'qlamaga ruxsatingiz yo'q"), frappe.PermissionError)
+	if tahrir and _faqat_korish():
+		frappe.throw(_("Sizga yo'qlama faqat KO'RISH uchun ochilgan — belgilash mumkin emas"),
+					 frappe.PermissionError)
+
+
+def _faqat_korish() -> bool:
+	"""Foydalanuvchi yozolmaydi: yo ro'yxatda (user bo'yicha blok),
+	yo unda tahrir beruvchi rol yo'q (faqat ko'rish roli bor)."""
+	if frappe.session.user.lower() in KORISH_FOYDALANUVCHILAR:
+		return True
+	rollar = {r.lower() for r in frappe.get_roles()}
+	tahrir_rollar = {r.lower() for r in ROLLAR} - KORISH_ROLLAR
+	return not (tahrir_rollar & rollar)
 
 
 def _faqat_bugun() -> bool:
@@ -251,6 +276,7 @@ def get_data(yil=None, oy=None, kategoriya=None):
 		"yil": yil, "oy": oy, "kunlar": kunlar, "qatorlar": qatorlar,
 		"kategoriyalar": kategoriyalar,
 		"faqat_bugun": _faqat_bugun(),
+		"faqat_korish": _faqat_korish(),
 		"kategoriya": kategoriya or "",
 		"oy_ochiq": _oy_ochiqmi(yil, oy),
 		"bugun": str(bugun),

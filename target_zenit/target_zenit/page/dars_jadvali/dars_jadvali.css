@@ -90,12 +90,20 @@
 .tz-jadval td.mv-afzal { background:rgba(18,161,80,.30) !important; cursor:pointer;
   box-shadow:inset 0 0 0 2px var(--good); }
 .tz-jadval td.mv-afzal:hover { background:rgba(18,161,80,.42) !important; }
-.tz-jadval td.mv-swap { background:rgba(221,154,31,.18) !important; cursor:pointer;
+.tz-jadval td.mv-swap { background:rgba(221,154,31,.16) !important; cursor:pointer;
   box-shadow:inset 0 0 0 1px var(--warn); position:relative; }
-.tz-jadval td.mv-swap:hover { background:rgba(221,154,31,.32) !important; }
-.tz-jadval td.mv-swap::after { content:"↔"; position:absolute; top:1px; right:4px;
-  font-size:11px; font-weight:700; color:var(--warn-ink); }
-.tz-jadval td.mv-band { background:rgba(216,68,60,.10) !important; cursor:not-allowed; }
+.tz-jadval td.mv-swap:hover { background:rgba(221,154,31,.30) !important; }
+.tz-jadval td.mv-swap-warn { background:rgba(221,154,31,.10) !important; cursor:pointer;
+  box-shadow:inset 0 0 0 1px rgba(221,154,31,.5); position:relative; }
+.tz-jadval td.mv-swap-warn:hover { background:rgba(221,154,31,.22) !important; }
+.tz-jadval td.mv-swap::after, .tz-jadval td.mv-swap-warn::after { content:"↕";
+  position:absolute; top:1px; right:4px; font-size:11px; font-weight:700; color:var(--warn-ink); }
+.tz-jadval td.mv-swap-warn::after { content:"⚠"; }
+.tz-jadval td.mv-band { background:rgba(216,68,60,.08) !important; cursor:not-allowed; }
+.tz-jadval .mvbar .lg-ok { color:var(--good); font-weight:600; }
+.tz-jadval .mvbar .lg-sw, .tz-jadval .mvbar .lg-wn { color:var(--warn-ink); font-weight:600; }
+.swap-warn-box { margin-top:10px; padding:8px 10px; background:rgba(221,154,31,.12);
+  border-radius:8px; font-size:12px; color:var(--warn-ink,#a8730b); }
 .tz-jadval td.mv-band .lesson { opacity:.55; }
 .tz-jadval td.mv-oz { box-shadow:inset 0 0 0 2px var(--blue); }
 .tz-jadval td.mv-dim { opacity:.3; pointer-events:none; }

@@ -82,11 +82,12 @@ class TZYoqlama {
 			if (darsli && !k.dam) cls += " darsli";
 			// Zavuch faqat BUGUNGI kunni belgilaydi; qolgan kunlar ko'rinadi, lekin tegilmaydi
 			const bugunmi = k.sana === d.bugun;
-			const bloklangan = k.kelajak || !d.oy_ochiq || (d.faqat_bugun && !bugunmi);
+			// faqat_korish (direktor): hamma katak ko'rinadi, hech biri bosilmaydi
+			const bloklangan = d.faqat_korish || k.kelajak || !d.oy_ochiq || (d.faqat_bugun && !bugunmi);
 			if (bugunmi) cls += " bugun";
 			return `<td><button class="${cls}" data-x="${this.esc(r.xodim)}" data-s="${k.sana}"
 				${bloklangan ? "disabled" : ""}
-				title="${k.sana}${darsli ? " · darsi bor" : ""}${d.faqat_bugun && !bugunmi ? " · faqat bugungi kun belgilanadi" : ""}">${matn}</button></td>`;
+				title="${k.sana}${darsli ? " · darsi bor" : ""}${!d.faqat_korish && d.faqat_bugun && !bugunmi ? " · faqat bugungi kun belgilanadi" : ""}">${matn}</button></td>`;
 		}).join("");
 		return `<tr>
 			<th class="nom" title="${this.esc(r.ism)}${r.lavozim ? ` — ${this.esc(r.lavozim)}` : ""}${r.fanlar && r.fanlar.length ? ` · fanlar: ${this.esc(r.fanlar.join(", "))}` : ""}${r.ketgan_sana ? ` — ${r.ketgan_sana} da ishdan ketgan` : ""}"><b>${this.esc(r.ism)}</b><span>${this.esc(r.lavozim || r.kategoriya || "")}${r.soatbay ? " · soatbay" : ""}</span>${r.fanlar && r.fanlar.length ? `<span class="fan">${this.esc(this.fanQisqa(r.fanlar))}</span>` : ""}${r.ketgan_sana ? `<span class="ketgan">ketgan: ${this.esc(r.ketgan_sana)}</span>` : ""}</th>
@@ -144,8 +145,10 @@ class TZYoqlama {
 			<div class="topbar">
 				<div>
 					<h1>Yo'qlama</h1>
-					<div class="sub">Kunlik yo'qlama · belgilangan kunlar oylik tabelga avtomatik tushadi${d.faqat_bugun
-						? ` · <b>faqat bugungi kun (${this.esc(frappe.datetime.str_to_user(d.bugun))}) belgilanadi</b>` : ""}</div>
+					<div class="sub">Kunlik yo'qlama · belgilangan kunlar oylik tabelga avtomatik tushadi${d.faqat_korish
+						? ` · <b>faqat ko'rish rejimi</b>`
+						: d.faqat_bugun
+							? ` · <b>faqat bugungi kun (${this.esc(frappe.datetime.str_to_user(d.bugun))}) belgilanadi</b>` : ""}</div>
 				</div>
 				<div class="spacer"></div>
 				<div class="chips">
@@ -162,7 +165,7 @@ class TZYoqlama {
 				<div class="chips kchips" title="Kategoriya — bir nechtasini tanlash mumkin">${katlar}</div>
 				<div class="spacer"></div>
 				<span class="legend"><i class="keldi"></i> keldi <i class="yoq"></i> kelmadi
-					<i class="darsli"></i> darsi bor kun <i class="bosh"></i> belgilanmagan · <b>—</b> ishlamagan kun (kirmagan/ketgan) · katakni bosing — tanlov ochiladi</span>
+					<i class="darsli"></i> darsi bor kun <i class="bosh"></i> belgilanmagan · <b>—</b> ishlamagan kun (kirmagan/ketgan)${d.faqat_korish ? "" : " · katakni bosing — tanlov ochiladi"}</span>
 			</div>
 
 			<div class="card scroll-x">

@@ -94,33 +94,42 @@ def _siqiladiganlar(slot_rows, sinflar, blok):
 	return out
 
 
-def _almashuv_mumkinmi(slot_rows, oqituvchilar, sinflar, xonalar, blok,
-                       eski_rows, mavlar, eski_kun, eski_dars):
-	"""2 tomonlama almashuv (Untis swap): maqsad slotdagi qarshi dars(lar)ni
-	bizning ESKI o'rnimizga ko'chirib bo'ladimi? Bo'lsa — (True, tavsif)."""
-	# Bizning o'qituvchi/xona boshqa sinfda band bo'lsa — oddiy swap yetmaydi
-	for r in slot_rows:
-		if r.oqituvchi and r.oqituvchi in oqituvchilar:
-			r_sinflar = {s.strip() for s in (r.sinflar or "").split(",") if s.strip()}
-			if not (sinflar & r_sinflar):
-				return False, None
-		if r.xona and r.xona in xonalar:
-			return False, None
-	siqiladigan = _siqiladiganlar(slot_rows, sinflar, blok)
-	if not siqiladigan or any(r.qulf for r in siqiladigan):
-		return False, None
-	# Qarshi to'plam bizning eski slotga sig'adimi?
+def _swap_baho(siqiladigan, slot_rows, kochma, oqituvchilar, sinflar, xonalar, blok,
+               eski_rows, mavlar, eski_kun, eski_dars, kun, d):
+	"""Maqsad slotdagi qarshi dars(lar) bilan 2 tomonlama almashuvni baholaydi.
+	Qaytaradi: (holat, tavsif, sabab) — holat = 'swap_ok' (toza) / 'swap_warn'
+	(muammo bor, lekin baribir bosib ko'rsa bo'ladi). Istalgan darsni almashtirish
+	mumkin — professional muharrir uslubi (aSc/Untis)."""
+	kochma_nomlar = {y.name for y in kochma}
+	tavsif = list(dict.fromkeys(
+		f"{r.fan} — {r.guruh_nomi or r.guruh}" for r in siqiladigan))[:3]
+	sabab = []
+
+	# (A) Bizning dars maqsad slotga tushadi: o'sha slotdagi QARSHI bo'lmagan
+	# (siqilmaydigan) yozuvlar bilan to'qnashmasinmi
+	siq_nomlar = {r.name for r in siqiladigan}
+	qolgan = [r for r in slot_rows if r.name not in siq_nomlar]
+	sabab += _slot_sabablari(qolgan, oqituvchilar, sinflar, xonalar, blok)
+	for o, mav in mavlar.items():
+		if _mavjudlikmi(mav, kun, d) == "band":
+			sabab.append(f"{oqituvchi_nomlari([o]).get(o) or o} bu vaqtda ishlamaydi")
+
+	# (B) Qarshi dars bizning eski slotga tushadi
 	s_oqit = {r.oqituvchi for r in siqiladigan if r.oqituvchi}
 	s_sinf = _sinflar_toplam(siqiladigan)
 	s_xona = {r.xona for r in siqiladigan if r.xona}
-	if _slot_sabablari(eski_rows, s_oqit, s_sinf, s_xona, None):
-		return False, None
+	eski_qolgan = [r for r in eski_rows if r.name not in kochma_nomlar]
+	sabab += _slot_sabablari(eski_qolgan, s_oqit, s_sinf, s_xona, None)
 	for o in s_oqit:
 		if _mavjudlikmi(_mavjudlik_map(o), eski_kun, eski_dars) == "band":
-			return False, None
-	tavsif = list(dict.fromkeys(
-		f"{r.fan} — {r.guruh_nomi or r.guruh}" for r in siqiladigan))
-	return True, tavsif[:3]
+			sabab.append(f"{oqituvchi_nomlari([o]).get(o) or o} eski vaqtda ishlamaydi")
+
+	if any(r.qulf for r in siqiladigan):
+		sabab.append("qarshi dars qulflangan")
+
+	sabab = list(dict.fromkeys(sabab))
+	holat = "swap_warn" if sabab else "swap_ok"
+	return holat, tavsif, sabab[:4]
 
 
 @frappe.whitelist()
@@ -151,28 +160,28 @@ def kochirish_xarita(yozuv: str) -> dict:
 				xarita[key] = {"holat": "oz"}
 				continue
 			slot_rows = slotlar.get((kun, d), [])
+			# Maqsad slotda bizning sinf(lar)imizni band qilgan dars(lar) bormi?
+			siqiladigan = _siqiladiganlar(slot_rows, sinflar, doc.blok)
+			if siqiladigan:
+				# Band katak — ISTALGANINI almashtirsa bo'ladi (toza yoki ogohli)
+				holat, tavsif, sabab = _swap_baho(
+					siqiladigan, slot_rows, kochma, oqituvchilar, sinflar, xonalar,
+					doc.blok, eski_rows, mavlar, eski_kun, eski_dars, kun, d)
+				xarita[key] = {"holat": holat, "bilan": tavsif, "sabab": sabab}
+				continue
+			# Bo'sh katak — bizning darsimiz to'g'ridan-to'g'ri tushadimi?
 			sabab = _slot_sabablari(slot_rows, oqituvchilar, sinflar, xonalar, doc.blok)
 			afzal = False
-			oqit_bandmi = False
 			for o, mav in mavlar.items():
 				mh = _mavjudlikmi(mav, kun, d)
 				if mh == "band":
-					oqit_bandmi = True
 					sabab.append(f"{oqituvchi_nomlari([o]).get(o) or o} bu vaqtda ishlamaydi")
 				elif mh == "afzal":
 					afzal = True
-			if not sabab:
+			if sabab:
+				xarita[key] = {"holat": "band", "sabab": sabab[:4]}
+			else:
 				xarita[key] = {"holat": "afzal" if afzal else "ok"}
-				continue
-			# To'la jadvalda bo'sh katak deyarli yo'q — 2 tomonlama almashuvni tekshiramiz
-			if not oqit_bandmi:
-				bola, tavsif = _almashuv_mumkinmi(
-					slot_rows, oqituvchilar, sinflar, xonalar, doc.blok,
-					eski_rows, mavlar, eski_kun, eski_dars)
-				if bola:
-					xarita[key] = {"holat": "almashuv", "bilan": tavsif}
-					continue
-			xarita[key] = {"holat": "band", "sabab": sabab[:4]}
 
 	return {
 		"yozuv": doc.name,
