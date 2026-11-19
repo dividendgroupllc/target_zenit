@@ -21,7 +21,7 @@ import html
 import frappe
 from frappe.utils import cint, cstr, now_datetime, strip_html
 
-from target_zenit.integrations.moodle import _call, _settings
+from target_zenit.integrations.moodle import MOODLE_BOSHQARUV, _call, _settings
 from target_zenit.integrations.moodle_kurs import _oquv_yili
 
 # Bitta so'rovda nechta dars yuboriladi.
@@ -361,7 +361,7 @@ def push(trigger="Qo'lda"):
 @frappe.whitelist()
 def preview_jadval(limit=5):
 	"""Moodle'ga tegmasdan nima yuborilishini ko'rsatadi."""
-	frappe.only_for("System Manager")
+	frappe.only_for(MOODLE_BOSHQARUV)
 	s = _settings()
 	yil = _oquv_yili()
 	darslar = _darslar(yil)
@@ -381,7 +381,7 @@ def preview_jadval(limit=5):
 @frappe.whitelist()
 def push_now():
 	"""Moodle Settings tugmasi."""
-	frappe.only_for("System Manager")
+	frappe.only_for(MOODLE_BOSHQARUV)
 	return push(trigger="Qo'lda")
 
 

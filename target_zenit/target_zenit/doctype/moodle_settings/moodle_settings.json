@@ -166,7 +166,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-19 09:00:00.000000",
+ "modified": "2026-11-19 17:13:53.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Moodle Settings",
@@ -178,6 +178,15 @@
    "print": 1,
    "read": 1,
    "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Xojakbar_Operator",
    "share": 1,
    "write": 1
   }

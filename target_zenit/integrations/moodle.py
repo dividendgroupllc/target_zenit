@@ -821,6 +821,15 @@ def _save_links(new_links, dry):
 # Operator ularni odamlarga tarqatadi, shuning uchun ro'yxatda turadi.
 PAROL_KORUVCHI = ("System Manager", "Xojakbar_Operator")
 
+# Moodle Settings sahifasidagi TUGMALARNI bosa oladigan rollar.
+#
+# Nega alohida konstanta: tugmalar `only_for("System Manager")` bilan
+# yopilgan edi, ya'ni operatorga butun saytning administrator roli
+# berilmasa ular ishlamasdi. Operator Moodle sinxronini yuritadi, lekin
+# unga Frappe ma'murligi KERAK EMAS — shuning uchun ruxsat shu ro'yxat
+# bilan beriladi va bitta joydan boshqariladi.
+MOODLE_BOSHQARUV = ("System Manager", "Xojakbar_Operator")
+
 
 @frappe.whitelist()
 def parolni_korsat(link_name):
@@ -853,7 +862,7 @@ def preview(limit=10):
 	Token hali yo'q paytda ham ishlaydi — ism bo'linishi, login va kalit
 	to'g'ri yasalayotganini tekshirish uchun.
 	"""
-	frappe.only_for("System Manager")
+	frappe.only_for(MOODLE_BOSHQARUV)
 	s = _settings()
 	domain = (s.email_domain or "target.local").strip().lstrip("@")
 
@@ -895,7 +904,7 @@ def preview(limit=10):
 @frappe.whitelist()
 def test_connection():
 	"""Moodle Settings'dagi tugma: token va ruxsatlarni tekshiradi."""
-	frappe.only_for("System Manager")
+	frappe.only_for(MOODLE_BOSHQARUV)
 	info = _call("core_webservice_get_site_info")
 	funcs = {f["name"] for f in info.get("functions", [])}
 	kerak = {
@@ -922,7 +931,7 @@ def sync_now(limit=0):
 	120 soniyalik chegarasidan oshib ketadi. Uzilsa Moodle'da akkaunt qolib,
 	Frappe'da parol yo'qolardi — shuning uchun fonda.
 	"""
-	frappe.only_for("System Manager")
+	frappe.only_for(MOODLE_BOSHQARUV)
 	limit = int(limit or 0)
 
 	if limit > 0:

@@ -32,6 +32,7 @@ import frappe
 from frappe.utils import now_datetime
 
 from target_zenit.integrations.moodle import (
+	MOODLE_BOSHQARUV,
 	MoodleError,
 	_call,
 	_settings,
@@ -692,7 +693,7 @@ def _saqla_enrol(jadvalsiz, enrol_holat, student_role, dry):
 @frappe.whitelist()
 def preview_kurslar(limit=10):
 	"""Moodle'ga murojaat qilmasdan nima yaratilishini ko'rsatadi."""
-	frappe.only_for("System Manager")
+	frappe.only_for(MOODLE_BOSHQARUV)
 	yil = _oquv_yili()
 	juft = _juftliklar(yil)
 	azolar = _guruh_azolari()
@@ -727,7 +728,7 @@ def preview_kurslar(limit=10):
 @frappe.whitelist()
 def kurs_sync_now(limit=0):
 	"""Moodle Settings tugmasi. Sinov darhol, to'liq sinxron fonda."""
-	frappe.only_for("System Manager")
+	frappe.only_for(MOODLE_BOSHQARUV)
 	limit = int(limit or 0)
 	if limit > 0:
 		return {"rejim": "darhol", "log": sync_kurslar(trigger="Qo'lda", limit=limit)}
