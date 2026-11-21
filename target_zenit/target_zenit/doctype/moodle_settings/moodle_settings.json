@@ -14,6 +14,8 @@
   "sync_students",
   "sync_teachers",
   "sync_staff",
+  "sync_psixologiya",
+  "psixolog",
   "column_break_2",
   "suspend_on_leave",
   "dry_run",
@@ -88,6 +90,20 @@
    "label": "Oylik tabeldagi barcha xodimni yuborish",
    "default": "0",
    "description": "Tabelda ko'ringan har bir xodim (oshpaz, tozalik, qo'riqchi, moliya ...) Moodle'da akkaunt oladi va o'z oyligini ko'radi. Kalit — Employee ID."
+  },
+  {
+   "default": "0",
+   "description": "Markaziy «Psixologiya xizmati» kursi (PSIXOLOGIYA::<yil>): barcha faol o'quvchi (1-11) sinf guruhlari bilan + xodimlar «Xodimlar» guruhida yoziladi. Cron 07:15.",
+   "fieldname": "sync_psixologiya",
+   "fieldtype": "Check",
+   "label": "Psixologiya kursini yuritish"
+  },
+  {
+   "description": "Maktab psixologi — markaziy Psixologiya kursiga O'QITUVCHI (editingteacher) sifatida yoziladi: test/so'rovnoma yaratadi va natijalarni ko'radi. Moodle'dagi «Psixolog» roli esa alohida, cli/psixolog_rol.php bilan beriladi.",
+   "fieldname": "psixolog",
+   "fieldtype": "Link",
+   "label": "Psixolog (Employee)",
+   "options": "Employee"
   },
   {
    "fieldname": "column_break_2",
@@ -166,7 +182,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-19 17:13:53.000000",
+ "modified": "2026-11-21 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Moodle Settings",

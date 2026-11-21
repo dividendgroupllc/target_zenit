@@ -385,6 +385,12 @@ scheduler_events = {
 		"10 7 * * *": [
 			"target_zenit.integrations.moodle_kurs.daily_sync"
 		],
+		# 07:15 — markaziy Psixologiya kursi (kurs + sinf guruhlari + yozilish).
+		# Foydalanuvchi (07:00) va kurs (07:10) sinxronidan KEYIN: Moodle user
+		# id va <yil> kategoriyasi allaqachon kerak.
+		"15 7 * * *": [
+			"target_zenit.integrations.moodle_psixologiya.daily_sync"
+		],
 		# 07:20 — dars jadvali va o'quv kalendarini Moodle plaginiga uzatish
 		"20 7 * * *": [
 			"target_zenit.integrations.moodle_jadval.daily_sync"
