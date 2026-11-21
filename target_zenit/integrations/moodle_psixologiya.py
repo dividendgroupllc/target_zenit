@@ -350,7 +350,7 @@ def sync_psixologiya(trigger="Qo'lda"):
 				stat["errors"] += 1
 
 		# --- 4. Guruhlar va a'zolik (jonli diff)
-		guruh_nomlar = sorted(sinflar) + [XODIM_GURUH]
+		guruh_nomlar = [*sorted(sinflar), XODIM_GURUH]
 		guruh_ids = {}
 		if cid != -1:
 			guruh_ids = _guruhlar_taminla(cid, guruh_nomlar, yil, lines, dry)
