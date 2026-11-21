@@ -329,6 +329,7 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 			let manba = "";
 			if (q.oylik.manba === "kassa") manba = '<span class="ot-manba-kassa">Kassa taklifi*</span>';
 			if (q.oylik.manba === "yoq") manba = '<span class="ot-manba-kassa ot-manba-yoq">kiritilmagan</span>';
+			if (q.oylik.manba === "oldingi") manba = '<span class="ot-manba-kassa ot-manba-yoq">o\'tgan oydan</span>';
 			let tr = `<tr data-ism="${frappe.utils.escape_html(((q.ismi || "") + " " + (q.lavozim || "")).toLowerCase())}" data-xodim="${q.xodim}" data-kat="${frappe.utils.escape_html(q.kategoriya || "")}">
 				<td class="ot-c-nr">${i + 1}</td>
 				<td class="ot-c-ism" title="${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? ` — ${q.ketgan_sana} da ishdan ketgan` : ""}">${frappe.utils.escape_html(q.ismi || q.xodim)}${q.ketgan_sana ? `<span class="ot-ketgan">ketgan: ${q.ketgan_sana}</span>` : ""}</td>
@@ -602,7 +603,9 @@ frappe.pages["oylik-tabel"].on_page_load = function (wrapper) {
 				? "Bu summa Kassa'dagi oxirgi oy to'lovlaridan taklif sifatida olingan. Saqlasangiz FAQAT shu oy uchun qotiriladi."
 				: q.oylik.manba === "yoq"
 					? "Bu xodimga hali oylik kiritilmagan (Kassa'da to'lov ham topilmadi)."
-					: "FAQAT SHU OY uchun saqlanadi — boshqa oylarning oyligi o'zgarmaydi. (Eng so'nggi oy tahrirlansa Employee'dagi \"Oylik ish haqi (shartnoma)\" ham yangilanadi.)";
+					: q.oylik.manba === "oldingi"
+						? "Bu summa OXIRGI OYda belgilangan oylik — yangi oy uchun default. O'zgartirsangiz FAQAT shu oyga saqlanadi, o'tgan oy o'zgarmaydi."
+						: "FAQAT SHU OY uchun saqlanadi — boshqa oylarning oyligi o'zgarmaydi. (Eng so'nggi oy tahrirlansa Employee'dagi \"Oylik ish haqi (shartnoma)\" ham yangilanadi.)";
 		const dlg = new frappe.ui.Dialog({
 			title: `${q.ismi} — oylik summa`,
 			fields: [{

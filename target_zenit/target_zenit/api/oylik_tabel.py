@@ -117,9 +117,47 @@ def _oy_oylik_yoz(xodim, yil, oy, summa):
     return None
 
 
+def _oldingi_oylik_map(yil, oy, emp_ids):
+    """Eng yaqin OLDINGI oyga qotirilgan oylik ("Tabel Oylik" yozuvlaridan):
+    {xodim: (summa, o'sha oyning oxirgi kuni)}. Yangi oy uchun DEFAULT —
+    oxirgi oyda belgilangan oylik shu yerdan meros bo'lib o'tadi (har oy
+    o'z yozuvi bilan mustaqil o'zgartiriladi — oldingi oy o'zgarmaydi)."""
+    if not emp_ids:
+        return {}
+    kalit = cint(yil) * 100 + cint(oy)
+    eng, out = {}, {}
+    for r in frappe.get_all(
+        "Tabel Oylik",
+        filters={"xodim": ["in", list(emp_ids)]},
+        fields=["xodim", "yil", "oy", "summa"],
+        limit_page_length=0,
+    ):
+        k = cint(r.yil) * 100 + cint(r.oy)
+        if k < kalit and (r.xodim not in eng or k > eng[r.xodim]):
+            eng[r.xodim] = k
+            oxiri = date(cint(r.yil), cint(r.oy), calendar.monthrange(cint(r.yil), cint(r.oy))[1])
+            out[r.xodim] = (flt(r.summa), oxiri)
+    return out
+
+
+def _oylik_default_tanla(oldingi, ssa):
+    """(summa, manba) — oldingi oy pin'i va SSA'dan YANGIROG'I g'olib:
+    SSA faqat pin oyidan KEYIN yozilgan bo'lsa ustun keladi (ataylab
+    oshirilgan oylik), aks holda oxirgi oyda belgilangan qiymat default.
+
+    oldingi: (summa, pin oyining oxirgi kuni) | None;
+    ssa: (summa, from_date) | None."""
+    if oldingi and (not ssa or getdate(ssa[1]) <= oldingi[1]):
+        return oldingi[0], "oldingi"
+    if ssa:
+        return flt(ssa[0]), "ssa"
+    return None, None
+
+
 def _oy_amaldagi_oylik(xodim, yil, oy):
-    """Oy uchun HOZIR amal qilayotgan oylik: "Tabel Oylik" yozuvi -> SSA
-    (oy oxirigacha eng so'nggisi). Hech biri yo'q bo'lsa None."""
+    """Oy uchun HOZIR amal qilayotgan oylik: "Tabel Oylik" yozuvi ->
+    oldingi oy pin'i / SSA (qaysi biri yangiroq bo'lsa).
+    Hech biri yo'q bo'lsa None."""
     rec = frappe.db.get_value(
         "Tabel Oylik", {"xodim": xodim, "yil": cint(yil), "oy": cint(oy)}, "summa"
     )
@@ -129,9 +167,12 @@ def _oy_amaldagi_oylik(xodim, yil, oy):
     r = frappe.get_all(
         "Salary Structure Assignment",
         filters={"employee": xodim, "docstatus": 1, "from_date": ["<=", oy_oxiri]},
-        fields=["base"], order_by="from_date desc", limit=1,
+        fields=["base", "from_date"], order_by="from_date desc", limit=1,
     )
-    return flt(r[0].base) if r else None
+    ssa = (flt(r[0].base), r[0].from_date) if r else None
+    oldingi = _oldingi_oylik_map(yil, oy, [xodim]).get(xodim)
+    summa, _manba = _oylik_default_tanla(oldingi, ssa)
+    return summa
 
 
 def _keyingi_oylarni_muzlat(xodim, yil, oy):
@@ -549,8 +590,9 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
     oy_pitaniya = _oy_pitaniya_map(yil, oy, emp_ids)
     oy_pitsiz = _oy_pitaniyasiz_map(yil, oy, emp_ids)
 
-    # Oylik (baza): avval SHU OYga qotirilgan "Tabel Oylik" yozuvi,
-    # bo'lmasa SSA'dan; bo'lmasa Kassa taklifi
+    # Oylik (baza): avval SHU OYga qotirilgan "Tabel Oylik" yozuvi, bo'lmasa
+    # OXIRGI OYda belgilangan oylik (eng yaqin oldingi oy pin'i) DEFAULT bo'lib
+    # keladi (SSA undan keyinroq yozilgan bo'lsa — SSA); bo'lmasa Kassa taklifi
     base_map = {}
     if emp_ids:
         for r in frappe.get_all(
@@ -559,7 +601,8 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
             fields=["employee", "base", "from_date"],
             order_by="from_date asc",
         ):
-            base_map[r.employee] = flt(r.base)  # keyingi from_date ustun keladi
+            base_map[r.employee] = (flt(r.base), r.from_date)  # keyingi from_date ustun keladi
+    oldingi_oylik = _oldingi_oylik_map(yil, oy, emp_ids)
     kassa_map = _kassa_taklif(emp_ids, oy_boshi)
 
     # Kunlik koeffitsientlar: Attendance
@@ -600,13 +643,17 @@ def _tabel_hisobla(yil, oy, hamma_kunlar=False):
         if x.name in oy_oylik:
             # shu oyga qotirilgan qiymat — boshqa oylar o'zgarsa ham o'zgarmaydi
             oylik = {"summa": oy_oylik[x.name], "manba": "oy"}
-        elif x.name in base_map:
-            oylik = {"summa": base_map[x.name], "manba": "ssa"}
-        elif x.name in kassa_map and not soatbay:
-            # Kassa taklifi oylik summa — soatbayning SOAT NARXI sifatida yaroqsiz
-            oylik = {"summa": kassa_map[x.name], "manba": "kassa"}
         else:
-            oylik = {"summa": 0.0, "manba": "yoq"}
+            # oxirgi oyda belgilangan oylik default; SSA undan yangi bo'lsa — SSA
+            summa, manba = _oylik_default_tanla(
+                oldingi_oylik.get(x.name), base_map.get(x.name))
+            if manba:
+                oylik = {"summa": summa, "manba": manba}
+            elif x.name in kassa_map and not soatbay:
+                # Kassa taklifi oylik summa — soatbayning SOAT NARXI sifatida yaroqsiz
+                oylik = {"summa": kassa_map[x.name], "manba": "kassa"}
+            else:
+                oylik = {"summa": 0.0, "manba": "yoq"}
 
         ketgan = getdate(x.relieving_date) if x.relieving_date else None
         kun_qatori = []
