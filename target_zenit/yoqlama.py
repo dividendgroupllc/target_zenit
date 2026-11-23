@@ -18,16 +18,17 @@ ROLLAR = ["System Manager", "Zavuch", "Xojakbar_Operator", "HR Manager", "HR Use
 		  "Direktor"]
 HAFTA = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"]
 
-# FAQAT KO'RISH rollari (2026-11-19, foydalanuvchi talabi): direktor
-# (nurbekzamderektor) yo'qlamani ko'radi, lekin belgilay olmaydi.
+# FAQAT KO'RISH rollari (2026-11-19, foydalanuvchi talabi): Direktor roli
+# yo'qlamani ko'radi, lekin belgilay olmaydi.
 # Bu ro'yxatdagi rol faqat qo'shimcha huquq BERMAYDI — foydalanuvchida
 # tahrir roli (Zavuch, HR...) ham bo'lsa, tahrir ishlayveradi.
 KORISH_ROLLAR = {"direktor"}
 
-# FAQAT KO'RISH foydalanuvchilari (2026-11-19): ikkita zavuch bor, ikkalasida
-# ham Zavuch roli — rol orqali ajratib bo'lmaydi. Shu ro'yxatdagi user ROLIDAN
-# QAT'I NAZAR yozolmaydi (Zavuch roli boshqa joylar uchun unda qolaveradi).
-KORISH_FOYDALANUVCHILAR = {"nurbekzamdirektor@gmail.com"}
+# FAQAT KO'RISH foydalanuvchilari: shu ro'yxatdagi user ROLIDAN QAT'I NAZAR
+# yozolmaydi (roli boshqa joylar uchun qolaveradi). Hozir bo'sh —
+# nurbekzamdirektor 2026-11-19 da qo'shilgan edi, 2026-11-23 da foydalanuvchi
+# talabi bilan to'liq yo'qlama huquqi qaytarildi.
+KORISH_FOYDALANUVCHILAR = set()
 
 
 # Bu rollar istalgan (o'tgan) kunni ham tahrirlay oladi.
