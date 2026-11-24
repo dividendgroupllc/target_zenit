@@ -31,7 +31,11 @@ class JadvalYozuvi(Document):
 
 		sinflar = (self.sinflar or "").split(", ")
 		b, t = vaqt(sinflar[0] if sinflar and sinflar[0] else self.guruh, self.dars_raqami)
-		self.boshlanish, self.tugash = b, t
+		# Qo'ng'iroq jadvalida bu dars raqami bo'lsa — o'sha vaqt (manba shu).
+		# Kechki (qo'shimcha) darslarda qo'ng'iroq jadvalida bo'lmaydi — zavuch
+		# qo'lda kiritgan boshlanish/tugash saqlanadi.
+		if b or t:
+			self.boshlanish, self.tugash = b, t
 
 	def _konflikt_tekshir(self):
 		"""Shu versiya + kun + dars bo'yicha bandlikni tekshiradi."""

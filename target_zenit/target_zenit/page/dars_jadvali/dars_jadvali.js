@@ -22,7 +22,9 @@ class TZDarsJadvali {
 		this.data = null;
 		this.kun = "Dushanba";
 		this.versiya = null;
-		this.fSinf = "";
+		this.fSinflar = [];      // tanlangan guruhlar (bo'sh = barchasi)
+		this.view = "kunlik";    // "kunlik" | "haftalik"
+		this.pickerOpen = false; // guruh tanlash paneli ochiqmi
 		this.moving = null;      // kochirish_xarita natijasi (karta "qo'lda")
 		this.undoStack = [];     // amallar tarixi (move/swap/unplace/displace)
 		this.redoStack = [];
@@ -114,7 +116,32 @@ class TZDarsJadvali {
 
 	sinflar() {
 		const all = this.data.sinflar || [];
-		return this.fSinf ? all.filter((s) => s === this.fSinf) : all;
+		if (!this.fSinflar.length) return all;
+		return all.filter((s) => this.fSinflar.includes(s));
+	}
+
+	sinf_nomi(s) {
+		return (this.data.sinf_nomlari || {})[s] || s;
+	}
+
+	group_picker_html() {
+		const n = this.fSinflar.length;
+		const label = n === 0 ? "Barcha guruhlar"
+			: (n === 1 ? this.sinf_nomi(this.fSinflar[0]) : `${n} ta guruh`);
+		const items = (this.data.sinflar || []).map((s) => {
+			const on = this.fSinflar.includes(s);
+			return `<label class="gp-item ${on ? "on" : ""}"><input type="checkbox" data-gp="${this.esc(s)}" ${on ? "checked" : ""}> ${this.esc(this.sinf_nomi(s))}</label>`;
+		}).join("");
+		return `<div class="grp-picker ${this.pickerOpen ? "open" : ""}">
+			<button class="refresh gp-btn" data-act="gp-toggle">🏫 ${this.esc(label)} ▾</button>
+			<div class="gp-panel">
+				<div class="gp-head">
+					<button class="gp-mini" data-act="gp-all">Barchasi</button>
+					<button class="gp-mini" data-act="gp-none">Tozalash</button>
+				</div>
+				<div class="gp-list">${items}</div>
+			</div>
+		</div>`;
 	}
 
 	render() {
@@ -130,25 +157,29 @@ class TZDarsJadvali {
 					${(d.versiyalar || []).map((v) =>
 						`<option value="${this.esc(v.name)}" ${v.name === d.versiya ? "selected" : ""}>${this.esc(v.nomi)} — ${this.esc(v.holat)}</option>`).join("")}
 				</select>
+				${this.holat_badge()}
 				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
 			</div>
 
 			<div class="controls mb">
-				<div class="chips kunlar">
-					${(d.kunlar || []).map((k) => `<button class="chip ${this.kun === k ? "on" : ""}" data-kun="${k}">${k}</button>`).join("")}
+				<div class="chips view-toggle">
+					<button class="chip ${this.view === "kunlik" ? "on" : ""}" data-view="kunlik">📅 Kunlik</button>
+					<button class="chip ${this.view === "haftalik" ? "on" : ""}" data-view="haftalik">🗓 Haftalik</button>
 				</div>
+				${this.view === "kunlik" ? `<div class="chips kunlar">
+					${(d.kunlar || []).map((k) => `<button class="chip ${this.kun === k ? "on" : ""}" data-kun="${k}">${k}</button>`).join("")}
+				</div>` : ""}
+				${this.group_picker_html()}
 				<div class="spacer"></div>
 				${this.canEdit ? `
 					<button class="refresh" data-act="undo" ${this.undoStack.length ? "" : "disabled"} title="Ctrl+Z">↶${this.undoStack.length ? ` ${this.undoStack.length}` : ""}</button>
-					<button class="refresh" data-act="redo" ${this.redoStack.length ? "" : "disabled"} title="Ctrl+Y">↷</button>` : ""}
-				<select class="fsinf">
-					<option value="">Barcha sinflar</option>
-					${(d.sinflar || []).map((s) => `<option value="${this.esc(s)}" ${this.fSinf === s ? "selected" : ""}>${this.esc(s)}</option>`).join("")}
-				</select>
+					<button class="refresh" data-act="redo" ${this.redoStack.length ? "" : "disabled"} title="Ctrl+Y">↷</button>
+					${this.publish_btn()}` : ""}
 				<button class="refresh" data-act="yuklama">O'qituvchi yuklamasi</button>
 				<button class="refresh primary" data-act="import">⬆ Exceldan import</button>
 			</div>
 
+			${this.canEdit ? this.versiya_banner() : ""}
 			<div class="mvbar-wrap"></div>
 			<div class="laganda-wrap"></div>
 			<div class="jadval-wrap card"></div>
@@ -157,6 +188,128 @@ class TZDarsJadvali {
 		this.render_laganda();
 		this.render_grid();
 		this.bind();
+	}
+
+	// ------------- versiya holati / e'lon qilish (publish gate) -------------
+	cur_versiya() {
+		return (this.data.versiyalar || []).find((v) => v.name === this.data.versiya) || {};
+	}
+
+	holat_badge() {
+		const h = (this.cur_versiya().holat || "");
+		const map = {
+			"Qoralama": ["qoralama", "📝 Qoralama"],
+			"Faol": ["faol", "🟢 Faol (jonli)"],
+			"Arxiv": ["arxiv", "🗄 Arxiv"],
+		};
+		const [cls, txt] = map[h] || ["", h];
+		return `<span class="holat-badge ${cls}">${txt}</span>`;
+	}
+
+	publish_btn() {
+		const h = this.cur_versiya().holat;
+		if (h === "Qoralama")
+			return `<button class="refresh primary" data-act="publish">💾 Saqlash va e'lon qilish</button>`;
+		return `<button class="refresh" data-act="make-draft" title="Faol versiyaga tegmay, tahrir uchun nusxa">📝 Tahrir uchun qoralama</button>`;
+	}
+
+	versiya_banner() {
+		const h = this.cur_versiya().holat;
+		if (h === "Qoralama")
+			return `<div class="versiya-banner draft">📝 <b>Qoralama rejimi</b> — o'zgarishlaringiz hali jonli emas.
+				O'qituvchilar va Moodle ularni <b>«Saqlash va e'lon qilish»</b> bosilgunicha ko'rmaydi.</div>`;
+		if (h === "Faol")
+			return `<div class="versiya-banner live">🟢 <b>Jonli versiya</b> — har o'zgarish darhol jonli (lekin Moodle 07:20 gacha yangilanmaydi).
+				Xavfsiz tahrir uchun <b>«Tahrir uchun qoralama»</b> yarating.</div>`;
+		return "";
+	}
+
+	make_draft() {
+		frappe.confirm(
+			`<b>${this.esc(this.cur_versiya().nomi || this.versiya)}</b> dan tahrir uchun yangi <b>Qoralama</b> nusxa yaratilsinmi?<br>
+			<span class="text-muted" style="font-size:12px">Jonli (Faol) jadvalga tegilmaydi. Qoralamada bemalol o'zgartirib, keyin «Saqlash va e'lon qilish» bilan jonli qilasiz.</span>`,
+			() => {
+				frappe.call({
+					method: `${MH_M}.qoralama_yarat`,
+					args: { versiya: this.versiya },
+					freeze: true,
+					freeze_message: "Qoralama yaratilmoqda…",
+					callback: (r) => {
+						const m = r.message || {};
+						this.versiya = m.versiya;
+						this.undoStack = []; this.redoStack = []; this.moving = null;
+						this.load(() => frappe.show_alert({
+							message: `📝 Qoralama yaratildi: <b>${this.esc(m.nomi)}</b> — endi bemalol tahrir qiling`,
+							indicator: "blue",
+						}));
+					},
+				});
+			}
+		);
+	}
+
+	publish_dialog() {
+		frappe.call({
+			method: `${MH_M}.versiya_holati`,
+			args: { versiya: this.versiya },
+			freeze: true,
+			callback: (r) => {
+				const v = r.message || {};
+				const eskiFaol = (v.boshqa_faol || []).map((x) => this.esc(x.nomi)).join(", ");
+				const d = new frappe.ui.Dialog({
+					title: "Saqlash va e'lon qilish",
+					fields: [
+						{
+							fieldtype: "HTML",
+							options: `<div class="tz-jadval tz-menu">
+								<div class="mi"><span class="mi-l">Versiya</span><b>${this.esc(v.nomi || this.versiya)}</b></div>
+								<div class="mi"><span class="mi-l">Darslar</span><b>${v.dars_soni || 0}</b> ta${v.lagandada ? ` <span class="mv-sub">(+ lagandada ${v.lagandada} ta joylanmagan)</span>` : ""}</div>
+								${eskiFaol ? `<div class="mi"><span class="mi-l">Arxivlanadi</span><b>${eskiFaol}</b> <span class="mv-sub">(hozirgi jonli versiya)</span></div>` : ""}
+								<div class="mi"><span class="mi-l">Moodle</span>${v.moodle_yoqilgan ? "🟢 yoqilgan — avto yuboriladi" : "⚪ o'chirilgan — yuborilmaydi"}</div>
+							</div>
+							${v.lagandada ? `<div class="swap-warn-box">⚠ Lagandada ${v.lagandada} ta joylanmagan dars bor — ular jadvalga tushmaydi. Avval joylang yoki e'tiborsiz qoldiring.</div>` : ""}`,
+						},
+						{
+							fieldname: "amal_sanasi", fieldtype: "Date", label: "Qaysi sanadan kuchga kirsin",
+							default: frappe.datetime.get_today(), reqd: 1,
+							description: "Odatda bugun. Moodle shu sanadan oldingi (o'tgan) kunlarni o'zgartirmaydi.",
+						},
+						{
+							fieldname: "moodle", fieldtype: "Check", label: "Moodle'ga darhol yuborish",
+							default: v.moodle_yoqilgan ? 1 : 0, read_only: v.moodle_yoqilgan ? 0 : 1,
+						},
+					],
+					primary_action_label: "E'lon qilish",
+					primary_action: (vals) => {
+						d.hide();
+						frappe.confirm(
+							`<b>${this.esc(v.nomi || this.versiya)}</b> jonli (Faol) qilinsinmi?<br>
+							<span class="text-muted" style="font-size:12px">${eskiFaol ? `«${eskiFaol}» arxivlanadi. ` : ""}${vals.moodle ? "Moodle'ga yuboriladi. " : ""}Buni keyin yana qoralama orqali o'zgartirsa bo'ladi.</span>`,
+							() => {
+								frappe.call({
+									method: `${MH_M}.eln_qil`,
+									args: { versiya: this.versiya, amal_sanasi: vals.amal_sanasi, moodle: vals.moodle ? 1 : 0 },
+									freeze: true,
+									freeze_message: "E'lon qilinmoqda…",
+									callback: (rr) => {
+										const res = rr.message || {};
+										this.undoStack = []; this.redoStack = [];
+										this.load(() => frappe.msgprint({
+											title: "✓ E'lon qilindi",
+											indicator: "green",
+											message: `<b>${this.esc(v.nomi || this.versiya)}</b> endi jonli (Faol).<br>
+												Kuchga kirish sanasi: <b>${this.esc(res.amal_sanasi || "")}</b><br>
+												Moodle: ${this.esc(res.moodle || "—")}`,
+										}));
+									},
+								});
+							}
+						);
+					},
+				});
+				d.show();
+			},
+		});
 	}
 
 	// ------------- ko'chirish banneri ("karta qo'lda") -------------
@@ -249,69 +402,146 @@ class TZDarsJadvali {
 		if (this.canEdit) this.enable_drag(w.find(".lg-card"));
 	}
 
+	// Bitta katak <td> (kunlik va haftalik ko'rinish uchun umumiy). Overlay
+	// kalit `${kun}|${no}` bo'yicha — har xil kundagi kataklar to'g'ri bo'yaladi.
+	cell_td(s, kun, no) {
+		const d = this.data;
+		const list = (d.katak || {})[`${s}|${kun}|${no}`] || [];
+		let mvCls = "", mvTitle = "";
+		if (this.moving) {
+			if ((this.moving.sinflar || []).includes(s)) {
+				const st = (this.moving.xarita || {})[`${kun}|${no}`] || {};
+				if (st.holat === "oz") mvCls = "mv-oz";
+				else if (st.holat === "ok") mvCls = "mv-ok";
+				else if (st.holat === "afzal") mvCls = "mv-afzal";
+				else if (st.holat === "swap_ok") { mvCls = "mv-swap"; mvTitle = "↔ Almashuv: " + (st.bilan || []).join("; "); }
+				else if (st.holat === "swap_warn") { mvCls = "mv-swap-warn"; mvTitle = "↔ Almashuv mumkin, lekin: " + (st.sabab || []).join("; "); }
+				else if (st.holat === "siqish") { mvCls = "mv-siqish"; mvTitle = "⤓ Siqib chiqarish: " + (st.bilan || []).join("; ") + " lagandaga tushadi"; }
+				else { mvCls = "mv-band"; mvTitle = (st.sabab || []).join("\n"); }
+			} else mvCls = "mv-dim";
+		}
+		const attrs = `data-sinf="${this.esc(s)}" data-no="${no}" data-kun="${this.esc(kun)}" class="${list.length ? (list.length > 1 ? "multi" : "") : "bosh"} ${mvCls}" ${mvTitle ? `title="${this.esc(mvTitle)}"` : ""}`;
+		if (!list.length) return `<td ${attrs}></td>`;
+		const kechki = no > (d.regular_max || 10);
+		const inner = list.map((x) => {
+			const h = this.rang(x.fan);
+			const blok = x.blok ? ` <span class="bk">${this.esc(x.guruh_nomi || "").split(" ")[1] || ""}</span>` : "";
+			const lk = x.qulf ? `<span class="lk" title="Qulflangan">🔒</span>` : "";
+			const picked = this.moving && this.moving.yozuv === x.name ? " picked" : "";
+			// Kechki darsда: vaqt (zam direktor kiritgan) + biriktirilgan o'quvchi soni
+			let extra = "";
+			if (kechki) {
+				const vaqt = (x.boshlanish || x.tugash) ? `${this.esc(x.boshlanish || "")}–${this.esc(x.tugash || "")}` : "";
+				const az = (d.guruh_azolari || {})[x.guruh];
+				extra = `<div class="k-meta">${vaqt ? `🕘 ${vaqt}` : `<span class="k-warn">🕘 vaqt yo'q</span>`}${az != null ? ` · 👥 ${az}` : ""}</div>`;
+			}
+			return `<div class="lesson${picked}${kechki ? " kechki-lesson" : ""}" style="--h:${h}" data-name="${this.esc(x.name)}" title="${this.esc(x.guruh_nomi || "")}">
+				<div class="fan">${this.esc(x.fan)}${blok}${lk}</div>
+				<div class="oqit">${this.esc(x.oqituvchi || "—")}</div>
+				${extra}
+			</div>`;
+		}).join("");
+		return `<td ${attrs}>${inner}</td>`;
+	}
+
+	sinf_header_th(s) {
+		const disp = this.sinf_nomi(s);
+		const label = disp.replace(/\s*\((full|hybrid)\)/, "");
+		const sub = /hybrid/.test(disp) ? "hybrid" : (/full/.test(disp) ? "full" : "");
+		const ed = this.canEdit && !this.moving;
+		return `<th class="sinf-h${ed ? " editable" : ""}" ${ed ? `data-sinf-h="${this.esc(s)}" title="Nomini o'zgartirish"` : ""}>${this.esc(label)}${sub ? `<span>${sub}</span>` : ""}${ed ? `<span class="rn">✎</span>` : ""}</th>`;
+	}
+
 	render_grid() {
+		if (this.view === "haftalik") return this.render_weekly();
+		return this.render_daily();
+	}
+
+	// Kunlik: ustunlar = guruhlar, qatorlar = darslar, bitta kun
+	render_daily() {
 		const d = this.data;
 		const sinflar = this.sinflar();
 		const rows = (d.darslar || []).map((no) => {
-			const kataklar = sinflar.map((s) => {
-				const list = (d.katak || {})[`${s}|${this.kun}|${no}`] || [];
-				// Muharrir overlay: karta qo'lda bo'lsa slot holati bo'yaladi
-				let mvCls = "", mvTitle = "";
-				if (this.moving) {
-					if ((this.moving.sinflar || []).includes(s)) {
-						const st = (this.moving.xarita || {})[`${this.kun}|${no}`] || {};
-						if (st.holat === "oz") mvCls = "mv-oz";
-						else if (st.holat === "ok") mvCls = "mv-ok";
-						else if (st.holat === "afzal") mvCls = "mv-afzal";
-						else if (st.holat === "swap_ok") { mvCls = "mv-swap"; mvTitle = "↔ Almashuv: " + (st.bilan || []).join("; "); }
-						else if (st.holat === "swap_warn") { mvCls = "mv-swap-warn"; mvTitle = "↔ Almashuv mumkin, lekin: " + (st.sabab || []).join("; "); }
-						else if (st.holat === "siqish") { mvCls = "mv-siqish"; mvTitle = "⤓ Siqib chiqarish: " + (st.bilan || []).join("; ") + " lagandaga tushadi"; }
-						else { mvCls = "mv-band"; mvTitle = (st.sabab || []).join("\n"); }
-					} else mvCls = "mv-dim";
-				}
-				const attrs = `data-sinf="${this.esc(s)}" data-no="${no}" class="${list.length ? (list.length > 1 ? "multi" : "") : "bosh"} ${mvCls}" ${mvTitle ? `title="${this.esc(mvTitle)}"` : ""}`;
-				if (!list.length) return `<td ${attrs}></td>`;
-				const inner = list.map((x) => {
-					const h = this.rang(x.fan);
-					const blok = x.blok ? ` <span class="bk">${this.esc(x.guruh_nomi || "").split(" ")[1] || ""}</span>` : "";
-					const lk = x.qulf ? `<span class="lk" title="Qulflangan">🔒</span>` : "";
-					const picked = this.moving && this.moving.yozuv === x.name ? " picked" : "";
-					return `<div class="lesson${picked}" style="--h:${h}" data-name="${this.esc(x.name)}" title="${this.esc(x.guruh_nomi || "")}">
-						<div class="fan">${this.esc(x.fan)}${blok}${lk}</div>
-						<div class="oqit">${this.esc(x.oqituvchi || "—")}</div>
-					</div>`;
-				}).join("");
-				return `<td ${attrs}>${inner}</td>`;
-			}).join("");
+			const kataklar = sinflar.map((s) => this.cell_td(s, this.kun, no)).join("");
 			const v = sinflar.length ? this.vaqt(sinflar[0], no) : "";
 			return `<tr><th class="dars-no"><b>${no}</b><span>${this.esc(v)}</span></th>${kataklar}</tr>`;
 		}).join("");
-
 		this.body.find(".jadval-wrap").html(`
 			<div class="scroll-x">
 			<table class="grid ${this.moving ? "mv-mode" : ""}">
-				<thead><tr><th class="dars-no">№</th>${sinflar.map((s) => `<th>${this.esc(s.replace(/\s*\((full|hybrid)\)/, ""))}<span>${this.esc(/hybrid/.test(s) ? "hybrid" : "full")}</span></th>`).join("")}</tr></thead>
-				<tbody>${rows}</tbody>
+				<thead><tr><th class="dars-no">№</th>${sinflar.map((s) => this.sinf_header_th(s)).join("")}</tr></thead>
+				<tbody>${rows}${this.kechki_rows(sinflar.map((s) => ({ s, kun: this.kun })), sinflar.length)}</tbody>
 			</table></div>
 		`);
+		this.bind_cells();
+	}
 
+	// Kechki (qo'shimcha) darslar bandi — oddiy darslardan keyin.
+	// ustunlar: [{s, kun}] (kunlik = bir kun har sinf; haftalik = bir sinf har kun).
+	kechki_rows(ustunlar, colspan) {
+		const d = this.data;
+		const kechki = d.kechki_darslar || [];
+		const ed = this.canEdit && !this.moving;
+		if (!kechki.length && !ed) return "";
+		let html = `<tr class="kechki-sep"><th class="dars-no">🌙</th><td colspan="${colspan}">Kechki (qo'shimcha) darslar</td></tr>`;
+		html += kechki.map((no) =>
+			`<tr><th class="dars-no kechki-no"><b>${no}</b><span>kechki</span></th>${ustunlar.map((u) => this.cell_td(u.s, u.kun, no)).join("")}</tr>`
+		).join("");
+		if (ed) {
+			html += `<tr class="kechki-add"><th class="dars-no">＋</th>${ustunlar.map((u) =>
+				`<td class="k-add" data-sinf="${this.esc(u.s)}" data-kun="${this.esc(u.kun)}"><button class="k-add-btn" title="Kechki dars qo'shish">＋ kechki</button></td>`).join("")}</tr>`;
+		}
+		return html;
+	}
+
+	// Haftalik: tanlangan HAR guruh uchun alohida jadval — ustunlar = kunlar
+	render_weekly() {
+		const d = this.data;
+		const kunlar = d.kunlar || [];
+		const tanlangan = this.fSinflar.length ? this.fSinflar : (d.sinflar || []);
+		if (!this.fSinflar.length && (d.sinflar || []).length > 3) {
+			this.body.find(".jadval-wrap").html(
+				`<div class="loading">🗓 Haftalik ko'rinish uchun yuqoridagi <b>«🏫 Barcha guruhlar»</b> tugmasidan bir yoki bir nechta guruh tanlang — ularning butun haftalik jadvali shu yerda chiqadi.</div>`);
+			return;
+		}
+		const bloklar = tanlangan.map((s) => {
+			const rows = (d.darslar || []).map((no) => {
+				const cells = kunlar.map((k) => this.cell_td(s, k, no)).join("");
+				const v = this.vaqt(s, no);
+				return `<tr><th class="dars-no"><b>${no}</b><span>${this.esc(v)}</span></th>${cells}</tr>`;
+			}).join("");
+			const ed = this.canEdit && !this.moving;
+			return `<div class="week-block">
+				<div class="week-title">🏫 ${this.esc(this.sinf_nomi(s))}
+					${ed ? `<span class="rn-week" data-sinf-h="${this.esc(s)}" title="Nomini o'zgartirish">✎</span>` : ""}</div>
+				<div class="scroll-x">
+				<table class="grid week ${this.moving ? "mv-mode" : ""}">
+					<thead><tr><th class="dars-no">№</th>${kunlar.map((k) => `<th>${this.esc(k)}</th>`).join("")}</tr></thead>
+					<tbody>${rows}${this.kechki_rows(kunlar.map((k) => ({ s, kun: k })), kunlar.length)}</tbody>
+				</table></div></div>`;
+		}).join("");
+		this.body.find(".jadval-wrap").html(bloklar);
+		this.bind_cells();
+	}
+
+	// Kataklar uchun umumiy hodisalar (kunlik + haftalik). Katak o'z kunini
+	// data-kun dan oladi — shuning uchun haftalik ko'rinishda ham to'g'ri ishlaydi.
+	bind_cells() {
 		if (this.moving) {
 			this.body.find("td[data-no]").on("click", (e) => {
-				const no = Number($(e.currentTarget).data("no"));
-				this.drop_to(this.kun, no, $(e.currentTarget));
+				const td = $(e.currentTarget);
+				this.drop_to(td.data("kun"), Number(td.data("no")), td);
 			});
 		}
-		// Bitta bosish = kartani ko'tarish (muharrir); o'qiydiganlarga — hujjat
 		this.body.find(".lesson").on("click", (e) => {
 			e.stopPropagation();
-			if (this._dragDone) { this._dragDone = false; return; } // drag'dan keyingi click emas
+			if (this._dragDone) { this._dragDone = false; return; }
 			const name = $(e.currentTarget).data("name");
 			if (!this.canEdit) { frappe.set_route("Form", "Jadval Yozuvi", name); return; }
 			if (this.moving) {
 				if (this.moving.yozuv === name) { this.cancel_move(); return; }
-				// Karta qo'lda — boshqa karta ustiga bosish = o'sha katakka tashlash
 				const td = $(e.currentTarget).closest("td[data-no]");
-				if (td.length) this.drop_to(this.kun, Number(td.data("no")), td);
+				if (td.length) this.drop_to(td.data("kun"), Number(td.data("no")), td);
 				return;
 			}
 			this.start_move(name);
@@ -319,7 +549,6 @@ class TZDarsJadvali {
 		if (this.canEdit) {
 			this.body.find(".lesson").on("contextmenu", (e) => {
 				e.preventDefault(); e.stopPropagation();
-				// aSc uslubi: karta qo'ldaligida o'ng tugma = lagandaga tashlash
 				if (this.moving) { this.mv_lagandaga(); return; }
 				this.ctx_menu($(e.currentTarget).data("name"), e.clientX, e.clientY);
 			});
@@ -327,10 +556,172 @@ class TZDarsJadvali {
 			if (!this.moving) {
 				this.body.find("td.bosh").on("click", (e) => {
 					const td = $(e.currentTarget);
-					this.katak_dialog(td.data("sinf"), Number(td.data("no")));
+					this.katak_dialog(td.data("sinf"), Number(td.data("no")), td.data("kun"));
+				});
+				this.body.find("th.sinf-h.editable, .rn-week").on("click", (e) => {
+					this.rename_group_dialog($(e.currentTarget).data("sinf-h"));
+				});
+				this.body.find("td.k-add .k-add-btn").on("click", (e) => {
+					const td = $(e.currentTarget).closest("td.k-add");
+					this.kechki_dialog(td.data("sinf"), td.data("kun"));
 				});
 			}
 		}
+	}
+
+	// ------------- kechki guruhga o'quvchi biriktirish -------------
+	oquvchi_dialog(guruh) {
+		frappe.call({
+			method: `${MH_M}.guruh_oquvchilari`,
+			args: { guruh },
+			freeze: true,
+			callback: (r) => {
+				const d = r.message || {};
+				const byClass = {};
+				(d.nomzodlar || []).forEach((n) => { (byClass[n.sinf] = byClass[n.sinf] || []).push(n); });
+				const sections = Object.keys(byClass).map((sinf) =>
+					`<div class="sec-t mt">${this.esc(this.sinf_nomi(sinf))} <span class="mv-sub">(${byClass[sinf].length})</span></div>
+					<div class="o-list">${byClass[sinf].map((n) =>
+						`<label class="gp-item ${n.azo ? "on" : ""}"><input type="checkbox" class="o-st" value="${this.esc(n.student)}" ${n.azo ? "checked" : ""}> ${this.esc(n.nomi || n.student)}</label>`).join("")}</div>`).join("");
+				const dlg = new frappe.ui.Dialog({
+					title: `👥 ${this.esc(d.nomi || guruh)} — o'quvchilar`,
+					size: "large",
+					fields: [{ fieldtype: "HTML", fieldname: "body" }],
+					primary_action_label: "Saqlash",
+					primary_action: () => {
+						const ids = dlg.$wrapper.find(".o-st:checked").map((i, e) => e.value).get();
+						frappe.call({
+							method: `${MH_M}.guruh_oquvchilari_saqla`,
+							args: { guruh, studentlar: JSON.stringify(ids) },
+							freeze: true,
+							callback: (rr) => {
+								dlg.hide();
+								this.load(() => frappe.show_alert({
+									message: `👥 ${(rr.message || {}).soni || 0} o'quvchi biriktirildi`, indicator: "green",
+								}));
+							},
+						});
+					},
+				});
+				dlg.fields_dict.body.$wrapper.html(`<div class="tz-jadval">
+					<div class="mv-sub">Belgilangan o'quvchilar shu guruhga a'zo bo'ladi — kechki dars ularning jadvalida ko'rinadi.
+					A'zo sinflar: ${this.esc((d.sinflar || []).map((s) => this.sinf_nomi(s)).join(", "))}</div>
+					<div style="margin:8px 0"><button class="gp-mini" data-o="all">Barchasi</button>
+						<button class="gp-mini" data-o="none">Tozalash</button></div>
+					${sections || `<div class="mv-sub mt">Nomzod o'quvchi topilmadi (a'zo sinflarda o'quvchi yo'q).</div>`}
+				</div>`);
+				dlg.$body.find(`[data-o="all"]`).on("click", () => dlg.$body.find(".o-st").prop("checked", true));
+				dlg.$body.find(`[data-o="none"]`).on("click", () => dlg.$body.find(".o-st").prop("checked", false));
+				dlg.show();
+			},
+		});
+	}
+
+	// ------------- kechki (qo'shimcha) dars qo'shish -------------
+	kechki_dialog(sinf, kun) {
+		const all = this.data.sinflar || [];
+		const checks = all.map((s) =>
+			`<label class="gp-item ${s === sinf ? "on" : ""}"><input type="checkbox" class="k-sinf" value="${this.esc(s)}" ${s === sinf ? "checked" : ""}> ${this.esc(this.sinf_nomi(s))}</label>`).join("");
+		const BITTA = "Bitta guruh (1 ustoz)";
+		const dlg = new frappe.ui.Dialog({
+			title: `🌙 Kechki dars qo'shish · ${kun}`,
+			size: "large",
+			fields: [
+				{ fieldname: "fan", fieldtype: "Link", options: "Course", label: "Fan", reqd: 1 },
+				{ fieldname: "boshlanish", fieldtype: "Time", label: "Boshlanish (soat)", reqd: 1 },
+				{ fieldname: "cbt", fieldtype: "Column Break" },
+				{ fieldname: "tugash", fieldtype: "Time", label: "Tugash (soat)", reqd: 1 },
+				{ fieldname: "sb_s", fieldtype: "Section Break" },
+				{ fieldname: "sinflar_html", fieldtype: "HTML", label: "Qatnashadigan sinflar" },
+				{ fieldname: "rejim", fieldtype: "Select", label: "Guruh turi", default: BITTA,
+					options: `${BITTA}\nDarajalarga bo'lingan (bir necha ustoz)` },
+				{ fieldname: "oqituvchi", fieldtype: "Link", options: "Instructor", label: "O'qituvchi",
+					depends_on: `eval:doc.rejim=='${BITTA}'` },
+				{ fieldname: "dsec", fieldtype: "Section Break", label: "Darajalar (High / Middle / Low …)",
+					depends_on: `eval:doc.rejim!='${BITTA}'` },
+				{ fieldname: "d1_nom", fieldtype: "Data", label: "1-daraja nomi", default: "High", depends_on: `eval:doc.rejim!='${BITTA}'` },
+				{ fieldname: "d1_oqit", fieldtype: "Link", options: "Instructor", label: "1-daraja ustozi", depends_on: `eval:doc.rejim!='${BITTA}'` },
+				{ fieldname: "cb1", fieldtype: "Column Break" },
+				{ fieldname: "d2_nom", fieldtype: "Data", label: "2-daraja nomi", default: "Middle", depends_on: `eval:doc.rejim!='${BITTA}'` },
+				{ fieldname: "d2_oqit", fieldtype: "Link", options: "Instructor", label: "2-daraja ustozi", depends_on: `eval:doc.rejim!='${BITTA}'` },
+				{ fieldname: "sec3", fieldtype: "Section Break", depends_on: `eval:doc.rejim!='${BITTA}'` },
+				{ fieldname: "d3_nom", fieldtype: "Data", label: "3-daraja nomi (ixtiyoriy)", depends_on: `eval:doc.rejim!='${BITTA}'` },
+				{ fieldname: "d3_oqit", fieldtype: "Link", options: "Instructor", label: "3-daraja ustozi", depends_on: `eval:doc.rejim!='${BITTA}'` },
+			],
+			primary_action_label: "Qo'shish",
+			primary_action: (v) => {
+				const sinflar = dlg.$wrapper.find(".k-sinf:checked").map((i, e) => e.value).get();
+				if (!sinflar.length) { frappe.msgprint("Kamida bitta sinf tanlang."); return; }
+				let darajalar = [];
+				if (v.rejim === BITTA) {
+					darajalar = [{ nom: "", oqituvchi: v.oqituvchi || null }];
+				} else {
+					[[v.d1_nom, v.d1_oqit], [v.d2_nom, v.d2_oqit], [v.d3_nom, v.d3_oqit]].forEach(([n, o]) => {
+						if ((n && n.trim()) || o) darajalar.push({ nom: (n || "").trim(), oqituvchi: o || null });
+					});
+					if (!darajalar.length) { frappe.msgprint("Kamida bitta daraja kiriting."); return; }
+				}
+				frappe.call({
+					method: `${MH_M}.kechki_dars_qosh`,
+					args: { versiya: this.versiya, kun, fan: v.fan,
+						sinflar: JSON.stringify(sinflar), darajalar: JSON.stringify(darajalar),
+						boshlanish: v.boshlanish || null, tugash: v.tugash || null },
+					freeze: true,
+					callback: (r) => {
+						dlg.hide();
+						const res = r.message || {};
+						this.load(() => frappe.show_alert({
+							message: `🌙 Kechki dars qo'shildi (${res.dars_raqami}-slot, ${(res.yaratilgan || []).length} yozuv). Endi o'quvchi biriktiring: dars kartasiga o'ng tugma → 👥`,
+							indicator: "green",
+						}));
+					},
+				});
+			},
+		});
+		dlg.fields_dict.sinflar_html.$wrapper.html(
+			`<div class="tz-jadval"><div class="gp-list" style="max-height:150px;border:1px solid var(--line);border-radius:8px;padding:6px">${checks}</div>
+			<div class="mv-sub" style="margin-top:4px">Bir nechta sinf tanlansa — birga o'qiydigan (qo'shma/kross) kechki guruh bo'ladi.</div></div>`);
+		dlg.show();
+	}
+
+	// ------------- guruh nomini o'zgartirish (sinf / daraja / tanlov / blok) -------------
+	rename_group_dialog(guruh, hozir) {
+		hozir = hozir || (this.data.sinf_nomlari || {})[guruh] || guruh;
+		const d = new frappe.ui.Dialog({
+			title: "Guruh nomini o'zgartirish",
+			fields: [
+				{
+					fieldtype: "HTML",
+					options: `<div class="tz-jadval tz-menu">
+						<div class="mi"><span class="mi-l">Hozirgi nom</span><b>${this.esc(hozir)}</b></div>
+						<div class="mv-sub">Faqat ko'rinadigan nom o'zgaradi. Guruhdagi <b>darslar</b> va
+						<b>o'quvchilar</b> tegilmaydi; ichki ID va Moodle bog'lanishi barqaror qoladi.
+						Yangi nom barcha jadval versiyalarida ko'rinadi.</div>
+					</div>`,
+				},
+				{ fieldname: "yangi", fieldtype: "Data", label: "Yangi nom", reqd: 1, default: hozir },
+			],
+			primary_action_label: "Saqlash",
+			primary_action: (v) => {
+				const yangi = (v.yangi || "").trim();
+				if (!yangi || yangi === hozir) { d.hide(); return; }
+				frappe.call({
+					method: `${MH_M}.guruh_nomini_ozgartir`,
+					args: { guruh: guruh, yangi_nomi: yangi },
+					freeze: true,
+					callback: (r) => {
+						d.hide();
+						const res = r.message || {};
+						this.load(() => frappe.show_alert({
+							message: `✓ Nom o'zgartirildi: <b>${this.esc(res.yangi || yangi)}</b> (${res.darslar || 0} dars)` +
+								(res.moodle === "navbatga qo'yildi" ? " · Moodle'ga yuborilmoqda" : ""),
+							indicator: "green",
+						}));
+					},
+				});
+			},
+		});
+		d.show();
 	}
 
 	bind() {
@@ -339,7 +730,46 @@ class TZDarsJadvali {
 			this.kun = $(e.currentTarget).data("kun");
 			this.render();
 		});
-		this.body.find(".fsinf").on("change", (e) => { this.fSinf = e.target.value; this.render_grid(); });
+		// Kunlik / Haftalik ko'rinish
+		this.body.find(".view-toggle [data-view]").on("click", (e) => {
+			this.view = $(e.currentTarget).data("view");
+			this.render();
+		});
+		// Guruh tanlagich (ko'p tanlov)
+		this.body.find(`[data-act="gp-toggle"]`).on("click", (e) => {
+			e.stopPropagation();
+			this.pickerOpen = !this.pickerOpen;
+			this.render();
+		});
+		this.body.find(`[data-act="gp-all"]`).on("click", () => {
+			this.fSinflar = [...(this.data.sinflar || [])];
+			this.render();
+		});
+		this.body.find(`[data-act="gp-none"]`).on("click", () => {
+			this.fSinflar = [];
+			this.render();
+		});
+		this.body.find(".gp-panel input[data-gp]").on("change", (e) => {
+			const s = $(e.currentTarget).data("gp");
+			if (e.currentTarget.checked) {
+				if (!this.fSinflar.includes(s)) this.fSinflar.push(s);
+			} else {
+				this.fSinflar = this.fSinflar.filter((x) => x !== s);
+			}
+			this.render();
+		});
+		// Panel ochiq bo'lsa — tashqariga bosilganda yopiladi
+		if (this.pickerOpen) {
+			setTimeout(() => {
+				$(document).on("click.tzgp", (e) => {
+					if (!$(e.target).closest(".grp-picker").length) {
+						this.pickerOpen = false;
+						$(document).off("click.tzgp");
+						this.render();
+					}
+				});
+			}, 0);
+		}
 		this.body.find(".fversiya").on("change", (e) => {
 			this.versiya = e.target.value;
 			this.undoStack = []; this.redoStack = []; this.moving = null;
@@ -349,6 +779,8 @@ class TZDarsJadvali {
 		this.body.find(`[data-act="import"]`).on("click", () => this.import_dialog());
 		this.body.find(`[data-act="undo"]`).on("click", () => this.undo_op());
 		this.body.find(`[data-act="redo"]`).on("click", () => this.redo_op());
+		this.body.find(`[data-act="publish"]`).on("click", () => this.publish_dialog());
+		this.body.find(`[data-act="make-draft"]`).on("click", () => this.make_draft());
 	}
 
 	// ---------------- muharrir: ko'tarish / tashlash ----------------
@@ -370,7 +802,14 @@ class TZDarsJadvali {
 				const m = r.message;
 				if (!m) return;
 				if (m.qulf) {
-					frappe.show_alert({ message: "🔒 Dars qulflangan — o'ng tugma bilan qulfni oching.", indicator: "orange" });
+					// Qulflangan — to'g'ridan-to'g'ri ochishni taklif qilamiz
+					frappe.confirm(
+						`🔒 <b>${this.esc(m.fan)} — ${this.esc(m.guruh_nomi)}</b> qulflangan.<br>Qulfni ochib ko'chirishga tayyorlaymizmi?`,
+						() => frappe.call({
+							method: `${MH_M}.qulf_toggle`, args: { yozuv: name }, freeze: true,
+							callback: () => this.load(() => this.start_move(name, cb)),
+						})
+					);
 					return;
 				}
 				this.moving = m;
@@ -601,7 +1040,7 @@ class TZDarsJadvali {
 				const td = under && under.closest ? under.closest("td[data-no]") : null;
 				const tray = under && under.closest ? under.closest(".laganda") : null;
 				if (td && this.moving && this.moving.yozuv === name) {
-					this.drop_to(this.kun, Number(td.dataset.no), $(td));
+					this.drop_to(td.dataset.kun || this.kun, Number(td.dataset.no), $(td));
 				} else if (tray && this.moving && !this.moving.lagandadan) {
 					this.mv_lagandaga();
 				} else {
@@ -624,6 +1063,8 @@ class TZDarsJadvali {
 			<button data-c="move">✋ Ko'chirish</button>
 			<button data-c="lock">${info.qulf ? "🔓 Qulfni ochish" : "🔒 Qulflash"}</button>
 			${lagandada ? "" : `<button data-c="tray">🧺 Lagandaga olish</button>`}
+			${info.guruh ? `<button data-c="students">👥 O'quvchilar biriktirish</button>` : ""}
+			${info.guruh ? `<button data-c="rename">✎ Guruh nomini o'zgartirish</button>` : ""}
 			<button data-c="form">📄 Hujjat</button>
 			<button data-c="del" class="danger">🗑 Butunlay o'chirish</button>
 		</div>`).appendTo(document.body);
@@ -636,8 +1077,15 @@ class TZDarsJadvali {
 			const c = $(e.currentTarget).data("c");
 			this.close_ctx();
 			if (c === "move") this.start_move(name);
-			else if (c === "lock") frappe.call({ method: `${MH_M}.qulf_toggle`, args: { yozuv: name }, callback: () => this.load() });
+			else if (c === "lock") frappe.call({
+				method: `${MH_M}.qulf_toggle`, args: { yozuv: name }, freeze: true,
+				callback: (r) => this.load(() => frappe.show_alert({
+					message: (r.message || {}).qulf ? "🔒 Qulflandi" : "🔓 Qulf ochildi", indicator: "blue",
+				})),
+			});
 			else if (c === "tray") this.start_move(name, () => this.mv_lagandaga());
+			else if (c === "students") this.oquvchi_dialog(info.guruh);
+			else if (c === "rename") this.rename_group_dialog(info.guruh, info.guruh_nomi || info.guruh);
 			else if (c === "form") frappe.set_route("Form", "Jadval Yozuvi", name);
 			else if (c === "del") {
 				frappe.confirm(`«${this.esc(info.fan || "")} — ${this.esc(info.guruh_nomi || info.guruh || "")}» BUTUNLAY o'chirilsinmi? (qaytarib bo'lmaydi; vaqtincha olish uchun Laganda bor)`, () => {
@@ -648,10 +1096,11 @@ class TZDarsJadvali {
 	}
 
 	// -------- bo'sh katak: "bu yerga nima sig'adi?" (aSc teskari qidiruv) --------
-	katak_dialog(sinf, no) {
+	katak_dialog(sinf, no, kun) {
+		kun = kun || this.kun;
 		frappe.call({
 			method: `${MH_M}.katak_kandidatlar`,
-			args: { sinf, kun: this.kun, dars_raqami: no, versiya: this.versiya },
+			args: { sinf, kun: kun, dars_raqami: no, versiya: this.versiya },
 			freeze: true,
 			callback: (r) => {
 				const d = r.message || {};
@@ -659,7 +1108,7 @@ class TZDarsJadvali {
 				const mumkin = koch.filter((k) => k.mumkin);
 				const yoq = koch.filter((k) => !k.mumkin);
 				const dlg = new frappe.ui.Dialog({
-					title: `${sinf.replace(/\s*\((full|hybrid)\)/, "")} · ${this.kun} ${no}-dars — nima sig'adi?`,
+					title: `${this.esc(this.sinf_nomi(sinf)).replace(/\s*\((full|hybrid)\)/, "")} · ${kun} ${no}-dars — nima sig'adi?`,
 					size: "large",
 					fields: [{ fieldtype: "HTML", fieldname: "body" }],
 				});
@@ -691,30 +1140,31 @@ class TZDarsJadvali {
 					dlg.hide();
 					const yozuv = $(e.currentTarget).data("koch");
 					// Ko'chirish amali undo'ga tushishi uchun start_move → drop oqimi
-					this.start_move(yozuv, () => this.drop_to(this.kun, no));
+					this.start_move(yozuv, () => this.drop_to(kun, no));
 				});
 				dlg.$body.find("[data-add]").on("click", (e) => {
 					const oqit = $(e.currentTarget).data("add");
 					const nomi = $(e.currentTarget).data("nomi");
 					dlg.hide();
-					this.dars_qosh_dialog(sinf, no, oqit, nomi);
+					this.dars_qosh_dialog(sinf, no, oqit, nomi, kun);
 				});
 			},
 		});
 	}
 
-	dars_qosh_dialog(sinf, no, oqituvchi, nomi) {
+	dars_qosh_dialog(sinf, no, oqituvchi, nomi, kun) {
+		kun = kun || this.kun;
 		const d = new frappe.ui.Dialog({
-			title: `Dars qo'shish: ${this.kun} ${no}-dars · ${sinf}`,
+			title: `Dars qo'shish: ${kun} ${no}-dars · ${this.esc(this.sinf_nomi(sinf))}`,
 			fields: [
 				{ fieldname: "fan", fieldtype: "Link", options: "Course", label: "Fan", reqd: 1 },
-				{ fieldname: "info", fieldtype: "HTML", options: `<div class="text-muted" style="font-size:12px">O'qituvchi: <b>${this.esc(nomi)}</b> · Guruh: ${this.esc(sinf)}</div>` },
+				{ fieldname: "info", fieldtype: "HTML", options: `<div class="text-muted" style="font-size:12px">O'qituvchi: <b>${this.esc(nomi)}</b> · Guruh: ${this.esc(this.sinf_nomi(sinf))}</div>` },
 			],
 			primary_action_label: "Qo'shish",
 			primary_action: (v) => {
 				frappe.call({
 					method: `${OJ_M}.dars_qosh`,
-					args: { oqituvchi, kun: this.kun, dars_raqami: no, fan: v.fan, guruh: sinf, versiya: this.versiya },
+					args: { oqituvchi, kun: kun, dars_raqami: no, fan: v.fan, guruh: sinf, versiya: this.versiya },
 					freeze: true,
 					callback: () => { d.hide(); this.load(); },
 				});

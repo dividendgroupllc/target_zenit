@@ -26,15 +26,24 @@ def _guard():
 		frappe.throw(_("Ruxsat yo'q."), frappe.PermissionError)
 
 
+def _laganda_bormi() -> bool:
+	"""`joylanmagan` ustuni bazada bormi (migrate yurgazilgandan keyin). Prod'da
+	migrate kech qolsa sahifa yiqilmasligi uchun — mavjud has_column naqshi."""
+	return frappe.db.has_column("Jadval Yozuvi", "joylanmagan")
+
+
 def _versiya_yozuvlari(versiya):
-	return frappe.get_all(
-		"Jadval Yozuvi",
-		filters={"versiya": versiya},
-		fields=["name", "kun", "dars_raqami", "guruh", "guruh_nomi", "fan",
-		        "oqituvchi", "oqituvchi_nomi", "blok", "xona", "sinflar", "qulf",
-		        "joylanmagan"],
+	fields = ["name", "kun", "dars_raqami", "guruh", "guruh_nomi", "fan",
+	          "oqituvchi", "oqituvchi_nomi", "blok", "xona", "sinflar", "qulf"]
+	if _laganda_bormi():
+		fields.append("joylanmagan")
+	rows = frappe.get_all(
+		"Jadval Yozuvi", filters={"versiya": versiya}, fields=fields,
 		limit_page_length=0,
 	)
+	for r in rows:
+		r.setdefault("joylanmagan", 0)
+	return rows
 
 
 def _kochma_toplam(doc, yozuvlar):
@@ -151,7 +160,7 @@ def kochirish_xarita(yozuv: str) -> dict:
 	xonalar = {y.xona for y in kochma if y.xona}
 	mavlar = {o: _mavjudlik_map(o) for o in oqituvchilar}
 
-	lagandadan = bool(doc.joylanmagan)
+	lagandadan = bool(doc.get("joylanmagan"))
 	eski_kun, eski_dars = doc.kun, int(doc.dars_raqami or 0)
 	eski_rows = [] if lagandadan else slotlar.get((eski_kun, eski_dars), [])
 	xarita = {}
@@ -475,3 +484,343 @@ def katak_kandidatlar(sinf: str, kun: str, dars_raqami, versiya: str | None = No
 	bosh.sort(key=lambda x: x["soat"])
 
 	return {"kochirish": kochirish, "bosh_oqituvchilar": bosh, "band_xonalar": sorted(band_xona)}
+
+
+# ===================== Versiya / e'lon qilish (publish gate) =====================
+# Model: zavuch QORALAMA versiyada tahrir qiladi (o'qituvchi/Moodle ko'rmaydi,
+# chunki ular faqat Faol versiyani/Moodle slotlarini o'qiydi). "Saqlash va e'lon
+# qilish" bosilganda: eski Faol -> Arxiv, qoralama -> Faol, so'ng Moodle'ga push.
+
+
+@frappe.whitelist()
+def versiya_holati(versiya: str) -> dict:
+	"""Joriy versiya haqida: holat, dars soni, boshqa Faol versiya bormi."""
+	_guard()
+	d = frappe.db.get_value(
+		"Jadval Versiyasi", versiya,
+		["name", "nomi", "holat", "academic_year", "amal_boshlanishi"],
+		as_dict=True) or {}
+	d["dars_soni"] = frappe.db.count("Jadval Yozuvi", {"versiya": versiya, "joylanmagan": 0}) \
+		if _laganda_bormi() else frappe.db.count("Jadval Yozuvi", {"versiya": versiya})
+	d["lagandada"] = frappe.db.count("Jadval Yozuvi", {"versiya": versiya, "joylanmagan": 1}) \
+		if _laganda_bormi() else 0
+	faol = frappe.get_all(
+		"Jadval Versiyasi",
+		filters={"holat": "Faol", "name": ["!=", versiya]},
+		fields=["name", "nomi"], limit_page_length=0)
+	d["boshqa_faol"] = faol
+	# Moodle integratsiyasi yoqilganmi
+	try:
+		from target_zenit.integrations.moodle import _settings
+		d["moodle_yoqilgan"] = bool(_settings().enabled)
+	except Exception:
+		d["moodle_yoqilgan"] = False
+	return d
+
+
+@frappe.whitelist()
+def qoralama_yarat(versiya: str, yangi_nomi: str | None = None) -> dict:
+	"""Istalgan versiyadan tahrir uchun QORALAMA nusxa (barcha darslari bilan).
+	Faol versiyaga tegmay, xavfsiz tahrir qilish uchun."""
+	_guard()
+	from frappe.utils import today
+	doc = frappe.get_doc("Jadval Versiyasi", versiya)
+	asos = (yangi_nomi or f"{doc.nomi} — qoralama {today()}").strip()
+	nomi = asos
+	i = 2
+	while frappe.db.exists("Jadval Versiyasi", nomi):
+		nomi = f"{asos} ({i})"
+		i += 1
+	yangi = doc.nusxa_ol(nomi, today())
+	return {"versiya": yangi, "nomi": nomi}
+
+
+@frappe.whitelist()
+def eln_qil(versiya: str, amal_sanasi: str | None = None, moodle=1) -> dict:
+	"""Qoralamani E'LON qiladi: eski Faol -> Arxiv, bu versiya -> Faol,
+	so'ng (ixtiyoriy) Moodle'ga jadval push qiladi. Atomik (xatoda rollback)."""
+	_guard()
+	from frappe.utils import cint, today
+	doc = frappe.get_doc("Jadval Versiyasi", versiya)
+	if doc.holat == "Faol":
+		frappe.throw(_("Bu versiya allaqachon Faol."))
+	sana = amal_sanasi or str(doc.amal_boshlanishi or today())[:10]
+	try:
+		# 1) Shu o'quv yilidagi eski Faol(lar) -> Arxiv (kesishuv bo'lmasin)
+		eskilar = frappe.get_all(
+			"Jadval Versiyasi",
+			filters={"holat": "Faol", "academic_year": doc.academic_year,
+			         "name": ["!=", doc.name]},
+			pluck="name")
+		for e in eskilar:
+			ev = frappe.get_doc("Jadval Versiyasi", e)
+			ev.holat = "Arxiv"
+			ev.save(ignore_permissions=True)
+		# 2) Qoralama -> Faol (amal sanasi bilan; validate kesishuvni tekshiradi)
+		doc.holat = "Faol"
+		doc.amal_boshlanishi = sana
+		doc.save(ignore_permissions=True)
+	except Exception:
+		frappe.db.rollback()
+		raise
+	frappe.db.commit()
+
+	# 3) Moodle'ga push (fon vazifasi — tarmoq so'rovi sekin bo'lishi mumkin)
+	moodle_holat = "o'tkazildi"
+	if cint(moodle):
+		try:
+			from target_zenit.integrations.moodle import _settings
+			if _settings().enabled:
+				frappe.enqueue(
+					"target_zenit.integrations.moodle_jadval.push",
+					queue="long", timeout=1800, enqueue_after_commit=True,
+					job_name=f"moodle_jadval_eln:{doc.name}",
+					trigger="Jadvaldan e'lon")
+				moodle_holat = "navbatga qo'yildi (fonda ~1 daqiqa)"
+			else:
+				moodle_holat = "Moodle integratsiyasi o'chirilgan — yuborilmadi"
+		except Exception as e:
+			moodle_holat = f"Moodle xatosi: {str(e)[:120]}"
+	else:
+		moodle_holat = "o'tkazildi (so'rovingizga ko'ra)"
+
+	return {
+		"ok": 1,
+		"versiya": doc.name,
+		"amal_sanasi": sana,
+		"arxivlandi": eskilar,
+		"moodle": moodle_holat,
+	}
+
+
+# ===================== Guruh nomini o'zgartirish =====================
+# Faqat KO'RINADIGAN nom (student_group_name) o'zgaradi; ichki ID (docname) va
+# shu bilan Moodle groupkey, havolalar, bloklar BARQAROR qoladi ([[unic-id-qoidasi]]).
+# Darslar va o'quvchilar tegilmaydi.
+
+
+@frappe.whitelist()
+def guruh_nomini_ozgartir(guruh: str, yangi_nomi: str) -> dict:
+	"""Guruhning ko'rinadigan nomini o'zgartiradi. Ichki ID, darslar, o'quvchilar,
+	Moodle bog'lanishi saqlanadi — faqat nom yangilanadi (barcha versiyalarda)."""
+	_guard()
+	yangi_nomi = (yangi_nomi or "").strip()
+	if not yangi_nomi:
+		frappe.throw(_("Yangi nom bo'sh bo'lmasin."))
+	if not frappe.db.exists("Student Group", guruh):
+		frappe.throw(_("Guruh topilmadi."))
+	eski = frappe.db.get_value("Student Group", guruh, "student_group_name")
+	if yangi_nomi == eski:
+		return {"ok": 1, "ozgarmadi": 1, "yangi": yangi_nomi}
+	band = frappe.db.exists(
+		"Student Group", {"student_group_name": yangi_nomi, "name": ["!=", guruh]})
+	if band:
+		frappe.throw(_("«{0}» nomi boshqa guruhda band.").format(yangi_nomi))
+
+	# 1) Ko'rinadigan nom (ichki ID = docname tegilmaydi)
+	frappe.db.set_value("Student Group", guruh, "student_group_name", yangi_nomi)
+	# 2) Jadval Yozuvi.guruh_nomi — fetch_from "snapshot" eski qiymatni saqlaydi,
+	#    shuning uchun shu guruhning darslarida qo'lda yangilaymiz.
+	darslar = frappe.db.count("Jadval Yozuvi", {"guruh": guruh})
+	frappe.db.sql(
+		"UPDATE `tabJadval Yozuvi` SET guruh_nomi=%s WHERE guruh=%s", (yangi_nomi, guruh))
+	frappe.db.commit()
+
+	# 3) Moodle (ixtiyoriy) — ko'rinadigan guruh nomi (groupname) yangilansin.
+	#    groupkey = docname o'zgarmagani uchun bog'lanish buzilmaydi.
+	moodle = "o'chirilgan"
+	try:
+		from target_zenit.integrations.moodle import _settings
+		if _settings().enabled:
+			frappe.enqueue(
+				"target_zenit.integrations.moodle_jadval.push",
+				queue="long", timeout=1800, enqueue_after_commit=True,
+				job_name=f"moodle_guruh_nom:{guruh}", trigger="Guruh nomi o'zgardi")
+			moodle = "navbatga qo'yildi"
+	except Exception:
+		moodle = "yuborilmadi"
+
+	return {"ok": 1, "guruh": guruh, "eski": eski, "yangi": yangi_nomi,
+	        "darslar": darslar, "moodle": moodle}
+
+
+# ===================== Kechki (qo'shimcha) darslar =====================
+# Oddiy darslardan keyin (dars_raqami > qo'ng'iroq jadvali maksimumi) qo'shiladigan
+# darslar. Faqat ba'zi guruhlar uchun. Mavjud guruh modeli bilan: bitta sinf,
+# kross-sinf (qo'shma: 6+7+8 birga), yoki darajaga bo'lingan (High/Middle, har
+# darajaga alohida ustoz — ENGLISH kabi) qo'llab-quvvatlanadi.
+import re as _re
+
+
+def _oraliq(sinflar) -> str:
+	raqamlar = sorted(
+		{_re.match(r"\d+", s).group(0) for s in sinflar if _re.match(r"\d+", s)}, key=int)
+	if not raqamlar:
+		return "kechki"
+	return raqamlar[0] if len(raqamlar) == 1 else f"{raqamlar[0]}-{raqamlar[-1]}"
+
+
+def _unik_nom(doctype, asos) -> str:
+	nomi = asos
+	i = 2
+	while frappe.db.exists(doctype, nomi):
+		nomi = f"{asos} ({i})"
+		i += 1
+	return nomi
+
+
+def _kechki_slot(versiya, kun, sinflar, regular_max) -> int:
+	"""Berilgan sinflar shu kunda band bo'lmagan eng kichik kechki slot."""
+	sinflar_set = set(sinflar)
+	band = {}  # dars_raqami -> band sinflar
+	for y in frappe.get_all(
+		"Jadval Yozuvi",
+		filters={"versiya": versiya, "kun": kun, "dars_raqami": [">", regular_max]},
+		fields=["dars_raqami", "sinflar"], limit_page_length=0):
+		s = {x.strip() for x in (y.sinflar or "").split(",") if x.strip()}
+		band.setdefault(int(y.dars_raqami), set()).update(s)
+	d = regular_max + 1
+	while band.get(d) and (band[d] & sinflar_set):
+		d += 1
+	return d
+
+
+@frappe.whitelist()
+def kechki_dars_qosh(versiya, kun, fan, sinflar, darajalar=None, dars_raqami=None,
+                     boshlanish=None, tugash=None) -> dict:
+	"""Kechki dars(lar) qo'shadi.
+	sinflar: JSON ro'yxat (1+ sinf docname). darajalar: JSON ro'yxat
+	[{nom, oqituvchi}] — bo'sh/bitta+nomsiz = oddiy; bir nechta = darajaga bo'lingan.
+	boshlanish/tugash: zam direktor kiritgan vaqt (HH:MM), qo'ng'iroq jadvalisiz."""
+	_guard()
+	import json
+	sinflar = json.loads(sinflar) if isinstance(sinflar, str) else (sinflar or [])
+	darajalar = json.loads(darajalar) if isinstance(darajalar, str) else (darajalar or [])
+	sinflar = [s for s in sinflar if s]
+	if not sinflar:
+		frappe.throw(_("Kamida bitta sinf tanlang."))
+	if not fan:
+		frappe.throw(_("Fan tanlang."))
+	versiya = _faol_versiya(versiya)
+	if not darajalar:
+		darajalar = [{"nom": "", "oqituvchi": None}]
+	regular_max = _max_darslar(versiya)
+	dr = int(dars_raqami) if dars_raqami else _kechki_slot(versiya, kun, sinflar, regular_max)
+	ay = frappe.db.get_value("Jadval Versiyasi", versiya, "academic_year")
+	vaqt = {"boshlanish": boshlanish or None, "tugash": tugash or None}
+
+	oddiy = len(sinflar) == 1 and len(darajalar) == 1 and not (darajalar[0].get("nom") or "").strip()
+	yaratilgan = []
+	if oddiy:
+		d = frappe.get_doc({
+			"doctype": "Jadval Yozuvi", "versiya": versiya, "kun": kun, "dars_raqami": dr,
+			"fan": fan, "guruh": sinflar[0], "oqituvchi": darajalar[0].get("oqituvchi") or None,
+			**vaqt})
+		d.insert(ignore_permissions=True)
+		yaratilgan.append(d.name)
+	else:
+		oraliq = _oraliq(sinflar)
+		blok_nomi = _unik_nom("Dars Bloki", f"{fan} {oraliq} kechki")
+		guruh_qatorlari = []
+		for dj in darajalar:
+			nom = (dj.get("nom") or "").strip()
+			tur = "Daraja" if nom else "Qo'shma"
+			daraja_lbl = nom or "Qo'shma"
+			gnomi = _unik_nom("Student Group", f"{fan} {daraja_lbl} {oraliq} kechki")
+			sg = frappe.get_doc({
+				"doctype": "Student Group", "student_group_name": gnomi,
+				"group_based_on": "Course", "course": fan if frappe.db.exists("Course", fan) else None,
+				"academic_year": ay, "custom_guruh_turi": tur, "custom_daraja": daraja_lbl,
+				"custom_azo_sinflar": ", ".join(sinflar)})
+			sg.flags.ignore_mandatory = True
+			sg.insert(ignore_permissions=True)
+			guruh_qatorlari.append(
+				{"daraja": daraja_lbl, "guruh": gnomi, "oqituvchi": dj.get("oqituvchi") or None})
+		frappe.get_doc({
+			"doctype": "Dars Bloki", "nomi": blok_nomi,
+			"fan": fan if frappe.db.exists("Course", fan) else None, "academic_year": ay,
+			"sinflar": [{"sinf": s} for s in sinflar],
+			"guruhlar": [
+				{"daraja": g["daraja"], "guruh": g["guruh"], "oqituvchi": g["oqituvchi"]}
+				for g in guruh_qatorlari],
+		}).insert(ignore_permissions=True)
+		for g in guruh_qatorlari:
+			frappe.db.set_value("Student Group", g["guruh"], "custom_blok", blok_nomi, update_modified=False)
+			d = frappe.get_doc({
+				"doctype": "Jadval Yozuvi", "versiya": versiya, "kun": kun, "dars_raqami": dr,
+				"fan": fan, "guruh": g["guruh"], "blok": blok_nomi, "oqituvchi": g["oqituvchi"],
+				**vaqt})
+			d.insert(ignore_permissions=True)
+			yaratilgan.append(d.name)
+	frappe.db.commit()
+	return {"ok": 1, "dars_raqami": dr, "kechki": 1, "yaratilgan": yaratilgan}
+
+
+# ===================== Kechki guruhga o'quvchi biriktirish =====================
+
+
+@frappe.whitelist()
+def guruh_oquvchilari(guruh: str) -> dict:
+	"""Guruh a'zolari + a'zo sinflaridan nomzod o'quvchilar (biriktirish uchun)."""
+	_guard()
+	azolar = frappe.get_all(
+		"Student Group Student", filters={"parent": guruh},
+		fields=["student", "student_name"], limit_page_length=0)
+	azo_ids = {a.student for a in azolar}
+
+	azo_sinflar = frappe.db.get_value("Student Group", guruh, "custom_azo_sinflar") or ""
+	sinflar = [s.strip() for s in azo_sinflar.split(",") if s.strip()]
+	# Blok orqali ham (daraja guruhida azo_sinflar bo'lmasa)
+	if not sinflar:
+		blok = frappe.db.get_value("Student Group", guruh, "custom_blok")
+		if blok:
+			sinflar = frappe.get_all("Dars Bloki Sinfi", filters={"parent": blok}, pluck="sinf")
+	if not sinflar:
+		sinflar = [guruh]
+
+	nomzodlar = []
+	korilgan = set()
+	for sinf in sinflar:
+		for r in frappe.get_all(
+			"Student Group Student", filters={"parent": sinf},
+			fields=["student", "student_name"], order_by="group_roll_number, idx",
+			limit_page_length=0):
+			if r.student in korilgan:
+				continue
+			korilgan.add(r.student)
+			nomzodlar.append({
+				"student": r.student, "nomi": r.student_name, "sinf": sinf,
+				"azo": r.student in azo_ids})
+	return {
+		"guruh": guruh,
+		"nomi": frappe.db.get_value("Student Group", guruh, "student_group_name"),
+		"azolar_soni": len(azo_ids), "sinflar": sinflar, "nomzodlar": nomzodlar,
+	}
+
+
+@frappe.whitelist()
+def guruh_oquvchilari_saqla(guruh: str, studentlar) -> dict:
+	"""Guruh a'zoligini berilgan o'quvchilar ro'yxatiga moslaydi (qo'shadi/olib tashlaydi).
+	Mavjud qatorlar (roll raqami) saqlanadi — faqat farq qo'llanadi."""
+	_guard()
+	import json
+	studentlar = json.loads(studentlar) if isinstance(studentlar, str) else (studentlar or [])
+	studentlar = [s for s in studentlar if s]
+	doc = frappe.get_doc("Student Group", guruh)
+	eski = {r.student: r for r in doc.students}
+	doc.set("students", [])
+	roll = 1
+	for sid in studentlar:
+		r = eski.get(sid)
+		doc.append("students", {
+			"student": sid,
+			"student_name": (r.student_name if r else None)
+			or frappe.db.get_value("Student", sid, "student_name"),
+			"group_roll_number": (r.group_roll_number if r and r.group_roll_number else roll),
+			"active": 1,
+		})
+		roll += 1
+	doc.flags.ignore_mandatory = True
+	doc.save(ignore_permissions=True)
+	frappe.db.commit()
+	return {"ok": 1, "soni": len(studentlar)}

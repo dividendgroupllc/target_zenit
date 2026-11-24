@@ -55,21 +55,29 @@ def get_data(versiya: str | None = None):
 			"(yoki shu sahifadagi «Exceldan import» o'zi o'rnatadi).",
 		}
 
-	sinflar = frappe.get_all(
+	sinf_rows = frappe.get_all(
 		"Student Group",
 		filters={"custom_guruh_turi": "Sinf", "disabled": 0},
-		pluck="name",
+		fields=["name", "student_group_name"],
 	)
-	sinflar.sort(key=_sinf_tartib)
+	sinflar = sorted([r.name for r in sinf_rows], key=_sinf_tartib)
+	# Ko'rinadigan nom xaritasi: docname (barqaror ID) -> student_group_name.
+	# Grid ustun sarlavhasi shu nomni ko'rsatadi, kalit esa docname bo'lib qoladi.
+	sinf_nomlari = {r.name: (r.student_group_name or r.name) for r in sinf_rows}
 
+	yz_fields = [
+		"name", "kun", "dars_raqami", "guruh", "guruh_nomi", "fan",
+		"oqituvchi", "oqituvchi_nomi", "blok", "sinflar", "xona",
+		"boshlanish", "tugash", "qulf",
+	]
+	# `joylanmagan` ustuni migrate'dan keyin paydo bo'ladi — prod'da kech qolsa
+	# sahifa yiqilmasin (mavjud has_column himoya naqshi).
+	if frappe.db.has_column("Jadval Yozuvi", "joylanmagan"):
+		yz_fields.append("joylanmagan")
 	yozuvlar = frappe.get_all(
 		"Jadval Yozuvi",
 		filters={"versiya": versiya},
-		fields=[
-			"name", "kun", "dars_raqami", "guruh", "guruh_nomi", "fan",
-			"oqituvchi", "oqituvchi_nomi", "blok", "sinflar", "xona",
-			"boshlanish", "tugash", "qulf", "joylanmagan",
-		],
+		fields=yz_fields,
 		limit_page_length=0,
 	)
 
@@ -112,6 +120,8 @@ def get_data(versiya: str | None = None):
 					"blok": y.blok,
 					"xona": y.xona,
 					"qulf": y.qulf,
+					"boshlanish": _vaqt_str(y.boshlanish),
+					"tugash": _vaqt_str(y.tugash),
 				}
 			)
 		if y.oqituvchi:
@@ -133,12 +143,32 @@ def get_data(versiya: str | None = None):
 		i.name: i.instructor_name
 		for i in frappe.get_all("Instructor", fields=["name", "instructor_name"])
 	}
+	# Oddiy darslar soni = qo'ng'iroq jadvali maksimumi (odatda 10). Undan yuqori
+	# dars raqamlari — KECHKI (qo'shimcha) darslar, pastki bandda ko'rsatiladi.
+	rm = frappe.db.sql("SELECT MAX(dars_raqami) FROM `tabQongiroq Qatori` WHERE dars_raqami > 0")
+	regular_max = int(rm[0][0]) if rm and rm[0][0] else 10
+	kechki_darslar = sorted({
+		int(y.dars_raqami) for y in yozuvlar
+		if not y.joylanmagan and int(y.dars_raqami or 0) > regular_max
+	})
+	# Kechki darslardagi guruhlar uchun a'zo (o'quvchi) soni — kartada ko'rsatiladi
+	kechki_guruhlar = {
+		y.guruh for y in yozuvlar
+		if not y.joylanmagan and int(y.dars_raqami or 0) > regular_max and y.guruh
+	}
+	guruh_azolari = {}
+	for g in kechki_guruhlar:
+		guruh_azolari[g] = frappe.db.count("Student Group Student", {"parent": g})
 	return {
 		"versiyalar": versiyalar,
 		"versiya": versiya,
 		"sinflar": sinflar,
+		"sinf_nomlari": sinf_nomlari,
 		"kunlar": KUNLAR[:5],
-		"darslar": list(range(1, 11)),
+		"darslar": list(range(1, regular_max + 1)),
+		"regular_max": regular_max,
+		"kechki_darslar": kechki_darslar,
+		"guruh_azolari": guruh_azolari,
 		"katak": katak,
 		"qongiroqlar": qongiroqlar,
 		"yuklama": sorted(
