@@ -114,6 +114,29 @@ def xml_to_dict(raw: bytes):
 	return {strip_ns(root.tag): to_dict(root)} if strip_ns(root.tag) != "EventNotificationAlert" else to_dict(root)
 
 
+# Maktabdagi 6 terminal (DS-K1T342MFX-E1, 2026-11-23 holati):
+# toq portlar (4441/4443/4445) — chiqish, juftlari (4442/4444/4446) — kirish.
+# deviceName o'zgartirilsa ham ishlashi uchun MAC bo'yicha zaxira xarita.
+DIRECTION_BY_MAC = {
+	"a4:d5:c2:6e:a4:c1": "Chiqdi",  # 4441 GC3643887
+	"a4:d5:c2:6e:a4:b6": "Kirdi",   # 4442 GC3643876
+	"a4:d5:c2:6e:a4:c7": "Chiqdi",  # 4443 GC3643893
+	"a4:d5:c2:6e:a4:b0": "Kirdi",   # 4444 GC3643870
+	"a4:d5:c2:6e:a4:ac": "Chiqdi",  # 4445 GC3643866
+	"a4:d5:c2:6e:a4:b1": "Kirdi",   # 4446 GC3643871
+}
+
+
+def aniqla_yonalish(device_name: str, mac: str) -> str:
+	"""Terminal nomi ("Kirish-1"/"Chiqish-2") yoki MAC manzilidan yo'nalish."""
+	n = (device_name or "").strip().lower()
+	if n.startswith("kirish"):
+		return "Kirdi"
+	if n.startswith("chiqish"):
+		return "Chiqdi"
+	return DIRECTION_BY_MAC.get((mac or "").strip().lower(), "")
+
+
 def normalize_event(payload: dict):
 	"""Har xil formatdagi xabarni bitta ko'rinishga keltiradi.
 
@@ -136,12 +159,14 @@ def normalize_event(payload: dict):
 		# shaxssiz hodisa (eshik ochildi, notanish yuz va h.k.) — saqlamaymiz
 		return None
 
+	device_name = str(acs.get("deviceName") or "").strip()
 	return {
 		"person_id": person_id,
 		"person_name": person_name,
 		"event_time": parse_event_time(payload.get("dateTime")),
-		"terminal": str(acs.get("deviceName") or "").strip(),
+		"terminal": device_name,
 		"terminal_ip": str(payload.get("ipAddress") or "").strip(),
+		"direction": aniqla_yonalish(device_name, str(payload.get("macAddress") or "")),
 		"verify_mode": str(acs.get("currentVerifyMode") or "").strip(),
 		"event_code": f"{acs.get('majorEventType', '')}/{acs.get('subEventType', '')}",
 		"raw": payload,
@@ -178,6 +203,7 @@ def save_checkin(event: dict, picture: bytes | None):
 			"student": who.get("student"),
 			"employee": who.get("employee"),
 			"event_time": event["event_time"],
+			"direction": event.get("direction"),
 			"terminal": event["terminal"],
 			"terminal_ip": event["terminal_ip"],
 			"verify_mode": event["verify_mode"],
@@ -233,6 +259,31 @@ def classify_person(person_id: str) -> dict:
 			return {"person_type": person_type, "employee": employee}
 
 	return {"person_type": "Noma'lum"}
+
+
+def yonalish_backfill():
+	"""Eski yozuvlarga Kirdi/Chiqdi ni MAC manzili bo'yicha to'ldiradi (bir marta).
+
+	Ishga tushirish:
+	  bench --site <sayt> execute target_zenit.integrations.hikvision.yonalish_backfill
+	"""
+	jami = 0
+	for mac, yon in DIRECTION_BY_MAC.items():
+		soni = frappe.db.sql(
+			"""SELECT COUNT(*) FROM `tabTerminal Checkin`
+			   WHERE (direction IS NULL OR direction='') AND raw_data LIKE %s""",
+			(f"%{mac}%",),
+		)[0][0]
+		if soni:
+			frappe.db.sql(
+				"""UPDATE `tabTerminal Checkin` SET direction=%s
+				   WHERE (direction IS NULL OR direction='') AND raw_data LIKE %s""",
+				(yon, f"%{mac}%"),
+			)
+		print(f"  {mac} -> {yon}: {soni} yozuv")
+		jami += soni
+	frappe.db.commit()
+	print(f"Jami to'ldirildi: {jami}")
 
 
 @frappe.whitelist()

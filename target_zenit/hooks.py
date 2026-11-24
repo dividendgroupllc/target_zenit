@@ -346,7 +346,11 @@ after_migrate = [
 # ---------------
 
 scheduler_events = {
-	"hourly": [],
+	"hourly": [
+		# Turniket (Terminal Checkin) -> Student Attendance: bugungi o'tishlardan
+		# "Present" yozadi. Idempotent — bor kunga dublikat yozmaydi.
+		"target_zenit.attendance.sync_today",
+	],
 	"daily": [
 		# Qarzdorlik: rejalarni qayta hisoblash, ish ochish/yopish, PTP/SLA tekshiruvi
 		"target_zenit.qarzdorlik.engine.nightly",
