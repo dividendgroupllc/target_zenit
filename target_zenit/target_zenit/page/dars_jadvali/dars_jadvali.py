@@ -68,7 +68,7 @@ def get_data(versiya: str | None = None):
 		fields=[
 			"name", "kun", "dars_raqami", "guruh", "guruh_nomi", "fan",
 			"oqituvchi", "oqituvchi_nomi", "blok", "sinflar", "xona",
-			"boshlanish", "tugash", "qulf",
+			"boshlanish", "tugash", "qulf", "joylanmagan",
 		],
 		limit_page_length=0,
 	)
@@ -79,7 +79,27 @@ def get_data(versiya: str | None = None):
 	# sinf x kun x dars -> darslar ro'yxati (blokda bir nechta guruh bo'lishi mumkin)
 	katak = defaultdict(list)
 	yuklama = defaultdict(set)
+	laganda = []
+	korilgan_blok = set()
 	for y in yozuvlar:
+		if y.joylanmagan:
+			# Laganda: blok karta bitta bo'lib ko'rinadi (parallel to'plam birga yuradi)
+			if y.blok:
+				if y.blok in korilgan_blok:
+					continue
+				korilgan_blok.add(y.blok)
+			laganda.append(
+				{
+					"name": y.name,
+					"fan": y.fan,
+					"guruh": y.guruh,
+					"guruh_nomi": y.guruh_nomi,
+					"oqituvchi": oq_nom.get(y.oqituvchi) or y.oqituvchi_nomi or y.oqituvchi,
+					"blok": y.blok,
+					"sinflar": y.sinflar,
+				}
+			)
+			continue
 		y_sinflar = [s.strip() for s in (y.sinflar or "").split(",") if s.strip()] or [y.guruh]
 		for s in y_sinflar:
 			katak[f"{s}|{y.kun}|{y.dars_raqami}"].append(
@@ -125,7 +145,8 @@ def get_data(versiya: str | None = None):
 			({"oqituvchi": o_nomlari.get(k, k), "soat": len(v)} for k, v in yuklama.items()),
 			key=lambda x: -x["soat"],
 		),
-		"jami_yozuv": len(yozuvlar),
+		"jami_yozuv": len(yozuvlar) - sum(1 for y in yozuvlar if y.joylanmagan),
+		"laganda": laganda,
 	}
 
 

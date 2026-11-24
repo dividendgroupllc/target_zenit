@@ -25,7 +25,8 @@
   "column_break_3",
   "sinflar",
   "izoh",
-  "qulf"
+  "qulf",
+  "joylanmagan"
  ],
  "fields": [
   {
@@ -43,15 +44,13 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Kun",
-   "options": "Dushanba\nSeshanba\nChorshanba\nPayshanba\nJuma\nShanba",
-   "reqd": 1
+   "options": "\nDushanba\nSeshanba\nChorshanba\nPayshanba\nJuma\nShanba"
   },
   {
    "fieldname": "dars_raqami",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Dars №",
-   "reqd": 1
+   "label": "Dars №"
   },
   {
    "fieldname": "kun_raqami",
@@ -166,10 +165,18 @@
    "fieldname": "qulf",
    "fieldtype": "Check",
    "label": "Qulflangan"
+  },
+  {
+   "default": "0",
+   "description": "Lagandadagi (jadvalga joylanmagan) karta — kun/dars bo'sh turadi",
+   "fieldname": "joylanmagan",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Joylanmagan (laganda)"
   }
  ],
  "links": [],
- "modified": "2026-11-18 10:00:00.000000",
+ "modified": "2026-11-24 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Jadval Yozuvi",

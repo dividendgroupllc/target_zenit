@@ -31,7 +31,8 @@ def _versiya_yozuvlari(versiya):
 		"Jadval Yozuvi",
 		filters={"versiya": versiya},
 		fields=["name", "kun", "dars_raqami", "guruh", "guruh_nomi", "fan",
-		        "oqituvchi", "oqituvchi_nomi", "blok", "xona", "sinflar", "qulf"],
+		        "oqituvchi", "oqituvchi_nomi", "blok", "xona", "sinflar", "qulf",
+		        "joylanmagan"],
 		limit_page_length=0,
 	)
 
@@ -150,19 +151,39 @@ def kochirish_xarita(yozuv: str) -> dict:
 	xonalar = {y.xona for y in kochma if y.xona}
 	mavlar = {o: _mavjudlik_map(o) for o in oqituvchilar}
 
+	lagandadan = bool(doc.joylanmagan)
 	eski_kun, eski_dars = doc.kun, int(doc.dars_raqami or 0)
-	eski_rows = slotlar.get((eski_kun, eski_dars), [])
+	eski_rows = [] if lagandadan else slotlar.get((eski_kun, eski_dars), [])
 	xarita = {}
 	for kun in KUNLAR:
 		for d in range(1, ndars + 1):
 			key = f"{kun}|{d}"
-			if kun == eski_kun and d == eski_dars:
+			if not lagandadan and kun == eski_kun and d == eski_dars:
 				xarita[key] = {"holat": "oz"}
 				continue
 			slot_rows = slotlar.get((kun, d), [])
 			# Maqsad slotda bizning sinf(lar)imizni band qilgan dars(lar) bormi?
 			siqiladigan = _siqiladiganlar(slot_rows, sinflar, doc.blok)
 			if siqiladigan:
+				if lagandadan:
+					# Lagandadan kelgan karta: almashuv emas, SIQIB CHIQARISH —
+					# qarshi dars lagandaga tushadi (aSc bounce uslubi)
+					tavsif = list(dict.fromkeys(
+						f"{r.fan} — {r.guruh_nomi or r.guruh}" for r in siqiladigan))[:3]
+					if any(r.qulf for r in siqiladigan):
+						xarita[key] = {"holat": "band", "sabab": ["qarshi dars qulflangan"]}
+						continue
+					siq_nomlar = {r.name for r in siqiladigan}
+					qolgan = [r for r in slot_rows if r.name not in siq_nomlar]
+					sabab = _slot_sabablari(qolgan, oqituvchilar, sinflar, xonalar, doc.blok)
+					for o, mav in mavlar.items():
+						if _mavjudlikmi(mav, kun, d) == "band":
+							sabab.append(f"{oqituvchi_nomlari([o]).get(o) or o} bu vaqtda ishlamaydi")
+					if sabab:
+						xarita[key] = {"holat": "band", "sabab": sabab[:4]}
+					else:
+						xarita[key] = {"holat": "siqish", "bilan": tavsif}
+					continue
 				# Band katak — ISTALGANINI almashtirsa bo'ladi (toza yoki ogohli)
 				holat, tavsif, sabab = _swap_baho(
 					siqiladigan, slot_rows, kochma, oqituvchilar, sinflar, xonalar,
@@ -191,6 +212,7 @@ def kochirish_xarita(yozuv: str) -> dict:
 		"blok": doc.blok,
 		"blok_hajmi": len(kochma),
 		"qulf": any(y.qulf for y in kochma),
+		"lagandadan": lagandadan,
 		"kun": doc.kun,
 		"dars_raqami": int(doc.dars_raqami or 0),
 		"xarita": xarita,
@@ -204,7 +226,11 @@ def dars_kochir(yozuv: str, kun: str, dars_raqami) -> dict:
 	_guard()
 	dars_raqami = int(dars_raqami)
 	doc = frappe.get_doc("Jadval Yozuvi", yozuv)
-	eski = {"kun": doc.kun, "dars_raqami": int(doc.dars_raqami or 0)}
+	eski = {
+		"kun": doc.kun,
+		"dars_raqami": int(doc.dars_raqami or 0),
+		"joylanmagan": int(doc.joylanmagan or 0),
+	}
 	yozuvlar = _versiya_yozuvlari(doc.versiya)
 	kochma = _kochma_toplam(doc, yozuvlar)
 	if any(y.qulf for y in kochma):
@@ -214,6 +240,7 @@ def dars_kochir(yozuv: str, kun: str, dars_raqami) -> dict:
 		d = frappe.get_doc("Jadval Yozuvi", y.name)
 		d.kun = kun
 		d.dars_raqami = dars_raqami
+		d.joylanmagan = 0
 		d.save(ignore_permissions=True)
 		kochirildi.append(d.name)
 	frappe.db.commit()
@@ -267,6 +294,84 @@ def dars_almashtir(yozuv: str, kun: str, dars_raqami) -> dict:
 		"eski": {"kun": eski_kun, "dars_raqami": eski_dars},
 		"kochirildi": sorted(kochma_nomlar),
 		"almashdi": [y.name for y in siqiladigan],
+	}
+
+
+@frappe.whitelist()
+def lagandaga(yozuv: str) -> dict:
+	"""Kartani jadvaldan lagandaga oladi (o'chirmaydi — joylanmagan bo'ladi).
+	Blok darsi butun parallel to'plami bilan olinadi. Undo = eski slotga kochir."""
+	_guard()
+	doc = frappe.get_doc("Jadval Yozuvi", yozuv)
+	if doc.joylanmagan:
+		frappe.throw(_("Karta allaqachon lagandada."))
+	eski = {"kun": doc.kun, "dars_raqami": int(doc.dars_raqami or 0)}
+	yozuvlar = _versiya_yozuvlari(doc.versiya)
+	kochma = _kochma_toplam(doc, yozuvlar)
+	if any(y.qulf for y in kochma):
+		frappe.throw(_("Dars qulflangan — avval qulfni oching."))
+	olingan = []
+	for y in kochma:
+		d = frappe.get_doc("Jadval Yozuvi", y.name)
+		d.joylanmagan = 1
+		d.save(ignore_permissions=True)
+		olingan.append(d.name)
+	frappe.db.commit()
+	return {"ok": 1, "eski": eski, "olingan": olingan}
+
+
+@frappe.whitelist()
+def dars_siqib_joyla(yozuv: str, kun: str, dars_raqami) -> dict:
+	"""Bizning dars maqsad slotga tushadi, u yerdagi qarshi dars(lar) LAGANDAGA
+	siqib chiqariladi (aSc bounce). Konflikt chiqsa hammasi orqaga qaytadi."""
+	_guard()
+	dars_raqami = int(dars_raqami)
+	doc = frappe.get_doc("Jadval Yozuvi", yozuv)
+	eski = {
+		"kun": doc.kun,
+		"dars_raqami": int(doc.dars_raqami or 0),
+		"joylanmagan": int(doc.joylanmagan or 0),
+	}
+	yozuvlar = _versiya_yozuvlari(doc.versiya)
+	kochma = _kochma_toplam(doc, yozuvlar)
+	if any(y.qulf for y in kochma):
+		frappe.throw(_("Dars qulflangan — avval qulfni oching."))
+	sinflar = _sinflar_toplam(kochma)
+	kochma_nomlar = {y.name for y in kochma}
+	siqiladigan = [
+		y for y in yozuvlar
+		if y.kun == kun and int(y.dars_raqami or 0) == dars_raqami
+		and y.name not in kochma_nomlar
+		and (sinflar & {s.strip() for s in (y.sinflar or "").split(",")})
+		and not (doc.blok and y.blok == doc.blok)
+	]
+	if not siqiladigan:
+		frappe.throw(_("Bu slotda siqib chiqariladigan dars yo'q — oddiy ko'chirishni ishlating."))
+	if any(y.qulf for y in siqiladigan):
+		frappe.throw(_("Qarshi dars qulflangan — siqib chiqarib bo'lmaydi."))
+	try:
+		for y in siqiladigan:
+			frappe.db.set_value("Jadval Yozuvi", y.name,
+				{"joylanmagan": 1, "kun": "", "dars_raqami": 0}, update_modified=False)
+		for y in kochma:
+			frappe.db.set_value("Jadval Yozuvi", y.name,
+				{"kun": kun, "dars_raqami": dars_raqami, "joylanmagan": 0},
+				update_modified=False)
+		for nm in [y.name for y in siqiladigan] + sorted(kochma_nomlar):
+			d2 = frappe.get_doc("Jadval Yozuvi", nm)
+			d2.save(ignore_permissions=True)
+	except Exception:
+		frappe.db.rollback()
+		raise
+	frappe.db.commit()
+	return {
+		"ok": 1,
+		"eski": eski,
+		"kochirildi": sorted(kochma_nomlar),
+		"siqildi": [
+			{"yozuv": y.name, "fan": y.fan, "guruh_nomi": y.guruh_nomi or y.guruh}
+			for y in siqiladigan
+		],
 	}
 
 

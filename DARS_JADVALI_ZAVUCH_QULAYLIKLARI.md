@@ -234,6 +234,82 @@ Excel import/sinxron, `/app/dars-jadvali` zavuch ekrani, `Jadval Ozgarishi` (arx
 
 ---
 
+## 9. CHUQUR INTERAKSIYA TADQIQOTI (2026-11-24) — aniq mexanikalar va bizda tatbiqi
+
+Ikki parallel tadqiqot: aSc muharriri (manual PDF + 13 help sahifa) va boshqa yetakchilar
+(Untis/Prime/Edval/TimeTabler/Lantiv/UniTime/Skolaris/Timetable Master).
+
+### 9.1 aSc muharririning aniq mexanikasi (etalon)
+- **Bosib-olish / bosib-qo'yish** (hold-drag EMAS): bir bosish — kursor karta shakliga kiradi,
+  ikkinchi bosish — joylanadi. Karta qo'ldaligida: yashil=mumkin, ko'k=savolli (?), qizil=band,
+  kulrang=mutlaqo taqiq; kursor ostidagi kun/dars/sinf sarlavhalari sariq yonadi; o'z sinf qatori
+  yashil — boshqa qatorga qo'yib BO'LMAYDI.
+- **Siqib chiqarish zanjiri (signature)**: band katakka qo'ysang — o'sha sinfning bitta kartasi
+  bo'lsa, u avtomatik QO'LGA O'TADI (zanjir davom etadi); boshqa sinf/bir nechta karta bo'lsa —
+  dialog: joyla (siqilganlar lagandaga) / bekor / aynan bittasini qo'lga ol. Zanjirning hammasi
+  BITTA undo amali.
+- **Laganda (Control panel, pastda)**: filtr (sinf/o'qituvchi/fan/xona), bir xil kartalar yig'ilib
+  1 karta + son; kartani olib tashlash = o'ng tugma Remove YOKI lagandaga sudrash YOKI **qo'ldagi
+  kartaga o'ng tugma** (darhol lagandaga).
+- **Warn-don't-block**: taqiq joyga ham qo'yish mumkin — karta qizil chiziq oladi (xonasiz=oq
+  chiziq); to'liq tekshiruv Space (Verification) — xato qatori bosilsa aybdor kartalar bo'yaladi.
+  Qattiq rad faqat 2 joyda: qulflangan karta (miltillaydi) va boshqa sinf qatori.
+- Undo/Redo 100 amal (faqat karta pozitsiyalari); bo'sh katakka o'ng tugma = "nima sig'adi".
+
+### 9.2 Boshqa tizimlar — asosiy farqlar
+- **Untis**: drag paytida yashil tusi QANCHA TO'Q bo'lsa shuncha yaxshi (sifat gradatsiyasi);
+  binafsha=xona band; ko'k strelka=almashuv mumkin, qizil strelkalar butun zanjirni chizadi;
+  Tauschvorschläge: 2/3/4 tomonlama almashuvlar Gewinn(+/-ball) va Auswirkung ustunlari bilan.
+- **Prime**: o'q bo'yicha qulflangan drag (sinf ko'rinishida faqat gorizontal — resursni
+  adashib o'zgartirib bo'lmaydi); karta soyasi BARCHA ochiq ko'rinishlarda; konfliktga ruxsat —
+  kartalar qiyshayadi + qo'ng'iroq hisoblagichi; History 100 holat.
+- **TimeTabler**: Priority List — tizim KEYINGI qaysi darsni joylashni o'zi aytadi; tanlanganda
+  slotlar 1–5 sifat bahosi, `*1*`=tavsiya; nuqta bosilsa "nega mumkin emas" hisoboti; FIT —
+  16 qadamgacha "musiqiy stullar" zanjirlari ro'yxati.
+- **Lantiv**: drag paytida har resurs uchun yashil/sariq/qizil chiziqchalar (conflict prediction
+  stripes); real-time hamkorlik. **Timetable Master**: pastda parking panel. **FET**: interaktiv
+  muharrir YO'Q (uchinchi tomon reFET/FET_edit-print to'ldiradi — muharrir shartligining isboti).
+- **7 universal naqsh** (tarqalish bo'yicha): (1) ko'tarilgandayoq baholab bo'yash, (2) drag asosiy
+  harakat + himoya relslari, (3) bir bosishli undo + ko'rinadigan tarix, (4) hisoblangan almashuv
+  zanjirlari ball bilan — taklif, majbur emas, (5) rad etish o'rniga ruxsat + baland bayroq,
+  (6) talab bo'yicha "nega" tushuntirish, (7) laganda birinchi darajali drag manba/manzil.
+
+### 9.3 BIZDA TATBIQ QILINDI (2026-11-24, /app/dars-jadvali qayta qurildi)
+1. **Bitta bosish = ko'tarish** (eski: bosish→dialog→"Ko'chirish" 3 qadam edi); ikkinchi bosish
+   o'sha kartaga = bekor; Esc=bekor.
+2. **Drag&drop ham ishlaydi** (pointer events, ghost karta, hover katak konturi; telefonda
+   bosish-bosish qoladi).
+3. **Laganda** — `Jadval Yozuvi.joylanmagan` (Check) + kun="",dars=0; validate konfliktni
+   o'tkazib yuboradi; gridda ko'rinmaydi, get_data `laganda` ro'yxati; blok butun to'plami bilan
+   tushadi/qaytadi. O'chirish endi ikki daraja: 🧺 lagandaga (so'roqsiz, undo bor) /
+   🗑 butunlay (confirm bilan, kontekst menyuда).
+4. **Siqib chiqarish (bounce)**: lagandadan kelgan karta band katakka bosilsa qarshi dars
+   lagandaga chiqadi (`dars_siqib_joyla`), va aSc zanjiri — siqilgan karta avtomatik QO'LGA
+   o'tadi (Esc=lagandada qoladi). Grid kartasi uchun band katak: toza almashuv SO'ROQSIZ
+   (undo bor), ogohli almashuv — dialog: "baribir almashtir" / "qarshini lagandaga chiqar" / bekor.
+5. **Kun chiplari mvbar'da**: karta qo'ldaligida har kun uchun bo'sh joy soni — boshqa kunga
+   bir bosishda o'tiladi (bizning kun-tab grid'ida kross-kun ko'chirishning yechimi).
+6. **Undo/Redo** (Ctrl+Z / Ctrl+Y, tugmalar bilan): move/swap/unplace/displace amallari,
+   displace undo'si ketma-ket teskari chaqiriqlar bilan.
+7. **O'ng tugma**: kartada kontekst menyu (ko'chirish/qulf/laganda/hujjat/o'chirish);
+   karta qo'ldaligida o'ng tugma = lagandaga (aSc).
+8. Xarita holatlari: ok/afzal/swap_ok/swap_warn/**siqish**(yangi, binafsha ⤓)/band(+sabab)/oz.
+Keyingi nomzodlar (qilinmagan): Untis Gewinn balli zanjir takliflari (D14), TimeTabler uslubida
+bo'sh slot sifat bahosi 1–5, Prime konflikt-ruxsat modeli (bizda validate qattiq — laganda bilan
+yumshatilgan), laganda filtri (sinf bo'yicha).
+
+## 8-bis. Qo'shimcha manbalar (2026-11-24 tadqiqoti)
+aSc: automatictimetable.com/aScTimeTables_Manual_English.pdf (p.22–28, 44) · help.edupage.org
+t538/t118 (ko'chirish, hotkeys), t522 (laganda), t526 (lock), t528 ("nima sig'adi"), t534 (undo),
+t1026 (chiziqlar), t1014 (verify), u6303 (2025 Advisor), u7875 (2026 search). Untis:
+untis.com/manual mpstunden_verplanen/verschieben/tauschen, mpplanungsfunktionen ·
+webhelp.untis.at Tauschvorschläge. Prime: primetimetable.com/help + pdf user guide (axis-lock,
+shadow, History 100, markers; "magnets" degan narsa YO'Q — marker/pin). TimeTabler:
+timetabler.com/manualtimetabling + UsingtheVisualBuilderScreen.pdf. Lantiv:
+timetabling-turbo.lantiv.com wiki Interactive_Timetabling. Edval E10: help.tes.com F3/F11,
+harfli konflikt markerlari. UniTime: help.unitime.org/suggestions + patat10.pdf. Skolaris:
+mistservices.co.uk. Timetable Master: timetablemaster.com updating-timetable.
+
 ## 8. Manbalar (asosiylari)
 
 Muharrir UX: automatictimetable.com/aScTimeTables_Manual_English.pdf · help.asctimetables.com

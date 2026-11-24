@@ -10,6 +10,14 @@ KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
 
 class JadvalYozuvi(Document):
 	def validate(self):
+		if self.joylanmagan:
+			# Lagandadagi karta: slotga bog'lanmagan, konflikt tekshirilmaydi
+			self.kun, self.dars_raqami, self.kun_raqami = "", 0, 0
+			self.boshlanish = self.tugash = None
+			self._sinflarni_toldir()
+			return
+		if not self.kun or not self.dars_raqami:
+			frappe.throw(_("Kun va dars raqami shart (yoki «Joylanmagan» belgilang)."))
 		self.kun_raqami = KUNLAR.index(self.kun) + 1 if self.kun in KUNLAR else 0
 		self._sinflarni_toldir()
 		self._vaqtni_toldir()

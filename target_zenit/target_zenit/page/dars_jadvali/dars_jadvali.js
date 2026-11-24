@@ -1,8 +1,10 @@
 // Copyright (c) 2026, Target Zenit — Dars jadvali (zavuch paneli)
 // Sinflar x darslar to'ri, kun bo'yicha. Manba: Jadval Yozuvi (haftalik shablon).
-// Muharrir qatlami (jahon standartlari: aSc/Untis/Prime): karta ko'tarilganda
-// slotlar jonli bo'yaladi (yashil=mumkin/qizil=band+NEGA), lock/pin, undo,
-// bo'sh katakka "bu yerga nima sig'adi" teskari qidiruv.
+// Muharrir — jahon standartlari (Untis/Prime/aSc/TimeTabler sintezi):
+//   bitta bosish = kartani ko'tarish, sudrab tashlash (drag&drop) ham ishlaydi,
+//   ko'tarilganda slotlar jonli baholanadi (yashil/sariq/qizil + NEGA),
+//   toza almashuv so'roqsiz bajariladi (undo bor), laganda (joylanmagan kartalar),
+//   band katakka siqib chiqarish (bounce), undo/redo (Ctrl+Z / Ctrl+Y).
 frappe.pages["dars-jadvali"].on_page_load = function (wrapper) {
 	new TZDarsJadvali(wrapper);
 };
@@ -22,11 +24,14 @@ class TZDarsJadvali {
 		this.versiya = null;
 		this.fSinf = "";
 		this.moving = null;      // kochirish_xarita natijasi (karta "qo'lda")
-		this.undo = [];          // [{yozuv, kun, dars}] — ko'chirishlarni qaytarish
+		this.undoStack = [];     // amallar tarixi (move/swap/unplace/displace)
+		this.redoStack = [];
+		this.busy = false;       // parallel amal bosilishidan himoya
 		this.canEdit = MH_ROLLAR.some((r) => frappe.user_roles.includes(r));
 		this.make_skeleton();
 		this.load();
 		this.listen_import();
+		this.bind_keys();
 	}
 
 	// Fon vazifasi tugaganda natijani ko'rsatish
@@ -35,6 +40,23 @@ class TZDarsJadvali {
 			if (this.import_dlg) this.import_dlg.hide();
 			this.show_import_result(r);
 			this.load();
+		});
+	}
+
+	bind_keys() {
+		$(document).on("keydown.tzjadval", (e) => {
+			if (!this.canEdit) return;
+			if ($(e.target).is("input, textarea, select")) return;
+			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+				e.preventDefault(); this.undo_op();
+			} else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
+				e.preventDefault(); this.redo_op();
+			} else if (e.key === "Escape") {
+				this.cancel_move();
+				this.close_ctx();
+			} else if (e.key === "Delete" && this.moving && !this.moving.lagandadan) {
+				e.preventDefault(); this.mv_lagandaga();
+			}
 		});
 	}
 
@@ -54,11 +76,11 @@ class TZDarsJadvali {
 			.appendTo(this.wrapper.find(".layout-main-section"));
 	}
 
-	load() {
+	load(cb) {
 		frappe.call({
 			method: `${DJ_M}.get_data`,
 			args: { versiya: this.versiya },
-			freeze: true,
+			freeze: !cb,
 			callback: (r) => {
 				this.data = r.message || {};
 				if (this.data.xatolik) {
@@ -67,6 +89,7 @@ class TZDarsJadvali {
 				}
 				this.versiya = this.data.versiya;
 				this.render();
+				if (cb) cb();
 			},
 			error: () => this.body.html(`<div class="loading">Xatolik. Sahifani yangilang.</div>`),
 		});
@@ -115,7 +138,9 @@ class TZDarsJadvali {
 					${(d.kunlar || []).map((k) => `<button class="chip ${this.kun === k ? "on" : ""}" data-kun="${k}">${k}</button>`).join("")}
 				</div>
 				<div class="spacer"></div>
-				${this.canEdit ? `<button class="refresh" data-act="undo" ${this.undo.length ? "" : "disabled"}>↶ Qaytarish${this.undo.length ? ` (${this.undo.length})` : ""}</button>` : ""}
+				${this.canEdit ? `
+					<button class="refresh" data-act="undo" ${this.undoStack.length ? "" : "disabled"} title="Ctrl+Z">↶${this.undoStack.length ? ` ${this.undoStack.length}` : ""}</button>
+					<button class="refresh" data-act="redo" ${this.redoStack.length ? "" : "disabled"} title="Ctrl+Y">↷</button>` : ""}
 				<select class="fsinf">
 					<option value="">Barcha sinflar</option>
 					${(d.sinflar || []).map((s) => `<option value="${this.esc(s)}" ${this.fSinf === s ? "selected" : ""}>${this.esc(s)}</option>`).join("")}
@@ -125,34 +150,103 @@ class TZDarsJadvali {
 			</div>
 
 			<div class="mvbar-wrap"></div>
+			<div class="laganda-wrap"></div>
 			<div class="jadval-wrap card"></div>
 		`);
 		this.render_mvbar();
+		this.render_laganda();
 		this.render_grid();
 		this.bind();
 	}
 
 	// ------------- ko'chirish banneri ("karta qo'lda") -------------
+	mv_kun_hisob() {
+		// Har kun uchun: nechta bo'sh joy (ok/afzal) + nechta almashuv (swap_ok/siqish)
+		const out = {};
+		for (const k of this.data.kunlar || []) out[k] = { bosh: 0, swap: 0 };
+		for (const [key, st] of Object.entries((this.moving && this.moving.xarita) || {})) {
+			const kun = key.split("|")[0];
+			if (!out[kun]) continue;
+			if (st.holat === "ok" || st.holat === "afzal") out[kun].bosh++;
+			else if (st.holat === "swap_ok" || st.holat === "siqish") out[kun].swap++;
+		}
+		return out;
+	}
+
 	render_mvbar() {
 		const w = this.body.find(".mvbar-wrap");
 		if (!this.moving) { w.empty(); return; }
 		const m = this.moving;
-		const blok = m.blok_hajmi > 1 ? ` · blok: ${m.blok_hajmi} parallel dars birga ko'chadi` : "";
+		const blok = m.blok_hajmi > 1 ? ` · blok ×${m.blok_hajmi}` : "";
+		const joy = m.lagandadan ? "lagandadan" : `${this.esc(m.kun)} ${m.dars_raqami}-dars`;
+		const hisob = this.mv_kun_hisob();
+		const kunlar = (this.data.kunlar || []).map((k) => {
+			const h = hisob[k] || { bosh: 0, swap: 0 };
+			const on = this.kun === k;
+			return `<button class="mv-day ${on ? "on" : ""} ${h.bosh ? "has" : ""}" data-mvkun="${k}"
+				title="${h.bosh} bo'sh joy, ${h.swap} almashuv">${k.slice(0, 2)}<span>${h.bosh}</span></button>`;
+		}).join("");
 		w.html(`<div class="mvbar">
 			<span class="mv-ico">✋</span>
 			<b>${this.esc(m.fan)}</b>&nbsp;— ${this.esc(m.guruh_nomi)}
-			<span class="mv-sub">(hozir: ${this.esc(m.kun)} ${m.dars_raqami}-dars${blok})</span>
-			<span class="mv-hint">Istalgan darsni bosib almashtiring · <span class="lg-ok">yashil</span>=bo'sh joy · <span class="lg-sw">↔ sariq</span>=toza almashuv · <span class="lg-wn">to'q sariq</span>=ogohli · kun tablari bilan boshqa kunga ham</span>
+			<span class="mv-sub">(${joy}${blok})</span>
+			<span class="mv-days">${kunlar}</span>
 			<span class="spacer"></span>
-			<button class="refresh" data-act="mv-cancel">Bekor (Esc)</button>
-		</div>`);
+			${m.lagandadan ? "" : `
+				<button class="refresh mini" data-act="mv-lock" title="Qulflash">🔒</button>
+				<button class="refresh mini" data-act="mv-tray" title="Lagandaga olish (Del)">⤓ Laganda</button>`}
+			<button class="refresh mini" data-act="mv-form" title="Hujjatni ochish">📄</button>
+			<button class="refresh mini" data-act="mv-cancel">Bekor (Esc)</button>
+		</div>
+		<div class="mv-legend mv-sub">Katakka bosing yoki sudrab tashlang:
+			<span class="lg-ok">yashil</span>=bo'sh joy · <span class="lg-sw">↔ sariq</span>=almashuv
+			· <span class="lg-sq">⤓ binafsha</span>=siqib chiqarish · qizil=band (sababi ustida)</div>`);
 		w.find(`[data-act="mv-cancel"]`).on("click", () => this.cancel_move());
+		w.find(`[data-act="mv-lock"]`).on("click", () => {
+			const y = m.yozuv;
+			this.cancel_move(true);
+			frappe.call({ method: `${MH_M}.qulf_toggle`, args: { yozuv: y }, callback: () => this.load() });
+		});
+		w.find(`[data-act="mv-tray"]`).on("click", () => this.mv_lagandaga());
+		w.find(`[data-act="mv-form"]`).on("click", () => frappe.set_route("Form", "Jadval Yozuvi", m.yozuv));
+		w.find("[data-mvkun]").on("click", (e) => {
+			this.kun = $(e.currentTarget).data("mvkun");
+			this.render();
+		});
 	}
 
-	cancel_move() {
+	cancel_move(silent) {
+		if (!this.moving) return;
 		this.moving = null;
-		$(document).off("keyup.tzmv");
-		this.render();
+		if (!silent) this.render();
+	}
+
+	// ------------- laganda (joylanmagan kartalar) -------------
+	render_laganda() {
+		const w = this.body.find(".laganda-wrap");
+		const list = this.data.laganda || [];
+		if (!list.length && !this.moving) { w.empty(); return; }
+		const cards = list.map((x) => {
+			const h = this.rang(x.fan);
+			const on = this.moving && this.moving.yozuv === x.name;
+			return `<div class="lesson lg-card ${on ? "picked" : ""}" style="--h:${h}" data-name="${this.esc(x.name)}"
+				title="${this.esc(x.guruh_nomi || "")}${x.oqituvchi ? " · " + this.esc(x.oqituvchi) : ""}">
+				<div class="fan">${this.esc(x.fan)}${x.blok ? ` <span class="bk">blok</span>` : ""}</div>
+				<div class="oqit">${this.esc(x.guruh_nomi || x.guruh || "")}</div>
+			</div>`;
+		}).join("");
+		w.html(`<div class="laganda ${this.moving && !this.moving.lagandadan ? "drop-on" : ""}">
+			<span class="lg-t">🧺 Laganda <b>${list.length}</b></span>
+			<div class="lg-cards">${cards || `<span class="mv-sub">bo'sh — kartani shu yerga sudrab olib qo'ying</span>`}</div>
+		</div>`);
+		w.find(".lg-card").on("click", (e) => {
+			e.stopPropagation();
+			if (this._dragDone) { this._dragDone = false; return; }
+			const name = $(e.currentTarget).data("name");
+			if (this.moving && this.moving.yozuv === name) { this.cancel_move(); return; }
+			if (this.canEdit) this.start_move(name);
+		});
+		if (this.canEdit) this.enable_drag(w.find(".lg-card"));
 	}
 
 	render_grid() {
@@ -169,8 +263,9 @@ class TZDarsJadvali {
 						if (st.holat === "oz") mvCls = "mv-oz";
 						else if (st.holat === "ok") mvCls = "mv-ok";
 						else if (st.holat === "afzal") mvCls = "mv-afzal";
-						else if (st.holat === "swap_ok") { mvCls = "mv-swap"; mvTitle = "↔ Almashuv (toza): " + (st.bilan || []).join("; "); }
+						else if (st.holat === "swap_ok") { mvCls = "mv-swap"; mvTitle = "↔ Almashuv: " + (st.bilan || []).join("; "); }
 						else if (st.holat === "swap_warn") { mvCls = "mv-swap-warn"; mvTitle = "↔ Almashuv mumkin, lekin: " + (st.sabab || []).join("; "); }
+						else if (st.holat === "siqish") { mvCls = "mv-siqish"; mvTitle = "⤓ Siqib chiqarish: " + (st.bilan || []).join("; ") + " lagandaga tushadi"; }
 						else { mvCls = "mv-band"; mvTitle = (st.sabab || []).join("\n"); }
 					} else mvCls = "mv-dim";
 				}
@@ -180,7 +275,8 @@ class TZDarsJadvali {
 					const h = this.rang(x.fan);
 					const blok = x.blok ? ` <span class="bk">${this.esc(x.guruh_nomi || "").split(" ")[1] || ""}</span>` : "";
 					const lk = x.qulf ? `<span class="lk" title="Qulflangan">🔒</span>` : "";
-					return `<div class="lesson" style="--h:${h}" data-name="${this.esc(x.name)}" title="${this.esc(x.guruh_nomi || "")}">
+					const picked = this.moving && this.moving.yozuv === x.name ? " picked" : "";
+					return `<div class="lesson${picked}" style="--h:${h}" data-name="${this.esc(x.name)}" title="${this.esc(x.guruh_nomi || "")}">
 						<div class="fan">${this.esc(x.fan)}${blok}${lk}</div>
 						<div class="oqit">${this.esc(x.oqituvchi || "—")}</div>
 					</div>`;
@@ -200,34 +296,40 @@ class TZDarsJadvali {
 		`);
 
 		if (this.moving) {
-			// Faqat mumkin bo'lgan kataklar bosiladi
-			this.body.find("td.mv-ok, td.mv-afzal").on("click", (e) => {
+			this.body.find("td[data-no]").on("click", (e) => {
 				const no = Number($(e.currentTarget).data("no"));
-				this.do_move(this.kun, no);
+				this.drop_to(this.kun, no, $(e.currentTarget));
 			});
-			this.body.find("td.mv-swap, td.mv-swap-warn").on("click", (e) => {
-				const no = Number($(e.currentTarget).data("no"));
-				const st = (this.moving.xarita || {})[`${this.kun}|${no}`] || {};
-				const bilan = (st.bilan || []).map((b) => this.esc(b)).join("; ");
-				const warn = (st.sabab && st.sabab.length)
-					? `<div class="swap-warn-box">⚠ ${st.sabab.map((s) => this.esc(s)).join("<br>⚠ ")}<br><br>Baribir almashtiramizmi? (konflikt bo'lsa saqlanmaydi)</div>`
-					: "";
-				frappe.confirm(
-					`<b>${this.esc(this.moving.fan)} — ${this.esc(this.moving.guruh_nomi)}</b><br>↕<br><b>${bilan}</b><br>o'rinlari almashtirilsinmi?${warn}`,
-					() => this.do_swap(this.kun, no)
-				);
-			});
-			return;
 		}
+		// Bitta bosish = kartani ko'tarish (muharrir); o'qiydiganlarga — hujjat
 		this.body.find(".lesson").on("click", (e) => {
 			e.stopPropagation();
-			this.lesson_menu($(e.currentTarget).data("name"));
+			if (this._dragDone) { this._dragDone = false; return; } // drag'dan keyingi click emas
+			const name = $(e.currentTarget).data("name");
+			if (!this.canEdit) { frappe.set_route("Form", "Jadval Yozuvi", name); return; }
+			if (this.moving) {
+				if (this.moving.yozuv === name) { this.cancel_move(); return; }
+				// Karta qo'lda — boshqa karta ustiga bosish = o'sha katakka tashlash
+				const td = $(e.currentTarget).closest("td[data-no]");
+				if (td.length) this.drop_to(this.kun, Number(td.data("no")), td);
+				return;
+			}
+			this.start_move(name);
 		});
 		if (this.canEdit) {
-			this.body.find("td.bosh").on("click", (e) => {
-				const td = $(e.currentTarget);
-				this.katak_dialog(td.data("sinf"), Number(td.data("no")));
+			this.body.find(".lesson").on("contextmenu", (e) => {
+				e.preventDefault(); e.stopPropagation();
+				// aSc uslubi: karta qo'ldaligida o'ng tugma = lagandaga tashlash
+				if (this.moving) { this.mv_lagandaga(); return; }
+				this.ctx_menu($(e.currentTarget).data("name"), e.clientX, e.clientY);
 			});
+			this.enable_drag(this.body.find(".lesson"));
+			if (!this.moving) {
+				this.body.find("td.bosh").on("click", (e) => {
+					const td = $(e.currentTarget);
+					this.katak_dialog(td.data("sinf"), Number(td.data("no")));
+				});
+			}
 		}
 	}
 
@@ -238,123 +340,310 @@ class TZDarsJadvali {
 			this.render();
 		});
 		this.body.find(".fsinf").on("change", (e) => { this.fSinf = e.target.value; this.render_grid(); });
-		this.body.find(".fversiya").on("change", (e) => { this.versiya = e.target.value; this.undo = []; this.load(); });
+		this.body.find(".fversiya").on("change", (e) => {
+			this.versiya = e.target.value;
+			this.undoStack = []; this.redoStack = []; this.moving = null;
+			this.load();
+		});
 		this.body.find(`[data-act="yuklama"]`).on("click", () => this.yuklama_dialog());
 		this.body.find(`[data-act="import"]`).on("click", () => this.import_dialog());
-		this.body.find(`[data-act="undo"]`).on("click", () => this.undo_move());
+		this.body.find(`[data-act="undo"]`).on("click", () => this.undo_op());
+		this.body.find(`[data-act="redo"]`).on("click", () => this.redo_op());
 	}
 
-	// ---------------- muharrir: dars menyusi / ko'chirish / qulf ----------------
+	// ---------------- muharrir: ko'tarish / tashlash ----------------
 	lesson_info(name) {
 		for (const key in this.data.katak || {}) {
 			for (const x of this.data.katak[key]) {
 				if (x.name === name) return x;
 			}
 		}
+		for (const x of this.data.laganda || []) if (x.name === name) return x;
 		return null;
 	}
 
-	lesson_menu(name) {
-		const x = this.lesson_info(name);
-		if (!x) return;
-		if (!this.canEdit) {
-			frappe.set_route("Form", "Jadval Yozuvi", name);
-			return;
-		}
-		const dlg = new frappe.ui.Dialog({
-			title: `${x.fan} — ${x.guruh_nomi || x.guruh}`,
+	start_move(name, cb) {
+		frappe.call({
+			method: `${MH_M}.kochirish_xarita`,
+			args: { yozuv: name },
+			callback: (r) => {
+				const m = r.message;
+				if (!m) return;
+				if (m.qulf) {
+					frappe.show_alert({ message: "🔒 Dars qulflangan — o'ng tugma bilan qulfni oching.", indicator: "orange" });
+					return;
+				}
+				this.moving = m;
+				this.render();
+				if (cb) cb();
+			},
+		});
+	}
+
+	// Katakka tashlash/bosish — holatga qarab: ko'chirish / almashuv / siqish
+	drop_to(kun, no, td) {
+		if (!this.moving || this.busy) return;
+		const st = (this.moving.xarita || {})[`${kun}|${no}`] || {};
+		if (td && td.hasClass("mv-dim")) return;
+		if (st.holat === "oz") { this.cancel_move(); return; }
+		if (st.holat === "ok" || st.holat === "afzal") return this.do_move(kun, no);
+		if (st.holat === "swap_ok") return this.do_swap(kun, no);           // toza — so'roqsiz
+		if (st.holat === "siqish") return this.do_siqish(kun, no);          // lagandaga — undo bor
+		if (st.holat === "swap_warn") return this.swap_warn_dialog(kun, no, st);
+		if (st.sabab && st.sabab.length)
+			frappe.show_alert({ message: "⛔ " + this.esc(st.sabab[0]), indicator: "red" });
+	}
+
+	swap_warn_dialog(kun, no, st) {
+		const bilan = (st.bilan || []).map((b) => this.esc(b)).join("; ");
+		const d = new frappe.ui.Dialog({
+			title: "Band katak — nima qilamiz?",
 			size: "small",
 			fields: [{
 				fieldtype: "HTML",
 				options: `<div class="tz-jadval tz-menu">
-					<div class="mi"><span class="mi-l">O'qituvchi</span><b>${this.esc(x.oqituvchi || "—")}</b></div>
-					${x.blok ? `<div class="mi"><span class="mi-l">Blok</span><b>${this.esc(x.blok)}</b> <span class="mv-sub">(parallel darslar birga ko'chadi)</span></div>` : ""}
-					${x.qulf ? `<div class="mi"><span class="mi-l">Holat</span><b>🔒 Qulflangan</b></div>` : ""}
+					<div class="mi"><b>${this.esc(this.moving.fan)} — ${this.esc(this.moving.guruh_nomi)}</b> → ${this.esc(kun)} ${no}-dars</div>
+					<div class="mi">U yerda: <b>${bilan}</b></div>
+					<div class="swap-warn-box">⚠ ${(st.sabab || []).map((s) => this.esc(s)).join("<br>⚠ ")}</div>
 					<div class="menu-btns">
-						<button class="refresh primary" data-m="move" ${x.qulf ? "disabled" : ""}>✋ Ko'chirish</button>
-						<button class="refresh" data-m="lock">${x.qulf ? "🔓 Qulfni ochish" : "🔒 Qulflash"}</button>
-						<button class="refresh" data-m="form">📄 Hujjat</button>
-						<button class="refresh danger" data-m="del">🗑 O'chirish</button>
+						<button class="refresh primary" data-w="swap">↔ Baribir almashtirish</button>
+						<button class="refresh" data-w="siqish">⤓ Qarshi darsni lagandaga chiqarish</button>
+						<button class="refresh" data-w="cancel">Bekor</button>
 					</div>
 				</div>`,
 			}],
 		});
-		dlg.show();
-		dlg.$body.find(`[data-m="move"]`).on("click", () => { dlg.hide(); this.start_move(name); });
-		dlg.$body.find(`[data-m="lock"]`).on("click", () => {
-			dlg.hide();
-			frappe.call({ method: `${MH_M}.qulf_toggle`, args: { yozuv: name }, callback: () => this.load() });
-		});
-		dlg.$body.find(`[data-m="form"]`).on("click", () => { dlg.hide(); frappe.set_route("Form", "Jadval Yozuvi", name); });
-		dlg.$body.find(`[data-m="del"]`).on("click", () => {
-			dlg.hide();
-			frappe.confirm(`«${this.esc(x.fan)} — ${this.esc(x.guruh_nomi || x.guruh)}» darsini o'chirasizmi?`, () => {
-				frappe.call({ method: `${OJ_M}.dars_ochir`, args: { name }, callback: () => this.load() });
-			});
-		});
+		d.show();
+		d.$body.find(`[data-w="swap"]`).on("click", () => { d.hide(); this.do_swap(kun, no); });
+		d.$body.find(`[data-w="siqish"]`).on("click", () => { d.hide(); this.do_siqish(kun, no); });
+		d.$body.find(`[data-w="cancel"]`).on("click", () => d.hide());
 	}
 
-	start_move(name) {
+	// Amal + undo yozuvi. op: {t, yozuv, from:{kun,no,tray}, to:{kun,no}, siqildi?}
+	op_call(method, args, op, xabar) {
+		this.busy = true;
 		frappe.call({
-			method: `${MH_M}.kochirish_xarita`,
-			args: { yozuv: name },
-			freeze: true,
-			callback: (r) => {
-				const m = r.message;
-				if (!m) return;
-				if (m.qulf) { frappe.msgprint("Dars qulflangan — avval qulfni oching."); return; }
-				this.moving = m;
-				$(document).on("keyup.tzmv", (e) => { if (e.key === "Escape") this.cancel_move(); });
-				this.render();
-			},
-		});
-	}
-
-	do_move(kun, no, yozuv) {
-		const target = yozuv || (this.moving && this.moving.yozuv);
-		if (!target) return;
-		frappe.call({
-			method: `${MH_M}.dars_kochir`,
-			args: { yozuv: target, kun, dars_raqami: no },
-			freeze: true,
-			callback: (r) => {
-				const res = r.message || {};
-				if (res.eski) this.undo.push({ yozuv: target, kun: res.eski.kun, dars: res.eski.dars_raqami });
+			method, args, freeze: true,
+			callback: () => {
+				this.busy = false;
+				if (op) { this.undoStack.push(op); this.redoStack = []; }
 				this.moving = null;
-				$(document).off("keyup.tzmv");
-				this.load();
+				this.load(() => {
+					if (xabar) frappe.show_alert({ message: xabar + " <span class='mv-sub'>(Ctrl+Z qaytaradi)</span>", indicator: "green" });
+				});
+			},
+			error: () => {
+				this.busy = false;
+				// Hard konflikt — xarita eskirgan bo'lishi mumkin, qayta yuklaymiz
+				const y = this.moving && this.moving.yozuv;
+				this.load(() => { if (y) this.start_move(y); });
 			},
 		});
+	}
+
+	do_move(kun, no) {
+		const m = this.moving;
+		this.op_call(`${MH_M}.dars_kochir`, { yozuv: m.yozuv, kun, dars_raqami: no },
+			{ t: "move", yozuv: m.yozuv, from: { kun: m.kun, no: m.dars_raqami, tray: m.lagandadan }, to: { kun, no } },
+			`✓ ${this.esc(m.fan)} → ${this.esc(kun)} ${no}-dars`);
 	}
 
 	do_swap(kun, no) {
-		const target = this.moving && this.moving.yozuv;
-		if (!target) return;
+		const m = this.moving;
+		this.op_call(`${MH_M}.dars_almashtir`, { yozuv: m.yozuv, kun, dars_raqami: no },
+			{ t: "swap", yozuv: m.yozuv, from: { kun: m.kun, no: m.dars_raqami }, to: { kun, no } },
+			`↔ Almashtirildi: ${this.esc(m.fan)} ↔ ${this.esc(kun)} ${no}-dars`);
+	}
+
+	do_siqish(kun, no) {
+		const m = this.moving;
+		this.busy = true;
 		frappe.call({
-			method: `${MH_M}.dars_almashtir`,
-			args: { yozuv: target, kun, dars_raqami: no },
+			method: `${MH_M}.dars_siqib_joyla`,
+			args: { yozuv: m.yozuv, kun, dars_raqami: no },
 			freeze: true,
 			callback: (r) => {
+				this.busy = false;
 				const res = r.message || {};
-				if (res.eski) this.undo.push({ yozuv: target, kun: res.eski.kun, dars: res.eski.dars_raqami, swap: 1 });
+				this.undoStack.push({
+					t: "displace", yozuv: m.yozuv,
+					from: { kun: m.kun, no: m.dars_raqami, tray: m.lagandadan },
+					to: { kun, no },
+					siqildi: (res.siqildi || []).map((s) => s.yozuv),
+				});
+				this.redoStack = [];
 				this.moving = null;
-				$(document).off("keyup.tzmv");
-				this.load();
+				const siq = res.siqildi || [];
+				const nomlar = siq.map((s) => this.esc(s.fan)).join(", ");
+				this.load(() => {
+					// aSc zanjiri: siqilgan karta QO'LGA o'tadi — darhol yangi joy tanlanadi.
+					// Esc bosilsa lagandada qolaveradi (hech narsa yo'qolmaydi).
+					if (siq.length) {
+						this.start_move(siq[0].yozuv, () => frappe.show_alert({
+							message: `⤓ ${nomlar} qo'lingizda — joy tanlang (Esc = lagandada qoladi)`,
+							indicator: "orange",
+						}));
+					} else {
+						frappe.show_alert({ message: `⤓ Joylandi <span class='mv-sub'>(Ctrl+Z qaytaradi)</span>`, indicator: "green" });
+					}
+				});
 			},
-			// Konflikt (hard) bo'lsa server xato beradi — ko'chirish rejimida qolamiz
-			error: () => {},
+			error: () => {
+				this.busy = false;
+				const y = this.moving && this.moving.yozuv;
+				this.load(() => { if (y) this.start_move(y); });
+			},
 		});
 	}
 
-	undo_move() {
-		const u = this.undo.pop();
-		if (!u) return;
-		frappe.call({
-			method: `${MH_M}.${u.swap ? "dars_almashtir" : "dars_kochir"}`,
-			args: { yozuv: u.yozuv, kun: u.kun, dars_raqami: u.dars },
-			freeze: true,
-			callback: () => this.load(),
-			error: () => this.undo.push(u),
+	mv_lagandaga() {
+		const m = this.moving;
+		if (!m || m.lagandadan) return;
+		this.op_call(`${MH_M}.lagandaga`, { yozuv: m.yozuv },
+			{ t: "unplace", yozuv: m.yozuv, from: { kun: m.kun, no: m.dars_raqami } },
+			`🧺 ${this.esc(m.fan)} lagandaga olindi`);
+	}
+
+	// ---------------- undo / redo ----------------
+	_seq(calls, done) {
+		// calls: [{method, args}] — ketma-ket bajariladi (tartib muhim)
+		const next = (i) => {
+			if (i >= calls.length) { done && done(); return; }
+			frappe.call({
+				method: calls[i].method, args: calls[i].args, freeze: true,
+				callback: () => next(i + 1),
+				error: () => { this.load(); },
+			});
+		};
+		next(0);
+	}
+
+	undo_op() {
+		if (this.busy || !this.undoStack.length) return;
+		const op = this.undoStack.pop();
+		this.moving = null;
+		const fin = () => { this.redoStack.push(op); this.load(); };
+		if (op.t === "move") {
+			this._seq([op.from.tray
+				? { method: `${MH_M}.lagandaga`, args: { yozuv: op.yozuv } }
+				: { method: `${MH_M}.dars_kochir`, args: { yozuv: op.yozuv, kun: op.from.kun, dars_raqami: op.from.no } }], fin);
+		} else if (op.t === "swap") {
+			this._seq([{ method: `${MH_M}.dars_almashtir`, args: { yozuv: op.yozuv, kun: op.from.kun, dars_raqami: op.from.no } }], fin);
+		} else if (op.t === "unplace") {
+			this._seq([{ method: `${MH_M}.dars_kochir`, args: { yozuv: op.yozuv, kun: op.from.kun, dars_raqami: op.from.no } }], fin);
+		} else if (op.t === "displace") {
+			// 1) bizning kartani joyidan olamiz, 2) siqilganlarni qaytaramiz
+			const calls = [op.from.tray
+				? { method: `${MH_M}.lagandaga`, args: { yozuv: op.yozuv } }
+				: { method: `${MH_M}.dars_kochir`, args: { yozuv: op.yozuv, kun: op.from.kun, dars_raqami: op.from.no } }];
+			for (const nm of op.siqildi || []) {
+				calls.push({ method: `${MH_M}.dars_kochir`, args: { yozuv: nm, kun: op.to.kun, dars_raqami: op.to.no } });
+			}
+			this._seq(calls, fin);
+		}
+	}
+
+	redo_op() {
+		if (this.busy || !this.redoStack.length) return;
+		const op = this.redoStack.pop();
+		this.moving = null;
+		const fin = () => { this.undoStack.push(op); this.load(); };
+		const M = {
+			move: `${MH_M}.dars_kochir`, swap: `${MH_M}.dars_almashtir`,
+			displace: `${MH_M}.dars_siqib_joyla`,
+		};
+		if (op.t === "unplace") {
+			this._seq([{ method: `${MH_M}.lagandaga`, args: { yozuv: op.yozuv } }], fin);
+		} else {
+			this._seq([{ method: M[op.t], args: { yozuv: op.yozuv, kun: op.to.kun, dars_raqami: op.to.no } }], fin);
+		}
+	}
+
+	// ---------------- sudrab tashlash (drag & drop) ----------------
+	enable_drag(els) {
+		els.on("pointerdown", (e) => {
+			if (e.button !== 0 || this.busy) return;
+			if (e.pointerType === "touch") return; // telefonda bosish-bosish rejimi
+			const el = $(e.currentTarget);
+			const name = el.data("name");
+			const sx = e.clientX, sy = e.clientY;
+			let dragging = false, ghost = null;
+			// Xaritani darhol so'raymiz (sudrashni kutmay) — bo'yash tez chiqadi
+			const fetchMap = !this.moving || this.moving.yozuv !== name;
+
+			const mm = (ev) => {
+				if (!dragging && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 7) return;
+				if (!dragging) {
+					dragging = true;
+					if (fetchMap) this.start_move(name);
+					ghost = el.clone().addClass("mv-ghost").css({ width: el.outerWidth() })
+						.appendTo(document.body);
+					document.body.classList.add("tz-dragging");
+				}
+				ghost.css({ left: ev.clientX + 10, top: ev.clientY + 8 });
+				// Hover katakni belgilash
+				ghost.hide();
+				const under = document.elementFromPoint(ev.clientX, ev.clientY);
+				ghost.show();
+				this.body.find("td.mv-hover").removeClass("mv-hover");
+				const td = under && under.closest ? under.closest("td[data-no]") : null;
+				if (td) td.classList.add("mv-hover");
+			};
+			const up = (ev) => {
+				$(document).off("pointermove.tzdrag pointerup.tzdrag");
+				document.body.classList.remove("tz-dragging");
+				if (ghost) ghost.remove();
+				this.body.find("td.mv-hover").removeClass("mv-hover");
+				if (!dragging) return; // oddiy click — click handler ishlaydi
+				this._dragDone = true; // drag'dan keyingi click'ni yutamiz
+				setTimeout(() => { this._dragDone = false; }, 150);
+				const under = document.elementFromPoint(ev.clientX, ev.clientY);
+				const td = under && under.closest ? under.closest("td[data-no]") : null;
+				const tray = under && under.closest ? under.closest(".laganda") : null;
+				if (td && this.moving && this.moving.yozuv === name) {
+					this.drop_to(this.kun, Number(td.dataset.no), $(td));
+				} else if (tray && this.moving && !this.moving.lagandadan) {
+					this.mv_lagandaga();
+				} else {
+					this.cancel_move();
+				}
+			};
+			$(document).on("pointermove.tzdrag", mm).on("pointerup.tzdrag", up);
+		});
+	}
+
+	// ---------------- o'ng tugma menyusi ----------------
+	close_ctx() { $(".tz-ctx").remove(); $(document).off("click.tzctx"); }
+
+	ctx_menu(name, x, y) {
+		this.close_ctx();
+		const info = this.lesson_info(name) || {};
+		const lagandada = (this.data.laganda || []).some((l) => l.name === name);
+		const menu = $(`<div class="tz-jadval tz-ctx" style="left:${x}px;top:${y}px">
+			<div class="ctx-t">${this.esc(info.fan || "")} — ${this.esc(info.guruh_nomi || info.guruh || "")}</div>
+			<button data-c="move">✋ Ko'chirish</button>
+			<button data-c="lock">${info.qulf ? "🔓 Qulfni ochish" : "🔒 Qulflash"}</button>
+			${lagandada ? "" : `<button data-c="tray">🧺 Lagandaga olish</button>`}
+			<button data-c="form">📄 Hujjat</button>
+			<button data-c="del" class="danger">🗑 Butunlay o'chirish</button>
+		</div>`).appendTo(document.body);
+		// Ekrandan chiqib ketmasin
+		const r = menu[0].getBoundingClientRect();
+		if (r.right > window.innerWidth) menu.css("left", x - r.width);
+		if (r.bottom > window.innerHeight) menu.css("top", y - r.height);
+		setTimeout(() => $(document).on("click.tzctx", () => this.close_ctx()), 0);
+		menu.find("[data-c]").on("click", (e) => {
+			const c = $(e.currentTarget).data("c");
+			this.close_ctx();
+			if (c === "move") this.start_move(name);
+			else if (c === "lock") frappe.call({ method: `${MH_M}.qulf_toggle`, args: { yozuv: name }, callback: () => this.load() });
+			else if (c === "tray") this.start_move(name, () => this.mv_lagandaga());
+			else if (c === "form") frappe.set_route("Form", "Jadval Yozuvi", name);
+			else if (c === "del") {
+				frappe.confirm(`«${this.esc(info.fan || "")} — ${this.esc(info.guruh_nomi || info.guruh || "")}» BUTUNLAY o'chirilsinmi? (qaytarib bo'lmaydi; vaqtincha olish uchun Laganda bor)`, () => {
+					frappe.call({ method: `${OJ_M}.dars_ochir`, args: { name }, callback: () => this.load() });
+				});
+			}
 		});
 	}
 
@@ -374,13 +663,14 @@ class TZDarsJadvali {
 					size: "large",
 					fields: [{ fieldtype: "HTML", fieldname: "body" }],
 				});
+				const joy = (k) => k.kun ? `${this.esc(k.kun)} ${k.dars_raqami}-dars` : "🧺 laganda";
 				const rows_m = mumkin.map((k) => `
 					<tr><td><b>${this.esc(k.fan)}</b> — ${this.esc(k.guruh_nomi)}${k.blok_hajmi > 1 ? ` <span class="mv-sub">(blok ×${k.blok_hajmi})</span>` : ""}</td>
-					<td class="mv-sub">${this.esc(k.kun)} ${k.dars_raqami}-dars</td>
+					<td class="mv-sub">${joy(k)}</td>
 					<td class="r"><button class="refresh mini" data-koch="${this.esc(k.yozuv)}">→ bu yerga</button></td></tr>`).join("");
 				const rows_y = yoq.slice(0, 12).map((k) => `
 					<tr class="dim"><td>${this.esc(k.fan)} — ${this.esc(k.guruh_nomi)}</td>
-					<td class="mv-sub">${this.esc(k.kun)} ${k.dars_raqami}</td>
+					<td class="mv-sub">${joy(k)}</td>
 					<td class="mv-sub">${this.esc((k.sabab || []).join("; "))}</td></tr>`).join("");
 				const rows_o = (d.bosh_oqituvchilar || []).slice(0, 25).map((o) => `
 					<tr><td>${this.esc(o.nomi)}</td>
@@ -399,7 +689,9 @@ class TZDarsJadvali {
 				dlg.show();
 				dlg.$body.find("[data-koch]").on("click", (e) => {
 					dlg.hide();
-					this.do_move(this.kun, no, $(e.currentTarget).data("koch"));
+					const yozuv = $(e.currentTarget).data("koch");
+					// Ko'chirish amali undo'ga tushishi uchun start_move → drop oqimi
+					this.start_move(yozuv, () => this.drop_to(this.kun, no));
 				});
 				dlg.$body.find("[data-add]").on("click", (e) => {
 					const oqit = $(e.currentTarget).data("add");
