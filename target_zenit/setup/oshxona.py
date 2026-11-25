@@ -160,7 +160,7 @@ def itemlar_omborini_tuzat():
 		frappe.throw("Oshxona warehouse topilmadi — avval run() ishga tushirilsin")
 	ombor = mavjud[0]
 
-	ozgardi = frappe.db.sql(
+	frappe.db.sql(
 		"""
 		UPDATE `tabItem Default` d
 		JOIN `tabItem` i ON i.name = d.parent
