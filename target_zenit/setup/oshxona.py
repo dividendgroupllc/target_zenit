@@ -66,9 +66,23 @@ def run():
 	else:
 		frappe.throw("Oziq-ovqat account topilmadi")
 
-	if frappe.db.exists("Account", f"5207 - Oziq-ovqat - {ABBR}"):
-		merge_account(f"5207 - Oziq-ovqat - {ABBR}", MAHSULOT_ACC)
-		log.append(f"Merge: 5207 -> {MAHSULOT_ACC}")
+	# 5207 dublikat: bo'sh bo'lsa o'chiriladi; yozuvi bo'lsa 5231 ga merge qilinadi.
+	# Merge "Account Type ham teng bo'lsin" deb talab qiladi — avval moslab olamiz.
+	dublikat = f"5207 - Oziq-ovqat - {ABBR}"
+	if frappe.db.exists("Account", dublikat):
+		if not frappe.db.exists("GL Entry", {"account": dublikat}):
+			frappe.delete_doc("Account", dublikat, ignore_permissions=True)
+			log.append("O'chirildi: bo'sh dublikat 5207 - Oziq-ovqat")
+		else:
+			asosiy = frappe.db.get_value(
+				"Account", MAHSULOT_ACC, ["account_type", "account_currency"], as_dict=True
+			)
+			frappe.db.set_value("Account", dublikat, {
+				"account_type": asosiy.account_type or "",
+				"account_currency": asosiy.account_currency,
+			})
+			merge_account(dublikat, MAHSULOT_ACC)
+			log.append(f"Merge: 5207 -> {MAHSULOT_ACC}")
 
 	_account(log, "5232", "Oshxona jihozlari va inventar", OSHXONA_GROUP,
 		account_type="Expense Account")
@@ -124,6 +138,42 @@ def run():
 	print("=== TAYYOR ===")
 	for line in log:
 		print(" •", line)
+
+
+def itemlar_omborini_tuzat():
+	"""Oziq-ovqat itemlaridagi item-darajali default omborni oshxona omboriga ko'chirish.
+
+	Itemlar UI'dan yaratilganda Stock Settings'dagi default ombor ("Asosiy sklad")
+	har itemning o'z Item Default qatoriga yozilib qolgan. Item darajasidagi qiymat
+	Item Group default'idan USTUN turadi, shuning uchun guruhga qo'ygan sozlamamiz
+	ishlamay qolgan. Bu funksiya item-darajali qatorlarni to'g'rilaydi.
+
+	Ishga tushirish:
+	  bench --site <site> execute target_zenit.setup.oshxona.itemlar_omborini_tuzat
+	"""
+	mavjud = frappe.get_all(
+		"Warehouse",
+		filters={"company": COMPANY, "is_group": 0, "warehouse_name": ["like", "%oshxona%"]},
+		pluck="name",
+	)
+	if not mavjud:
+		frappe.throw("Oshxona warehouse topilmadi — avval run() ishga tushirilsin")
+	ombor = mavjud[0]
+
+	ozgardi = frappe.db.sql(
+		"""
+		UPDATE `tabItem Default` d
+		JOIN `tabItem` i ON i.name = d.parent
+		SET d.default_warehouse = %(ombor)s
+		WHERE d.parenttype = 'Item'
+		  AND i.item_group = %(guruh)s
+		  AND (d.default_warehouse IS NULL OR d.default_warehouse != %(ombor)s)
+		""",
+		{"ombor": ombor, "guruh": ITEM_GROUP},
+	)
+	frappe.db.commit()
+	soni = frappe.db.count("Item", {"item_group": ITEM_GROUP})
+	print(f"=== TAYYOR === {ITEM_GROUP} guruhidagi {soni} ta itemning default ombori: {ombor}")
 
 
 def _oshxona_warehouse(log):
