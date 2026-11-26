@@ -1194,8 +1194,6 @@ class TZDarsJadvali {
 		const d = new frappe.ui.Dialog({
 			title: "🖨 Dars jadvalini chop etish / PDF",
 			fields: [
-				{ fieldname: "maktab", fieldtype: "Data", label: "Maktab nomi (sarlavha)",
-					default: "Target International School", reqd: 1 },
 				{ fieldname: "rejim", fieldtype: "Select", label: "Ko'rinish", default: "Har sinf — haftalik varaq",
 					options: "Har sinf — haftalik varaq\nHar kun — umumiy to'r" },
 				{ fieldname: "cb0", fieldtype: "Column Break" },
@@ -1213,7 +1211,6 @@ class TZDarsJadvali {
 			primary_action: (v) => {
 				d.hide();
 				this.print_schedule({
-					maktab: v.maktab || "Target International School",
 					rejim: v.rejim,
 					qamrov: v.qamrov,
 					landscape: v.yonalish.indexOf("Eniga") >= 0,
@@ -1229,11 +1226,31 @@ class TZDarsJadvali {
 	_pcell(sinf, kun, no, opts, regMax) {
 		const list = (this.data.katak || {})[`${sinf}|${kun}|${no}`] || [];
 		if (!list.length) return "";
-		return list.map((x) => {
-			const t = (no > regMax && (x.boshlanish || x.tugash))
-				? `<div class="pt">${this.esc(x.boshlanish || "")}–${this.esc(x.tugash || "")}</div>` : "";
-			const tc = opts.oqituvchi && x.oqituvchi ? `<div class="ptc">${this.esc(x.oqituvchi)}</div>` : "";
-			return `<div class="pl"><div class="ps">${this.esc(x.fan)}</div>${tc}${t}</div>`;
+		const kechki = no > regMax;
+		const vaqtOf = (x) => (kechki && (x.boshlanish || x.tugash))
+			? `<div class="pt">${this.esc(x.boshlanish || "")}–${this.esc(x.tugash || "")}</div>` : "";
+		// Bir xil FAN bo'yicha guruhlash: MATH/ENGLISH kabi 3 darajali guruhda
+		// fan bir marta yoziladi, ostiga High/Middle/Low o'qituvchi familiyasi — joy tejaladi.
+		const byFan = {};
+		const tartib = [];
+		list.forEach((x) => {
+			if (!byFan[x.fan]) { byFan[x.fan] = []; tartib.push(x.fan); }
+			byFan[x.fan].push(x);
+		});
+		return tartib.map((fan) => {
+			const items = byFan[fan];
+			if (items.length === 1) {
+				const x = items[0];
+				const tc = opts.oqituvchi && x.oqituvchi ? `<div class="ptc">${this.esc(x.oqituvchi)}</div>` : "";
+				return `<div class="pl"><div class="ps">${this.esc(fan)}</div>${tc}${vaqtOf(x)}</div>`;
+			}
+			// Ko'p darajali: fan bir marta + har daraja o'qituvchisi (familiya)
+			const qatorlar = opts.oqituvchi ? items.map((x) => {
+				const lvl = (x.daraja && x.daraja !== "Qo'shma") ? `<b>${this.esc(x.daraja)}:</b> ` : "";
+				const familiya = (x.oqituvchi || "").trim().split(/\s+/)[0] || this.esc(x.oqituvchi || "");
+				return `<div class="plv">${lvl}${this.esc(familiya)}</div>`;
+			}).join("") : "";
+			return `<div class="pl"><div class="ps">${this.esc(fan)}</div>${qatorlar}${vaqtOf(items[0])}</div>`;
 		}).join("");
 	}
 
@@ -1251,12 +1268,12 @@ class TZDarsJadvali {
 		const sinflar = opts.qamrov === "Tanlangan guruhlar" && this.fSinflar.length
 			? this.fSinflar : (d.sinflar || []);
 
-		// Sarlavha: bitta qator — to'liq logo (emblema + maktab nomi) CHAPDA,
-		// o'rtada "Class Timetable" + to'liq sinf/kun nomi. Versiya matni yo'q.
+		// Sarlavha: logo CHAP BURCHAKDA, o'rtada faqat to'liq sinf/kun nomi.
+		// Matnli maktab nomi / "Class Timetable" / versiya YO'Q (nom logoda).
 		const logo = "/assets/target_zenit/images/logo-target-full.png";
 		const head = (big) => `<div class="phead">
-			<img class="plogo" src="${logo}" alt="Target International School">
-			<div class="pcenter"><div class="pdj">Class Timetable</div><div class="pcls">${big}</div></div>
+			<img class="plogo" src="${logo}" alt="">
+			<div class="pcenter"><div class="pcls">${big}</div></div>
 		</div>`;
 
 		let body = "";
@@ -1290,35 +1307,40 @@ class TZDarsJadvali {
 			}).join("");
 		}
 
-		const html = `<!doctype html><html><head><meta charset="utf-8"><title>Class Timetable — ${this.esc(opts.maktab)}</title>
+		const html = `<!doctype html><html><head><meta charset="utf-8"><title>Class Timetable</title>
 		<style>
-		@page { size: A4 ${opts.landscape ? "landscape" : "portrait"}; margin: 12mm; }
+		@page { size: A4 ${opts.landscape ? "landscape" : "portrait"}; margin: 8mm; }
 		* { box-sizing: border-box; }
-		body { font-family: "Segoe UI", Arial, sans-serif; color: #111; margin: 0; }
-		.sheet { page-break-after: always; padding: 0; }
-		.sheet:last-child { page-break-after: auto; }
+		html, body { margin: 0; }
+		body { font-family: "Segoe UI", Arial, sans-serif; color: #111;
+			-webkit-print-color-adjust: exact; print-color-adjust: exact; }
+		/* Har sinf = bitta varaq: birga ushlaymiz, ichidan bo'linmasin */
+		.sheet { page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; }
+		.sheet:last-child { page-break-after: auto; break-after: auto; }
 		.phead { position: relative; display: flex; align-items: center; justify-content: center;
-			min-height: 60px; margin-bottom: 10px; border-bottom: 3px double #0a2342; padding-bottom: 8px; }
-		.plogo { position: absolute; left: 0; top: 50%; transform: translateY(-50%); height: 56px; width: auto; }
+			min-height: 44px; margin-bottom: 5px; border-bottom: 3px double #0a2342; padding-bottom: 4px; }
+		.plogo { position: absolute; left: 0; top: 0; height: 40px; width: auto; }
 		.pcenter { text-align: center; }
-		.pdj { font-size: 13px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: #777; }
-		.pcls { font-size: 30px; font-weight: 800; color: #0a2342; }
+		.pcls { font-size: 26px; font-weight: 800; color: #0a2342; line-height: 1.1; }
 		.ptbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
-		.ptbl th, .ptbl td { border: 1.2px solid #222; padding: 4px 5px; vertical-align: top; }
-		.ptbl thead th { background: #2d2d2d; color: #fff; font-size: 14px; text-align: center; padding: 7px 4px; }
-		.ptbl th.pno { width: 54px; text-align: center; background: #efefef; color: #111; font-size: 15px; }
-		.ptbl th.pno span { display: block; font-size: 9px; font-weight: 400; color: #555; }
+		.ptbl th, .ptbl td { border: 1px solid #222; padding: 2px 4px; vertical-align: top; }
+		.ptbl td { height: 30px; }
+		.ptbl thead th { background: #2d2d2d; color: #fff; font-size: 12px; text-align: center; padding: 4px; }
+		.ptbl th.pno { width: 46px; text-align: center; background: #efefef; color: #111; font-size: 13px; }
+		.ptbl th.pno span { display: block; font-size: 8px; font-weight: 400; color: #555; }
 		.ptbl thead th.pno { background: #2d2d2d; color: #fff; }
-		.ptbl td { height: 40px; }
-		.pl { margin-bottom: 3px; }
+		.ptbl tr { page-break-inside: avoid; break-inside: avoid; }
+		.pl { margin-bottom: 2px; }
 		.pl:last-child { margin-bottom: 0; }
-		.ps { font-weight: 700; font-size: 13px; }
-		.ptc { font-size: 10px; color: #555; }
-		.pt { font-size: 9px; color: #7a52d8; font-weight: 600; }
+		.ps { font-weight: 700; font-size: 12px; line-height: 1.15; }
+		.ptc { font-size: 9px; color: #555; line-height: 1.1; }
+		.plv { font-size: 9px; color: #333; line-height: 1.2; }
+		.plv b { color: #0a2342; font-weight: 700; }
+		.pt { font-size: 8px; color: #7a52d8; font-weight: 600; }
 		tr.kerow th.pno, tr.kerow td.ke { background: #f4f1fb; }
 		tr.kerow td.ke { border-top: 2px solid #7a52d8; }
-		.pfoot { margin-top: 8px; font-size: 10px; color: #888; text-align: right; }
-		@media screen { body { background: #ddd; } .sheet { background: #fff; max-width: ${opts.landscape ? "1050px" : "780px"}; margin: 14px auto; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,.2); } }
+		.pfoot { margin-top: 4px; font-size: 9px; color: #888; text-align: right; }
+		@media screen { body { background: #ddd; } .sheet { background: #fff; max-width: ${opts.landscape ? "1040px" : "760px"}; margin: 14px auto; padding: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.2); } }
 		</style></head><body>${body || '<div class="sheet"><div class="phead"><div class="pcenter"><div class="pcls">No data</div></div></div></div>'}
 		<script>window.onload=function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},300);};<\/script>
 		</body></html>`;

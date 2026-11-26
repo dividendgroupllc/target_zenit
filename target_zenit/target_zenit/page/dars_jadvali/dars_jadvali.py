@@ -84,6 +84,16 @@ def get_data(versiya: str | None = None):
 	# O'qituvchi ismi nusxadan emas — Instructor->Employee zanjiridan jonli
 	oq_nom = oqituvchi_nomlari([y.oqituvchi for y in yozuvlar])
 
+	# Guruh -> daraja (High/Middle/Low) — PDF'da bir xil fanni bir marta yozib,
+	# ostiga daraja o'qituvchilarini ko'rsatish uchun.
+	daraja_map = {}
+	guruhlar_set = {y.guruh for y in yozuvlar if y.guruh}
+	if guruhlar_set and frappe.db.has_column("Student Group", "custom_daraja"):
+		for g in frappe.get_all(
+			"Student Group", filters={"name": ["in", list(guruhlar_set)]},
+			fields=["name", "custom_daraja"], limit_page_length=0):
+			daraja_map[g.name] = g.custom_daraja
+
 	# sinf x kun x dars -> darslar ro'yxati (blokda bir nechta guruh bo'lishi mumkin)
 	katak = defaultdict(list)
 	yuklama = defaultdict(set)
@@ -122,6 +132,7 @@ def get_data(versiya: str | None = None):
 					"qulf": y.qulf,
 					"boshlanish": _vaqt_str(y.boshlanish),
 					"tugash": _vaqt_str(y.tugash),
+					"daraja": daraja_map.get(y.guruh),
 				}
 			)
 		if y.oqituvchi:
