@@ -405,24 +405,23 @@ class TZMurojaatPanel {
 		const qaror_bor = !!m.yechim_turi;
 
 		let amal = "";
-		// QAROR MOODLE'DA YOZILADI (2026-11-04 arxitektura qarori): CEO,
-		// direktor va zavuch murojaatni Moodle'da yoki mobil ilovada hal
-		// qiladi, javob ota-onaga bolasining ilovasiga boradi. Frappe bu
-		// yerda NUSXANI ko'rsatadi — ikki joyda yozish ziddiyat tug'dirardi.
-		// Administrator uchun zaxira yo'l qoladi: Moodle ishlamay qolsa
-		// masala muallaqda qolmasligi kerak.
-		if (rahbar && !qaror_bor && this.rol().admin) {
+		// QAROR IKKI JOYDA YOZILADI (2026-11-26 qarori): CEO/Direktor qarorni
+		// shu yerda ham, Moodle panelida/mobil ilovada ham yoza oladi —
+		// birinchi yozilgani g'olib, ikkinchisi sinxron bilan keladi. Qaror
+		// yozilishi bilan murojaat YOPILADI, javob ota-onaga bolasining
+		// ilovasiga bildirishnoma bo'lib boradi.
+		if (rahbar && !qaror_bor) {
 			amal = `
 				<div class="mur-qaror-form">
 					<div class="mur-qaror-tugmalar">
 						${["Hal qilindi", "Inobatga olindi", "Keyinroq ko'riladi", "Rad etildi", "Ahamiyatsiz"]
 							.map((q) => `<button class="mur-qbtn" data-qaror="${this.esc(q)}">${__(q)}</button>`).join("")}
 					</div>
-					<div class="mut small">${__("«Inobatga olindi» — taklif o'rinli, amalga oshiriladi. «Ahamiyatsiz» — AI xato topgan, ota-onaga qo'ng'iroq qilish shart emas.")}</div>
+					<div class="mut small">${__("Qaror yozilishi bilan murojaat yopiladi, javob ota-onaga farzandining ilovasiga boradi. «Inobatga olindi» — taklif o'rinli, amalga oshiriladi. «Ahamiyatsiz» — AI xato topgan, ota-onaga bildirishnoma ketmaydi.")}</div>
 				</div>`;
 		} else if (!qaror_bor) {
 			amal = `<div class="mur-moodle">${
-				__("Qaror Moodle'da yoziladi — CEO va direktor murojaatni Moodle panelida yoki mobil ilovada hal qiladi. Javob ota-onaga farzandining ilovasiga boradi, natija esa shu yerda ko'rinadi.")}</div>`;
+				__("Qarorni CEO yoki Direktor beradi — shu panelda yoki Moodle'da. Natija shu yerda ko'rinadi.")}</div>`;
 		}
 
 		const xabar_tugma = (m.holat === "Ota-onaga xabar berish" && this.yozamanmi())
@@ -436,10 +435,9 @@ class TZMurojaatPanel {
 				${qaror_bor ? `
 					<div class="mur-yechim">${this.esc(m.yechim || "")}</div>
 					<div class="mut small">${__("Qaror: {0} · {1}", [this.esc(m.yechim_kim || "—"), this.dt(m.yechim_vaqti)])}</div>
-					${m.moodle_qaror_kim
+					${m.moodle_qaror_kim && !m.yechim_kim
 						? `<div class="mut small">${__("Moodle'da hal qilindi")}: ${
-							this.esc(m.moodle_qaror_kim)}${m.moodle_izoh_soni
-								? ` · ${__("{0} izoh", [m.moodle_izoh_soni])}` : ""}</div>` : ""}
+							this.esc(m.moodle_qaror_kim)}</div>` : ""}
 					${m.moodle_otaona_kordi
 						? `<div class="mur-xabar ok">${__("Ota-ona javobni ilovada o'qidi")}: ${
 							this.dt(m.moodle_otaona_kordi)}</div>`
@@ -454,7 +452,7 @@ class TZMurojaatPanel {
 				` : amal}
 				<div class="mur-amallar">
 					${xabar_tugma}
-					${rahbar && this.rol().admin && !yopiq ? `
+					${rahbar && !yopiq ? `
 						<button class="mur-btn" id="mur-uzat">${__("Boshqa rahbarga uzatish")}</button>
 						<button class="mur-btn" id="mur-masul">${__("O'zimga biriktirish")}</button>` : ""}
 					${qaror_bor && rahbar && this.rol().admin && !yopiq
@@ -486,7 +484,7 @@ class TZMurojaatPanel {
 						<button class="mur-btn primary" id="mur-izoh-btn">${__("Izoh qo'shish")}</button>
 					</div>`
 					: `<div class="mut small">${__("Sizda faqat ko'rish ruxsati bor — izoh yozish uchun rahbar yoki sotuv roli kerak.")}</div>`}
-				<div class="mut small">${__("Rahbar izohlari Moodle'da yuritiladi — ularning soni yuqorida ko'rsatiladi.")}</div>
+				<div class="mut small">${__("Izohlar Moodle paneli bilan sinxron: bu yerda yozilgani u yerda, u yerda yozilgani bu yerda ko'rinadi.")}</div>
 			</div>`;
 	}
 
@@ -667,7 +665,9 @@ class TZMurojaatPanel {
 					freeze: true,
 					callback: () => {
 						d.hide();
-						frappe.show_alert({ message: __("Qaror saqlandi"), indicator: "green" }, 5);
+						frappe.show_alert({
+							message: __("Qaror saqlandi — murojaat yopildi, javob ota-onaga ilova orqali boradi"),
+							indicator: "green" }, 6);
 						this.load();
 						this.load_detail(m.name);
 					},

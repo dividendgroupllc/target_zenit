@@ -8,16 +8,22 @@ NEGA ALOHIDA DOCTYPE (Qarz Ishi'ga maydon qo'shish emas):
   - Bitta qarz ishida bir vaqtda ikki xil murojaat bo'ladi (biri CEO'ga,
     biri direktorga) — bitta hujjatda ikki javobgar va ikki muddat sig'maydi.
 
-ZANJIR (yopiq halqa):
+ZANJIR (yopiq halqa, 2026-11-26 dan):
   1) Sotuvchi gaplashadi. O'zi hal qila olmasa «Rahbarga yo'naltirish»
      (yoki AI qo'ng'iroq tahlilidan avtomatik) -> Murojaat «Yangi»
   2) Kategoriya marshrutni beradi: CEO yoki Direktor paneliga tushadi
   3) Rahbar ko'radi (korildi_*), komment yozadi, `yechim_turi` + `yechim`
-  4) Yechim yozilsa holat -> «Ota-onaga xabar berish» (rahbar hal qildi,
-     ota-ona hali bilmaydi — halqa yopilmagan)
-  5) Menejer ota-onaga qo'ng'iroq qilib `xabar_berildi` -> «Yopildi»
-  Istisno: `yechim_turi` = «Ahamiyatsiz» (AI xato topgan) -> darhol «Yopildi»,
-  ota-onaga qo'ng'iroq qilishning hojati yo'q.
+  4) Yechim yozilishi bilan murojaat «Yopildi» — javob ota-onaga bolasining
+     Moodle ilovasiga bildirishnoma bo'lib boradi (push sinxroni orqali).
+  Istisno: `yechim_turi` = «Ahamiyatsiz» (AI xato topgan) — ota-onaga
+  bildirishnoma YUBORILMAYDI (Moodle JIM_QARORLAR), lekin baribir yopiladi.
+
+RAHBAR IKKI JOYDA ISHLAYDI (2026-11-26 qarori): CEO/Direktor qarorni ham
+Frappe panelida, ham Moodle'da yoza oladi. Qaysi tomonda birinchi yozilsa —
+o'sha haqiqat: Frappe qarori push bilan Moodle'ga boradi (ota-onaga
+bildirishnoma o'sha yerdan ketadi), Moodle qarori pull bilan bu yerga keladi.
+Eski «Ota-onaga xabar berish» qadami endi yangi murojaatlarda paydo
+bo'lmaydi; o'sha holatda qolgan esski hujjatlar `xabar_berdim` bilan yopiladi.
 """
 
 import frappe
@@ -30,7 +36,9 @@ ROL_CEO = "CEO"
 ROL_DIREKTOR = "Direktor"
 YONALISH_ROL = {"CEO": ROL_CEO, "Direktor": ROL_DIREKTOR}
 
-# Ota-onaga qaytib qo'ng'iroq qilish SHART bo'lmagan qarorlar
+# Ota-onaga bildirishnoma YUBORILMAYDIGAN qarorlar (Moodle JIM_QARORLAR
+# bilan bir xil ro'yxat): «Ahamiyatsiz» — AI xato topgan, ota-ona hech narsa
+# so'ramagan — unga xabar yuborish chalkashlik tug'diradi.
 XABARSIZ_YOPILADI = ("Ahamiyatsiz",)
 
 
@@ -120,7 +128,12 @@ class Murojaat(Document):
 
 	# -------------------------------------------------------------- yechim
 	def _yechim_nazorati(self):
-		"""Qaror yozilsa holat avtomatik keyingi qadamga o'tadi.
+		"""Qaror yozilishi bilan murojaat YOPILADI (2026-11-26 qarori).
+
+		Avval qaror «Ota-onaga xabar berish» ga o'tkazib menejer qo'ng'irog'ini
+		kutardi. Endi javob ota-onaga bolasining Moodle ilovasiga bildirishnoma
+		bo'lib boradi (push sinxroni), shuning uchun qaror = yopilish — xuddi
+		Moodle panelidagi kabi, qaysi tomonda yozilmasin oqim bitta.
 
 		Yechim matnisiz yopib bo'lmaydi: «qanday hal qildingiz» savoliga javob
 		qolmasa butun modulning ma'nosi yo'qoladi."""
@@ -129,24 +142,17 @@ class Murojaat(Document):
 		if self.yechim_turi and not (self.yechim or "").strip():
 			frappe.throw(_("Qaror qabul qilindi — «Qanday hal qilindi» maydoni majburiy."))
 
-		# Qaror yangi yozildi
+		# Qaror yangi yozildi -> yopiladi (eski «Ota-onaga xabar berish» da
+		# turgan hujjatga ham tegishli: qaror bor, kutishning ma'nosi yo'q)
 		if self.yechim_turi and not (eski and eski.yechim_turi):
 			self.yechim_kim = self.yechim_kim or frappe.session.user
 			self.yechim_vaqti = self.yechim_vaqti or now_datetime()
-			if self.holat in ("Yangi", "Ko'rib chiqilmoqda"):
-				self.holat = (
-					"Yopildi" if self.yechim_turi in XABARSIZ_YOPILADI
-					else "Ota-onaga xabar berish"
-				)
+			if self.holat != "Yopildi":
+				self.holat = "Yopildi"
 
 		if self.holat == "Yopildi":
 			if not self.yechim_turi:
 				frappe.throw(_("Yopish uchun «Qaror» va «Qanday hal qilindi» to'ldirilishi shart."))
-			if self.yechim_turi not in XABARSIZ_YOPILADI and not self.xabar_berildi:
-				frappe.throw(
-					_("Ota-onaga xabar berilmagan. Avval ota-onaga javob bering "
-					  "(«Ota-onaga xabar berildi» tugmasi), keyin yopiladi.")
-				)
 			self.yopilgan_sana = self.yopilgan_sana or nowdate()
 		else:
 			self.yopilgan_sana = None

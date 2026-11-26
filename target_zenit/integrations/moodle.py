@@ -856,6 +856,46 @@ def parolni_korsat(link_name):
 
 
 @frappe.whitelist()
+def oqituvchi_parollari_fayl(person_type="Instructor"):
+	"""O'qituvchilarning Moodle login/parolini BITTA Excel fayliga chiqaradi —
+	zam direktorga yuborib, o'qituvchilarga tarqatish uchun.
+
+	PAROL: `initial_password` (Password maydon) doc.get_password bilan ochiladi.
+	DIQQAT: parollar PROD shifrlash kaliti bilan yozilgan — lokal nusxada
+	(boshqa encryption_key) ochilmaydi va bo'sh chiqadi. Fayl PRODDA yaratilsin.
+	"""
+	frappe.only_for(PAROL_KORUVCHI)
+	from frappe.utils import today
+	from frappe.utils.xlsxutils import make_xlsx
+
+	rows = frappe.get_all(
+		"Moodle User Link",
+		filters={"person_type": person_type},
+		fields=["name", "full_name", "moodle_username", "moodle_email", "status"],
+		order_by="full_name", limit_page_length=0)
+
+	data = [["№", "F.I.Sh.", "Login", "Parol", "Email", "Holat"]]
+	parolsiz = 0
+	for i, r in enumerate(rows, 1):
+		doc = frappe.get_doc("Moodle User Link", r.name)
+		parol = doc.get_password("initial_password", raise_exception=False) or ""
+		if not parol:
+			parolsiz += 1
+		data.append([i, r.full_name or "", r.moodle_username or "", parol,
+		             r.moodle_email or "", r.status or ""])
+
+	xlsx = make_xlsx(data, "Moodle login-parol")
+	fname = f"Moodle_oqituvchi_login_parol_{today()}.xlsx"
+	f = frappe.get_doc({
+		"doctype": "File",
+		"file_name": fname,
+		"is_private": 1,
+		"content": xlsx.getvalue(),
+	}).insert(ignore_permissions=True)
+	return {"file_url": f.file_url, "soni": len(rows), "parolsiz": parolsiz, "fayl": fname}
+
+
+@frappe.whitelist()
 def preview(limit=10):
 	"""Moodle'ga MUROJAAT QILMASDAN nima yuborilishini ko'rsatadi.
 

@@ -1,21 +1,26 @@
 # Copyright (c) 2026, Target Zenit
 # Frappe <-> Moodle: ota-ona murojaatlari (shikoyat / taklif / muammo).
 #
-# EGALIK TAQSIMOTI (2026-11-04 qarori, MUROJAAT_ARXITEKTURA.md):
+# EGALIK TAQSIMOTI (2026-11-26 da QAYTA KO'RILDI, MUROJAAT_ARXITEKTURA.md):
 #   * murojaatning TUG'ILISHI — Frappe: kim qachon gaplashdi, kim shikoyat
 #     qildi, nima dedi (qo'ng'iroq yozuvi va AI tahlili shu yerda);
-#   * murojaatning YURITILISHI — Moodle: CEO, direktor va zavuch ko'radi,
-#     komment yozadi, QAROR qabul qiladi (ilovada ham ishlaydi);
+#   * YURITILISHI — IKKI TOMONDA HAM: CEO/Direktor qaror va izohni Frappe
+#     panelida ham, Moodle'da ham yoza oladi (2026-11-26 qarori: rahbarlar
+#     amalda Frappe'da ishlayapti, 2026-11-04 dagi "faqat Moodle" taqsimoti
+#     prodda ishlamadi — qarorlar pull tomonidan o'chirilib ketayotgan edi);
 #   * ota-onaga yetkazish — Moodle: javob bolasining akkauntiga bildirishnoma
-#     bo'lib boradi (Moodle'da ota-ona akkaunti yo'q, u bolasining logini
-#     bilan kiradi);
-#   * Frappe panellarida KO'RSATISH — bu modul javoblarni qaytarib oladi
+#     bo'lib boradi (Frappe'da yozilgan qaror ham push orqali Moodle'ga
+#     yetib borib, bildirishnoma o'sha yerdan ketadi);
+#   * Frappe panellarida KO'RSATISH — pull javoblarni qaytarib oladi
 #     (investor paneli, sotuv nazorati va qarzdorlik paneli uchun).
 #
-# Shuning uchun IKKI TOMONLAMA YOZISH YO'Q: har maydonning bitta egasi bor.
-# `push` faqat manba maydonlarini yuboradi, `pull` faqat yuritish maydonlarini
-# qaytarib oladi. Moodle hech qachon Frappeni chaqirmaydi — token faqat Frappe
-# tomonda saqlanadi.
+# ZIDDIYAT QOIDASI (ikki tomonlama yozishda): BIRINCHI yozilgan qaror g'olib.
+#   * push qarorni Moodle'ga faqat Moodle'da hali qaror YO'Q bo'lsa yozadi;
+#   * pull qarorni Frappe'ga faqat Frappe'da hali qaror YO'Q bo'lsa yozadi;
+#   * holat hech qachon ORQAGA qaytmaydi (Yopildi -> Yangi bo'lmaydi) —
+#     `_nusxaga_yoz` dagi HOLAT_DARAJA shuni kafolatlaydi.
+# Izohlar esa qo'shilib boradi (append-only): dublikat `frappeid` /
+# `moodle_id` belgilari bilan to'siladi, hech qaysi tomon o'chirmaydi.
 #
 # BOG'LANISH (unikal ID qoidasi): Student.name -> user.idnumber,
 # Employee.name -> user.idnumber, Murojaat.name -> _murojaat.frappename.
@@ -26,7 +31,7 @@ from __future__ import annotations
 import json
 
 import frappe
-from frappe.utils import cint, flt, get_datetime, getdate
+from frappe.utils import add_days, cint, flt, get_datetime, getdate, nowdate
 
 from target_zenit.integrations.moodle import MoodleError, _call, _settings
 
@@ -127,17 +132,62 @@ def _suhbatlar(studentlar, limit_har: int = 15) -> dict:
 	return out
 
 
-def _qatorlar(nomlar=None, limit: int = 0, faqat_ochiq: bool = False) -> list[dict]:
-	"""Moodle'ga yuboriladigan murojaatlar (manba maydonlari).
+def _frappe_izohlar(nomlar) -> dict:
+	"""murojaat -> Frappe'da TUG'ILGAN kommentlar (Moodle'ga yuboriladi).
 
-	`faqat_ochiq` — davriy sinxron uchun: yopilgan murojaatni qayta-qayta
-	yuborishning ma'nosi yo'q, Moodle tomoni ularni baribir qabul qilmaydi
-	(yopilganning manbasiga tegilmaydi)."""
-	holatlar = [h for h in YUBORILADI_HOLAT if h != "Yopildi"] if faqat_ochiq \
-		else list(YUBORILADI_HOLAT)
-	filtr = {"holat": ["in", holatlar]}
+	Faqat `moodle_id` BO'SH qatorlar: Moodle'dan kelganini qaytarib yuborsak
+	aylanish (loop) va dublikat paydo bo'ladi. Faqat «Komment» turi: «Yechim»
+	qaror maydonlari bilan alohida ketadi, «Yo'naltirish»/«Holat» esa tizim
+	yozuvlari — Moodle o'zinikini o'zi yozadi."""
+	if not nomlar:
+		return {}
+	rows = frappe.get_all(
+		"Murojaat Izohi",
+		filters={"parenttype": "Murojaat", "parent": ["in", list(nomlar)],
+		         "turi": "Komment", "moodle_id": ["in", ("", None)]},
+		fields=["name", "parent", "vaqt", "kim", "kim_nomi", "matn"],
+		order_by="vaqt asc",
+		limit_page_length=0,
+	)
+	out: dict[str, list] = {}
+	for r in rows:
+		out.setdefault(r.parent, []).append({
+			"frappeid": r.name,
+			"vaqt": _ts(r.vaqt),
+			"kimidnumber": _idnumber(r.kim),
+			"kimname": r.kim_nomi or r.kim or "",
+			"matn": (r.matn or "")[:4000],
+		})
+	return out
+
+
+def _qatorlar(nomlar=None, limit: int = 0, faqat_ochiq: bool = False) -> list[dict]:
+	"""Moodle'ga yuboriladigan murojaatlar (manba + Frappe'da yozilgan qaror/izoh).
+
+	`faqat_ochiq` — davriy sinxron uchun: ochiqlar + QARORI HALI MOODLE'GA
+	YETIB BORMAGANLAR (Frappe'da yopilgan, lekin `moodle_qaror_kim` hali bo'sh —
+	darhol push o'tmay qolgan bo'lsa cron o'zini-o'zi tuzatadi)."""
 	if nomlar:
 		filtr = {"name": ["in", list(nomlar)]}
+	elif faqat_ochiq:
+		ochiq = frappe.get_all(
+			"Murojaat", filters={"holat": ["in", [h for h in YUBORILADI_HOLAT if h != "Yopildi"]]},
+			pluck="name", limit_page_length=0,
+		)
+		# Frappe qarori Moodle'da hali aks etmaganlar (oxirgi 30 kun — eski
+		# arxivni har 15 daqiqada titkilamaslik uchun)
+		qarorli = frappe.get_all(
+			"Murojaat",
+			filters={"yechim_turi": ["is", "set"], "moodle_qaror_kim": ["is", "not set"],
+			         "yechim_vaqti": [">", add_days(nowdate(), -30)]},
+			pluck="name", limit_page_length=0,
+		)
+		nomlar = list(dict.fromkeys(ochiq + qarorli))
+		if not nomlar:
+			return []
+		filtr = {"name": ["in", nomlar]}
+	else:
+		filtr = {"holat": ["in", list(YUBORILADI_HOLAT)]}
 
 	rows = frappe.get_all(
 		"Murojaat",
@@ -146,7 +196,7 @@ def _qatorlar(nomlar=None, limit: int = 0, faqat_ochiq: bool = False) -> list[di
 			"name", "turi", "kategoriya", "yonaltirildi", "muhimlik", "matn",
 			"student", "student_name", "sinf", "payer_name", "payer_phone",
 			"menejer", "menejer_nomi", "manba", "suhbat_vaqti", "ochilgan",
-			"sla_sana",
+			"sla_sana", "yechim_turi", "yechim", "yechim_kim", "yechim_vaqti",
 		],
 		order_by="ochilgan desc",
 		limit_page_length=cint(limit) or 0,
@@ -154,6 +204,15 @@ def _qatorlar(nomlar=None, limit: int = 0, faqat_ochiq: bool = False) -> list[di
 	studentlar = {r.student for r in rows if r.student}
 	qarzlar = _qarz_holati(studentlar)
 	suhbatlar = _suhbatlar(studentlar)
+	izohlar = _frappe_izohlar([r.name for r in rows])
+
+	# Qaror beruvchilarning ismlari (Moodle'da "kim hal qildi" ko'rinadi)
+	qaror_userlar = {r.yechim_kim for r in rows if r.yechim_kim}
+	ismlar = {
+		u.name: u.full_name or u.name
+		for u in (frappe.get_all("User", filters={"name": ["in", list(qaror_userlar)]},
+		                         fields=["name", "full_name"]) if qaror_userlar else [])
+	}
 
 	out = []
 	for r in rows:
@@ -185,6 +244,16 @@ def _qatorlar(nomlar=None, limit: int = 0, faqat_ochiq: bool = False) -> list[di
 			# oladi, ichma-ich ro'yxat bilan `max_input_vars` (5000) oshib
 			# ketardi — JSON bilan har murojaatga bitta maydon
 			"suhbatlar": json.dumps(suhbatlar.get(r.student) or [], ensure_ascii=False),
+			# Frappe'da yozilgan qaror (2026-11-26: rahbar ikki joyda ishlaydi).
+			# Moodle buni faqat O'ZIDA QAROR YO'Q bo'lsa qabul qiladi va
+			# ota-onaga bildirishnomani o'zi yuboradi.
+			"qarorturi": r.yechim_turi or "",
+			"qaror": r.yechim or "",
+			"qarorkimidnumber": _idnumber(r.yechim_kim),
+			"qarorkimname": ismlar.get(r.yechim_kim) or "",
+			"qarorvaqti": _ts(r.yechim_vaqti),
+			# Frappe'da tug'ilgan kommentlar — Moodle timeline'ida ham chiqadi
+			"izohlar": json.dumps(izohlar.get(r.name) or [], ensure_ascii=False),
 		})
 	return out
 
@@ -285,57 +354,136 @@ def pull(limit: int = 200, qayta: int = 0) -> dict:
 	}
 
 
-# Moodle holati -> Frappe holati. Frappe'dagi «Ota-onaga xabar berish» qadami
-# Moodle'da YO'Q: ota-ona javobni ilovada o'zi ko'radi, shuning uchun Moodle
-# qaror bilan darhol yopadi.
-HOLAT_MAP = {
-	"Yangi": "Yangi",
-	"Ko'rib chiqilmoqda": "Ko'rib chiqilmoqda",
-	"Yopildi": "Yopildi",
+# Holat DARAJASI: pull holatni hech qachon ORQAGA qaytarmaydi. Aynan shu
+# qoida yo'qligi 2026-11-26 gacha Frappe'da berilgan qarorlarni o'chirib
+# yuborayotgan edi (Moodle'da hamma qator «Yangi» turgani uchun har 15
+# daqiqada holat «Yangi»ga, qaror NULL'ga qaytarilardi).
+HOLAT_DARAJA = {
+	"Yangi": 0,
+	"Ko'rib chiqilmoqda": 1,
+	"Ota-onaga xabar berish": 2,      # eski oqimdan qolgan hujjatlar uchun
+	"Yopildi": 3,
 }
 
 
 def _nusxaga_yoz(r: dict) -> bool:
-	"""Bitta qatorni Frappe'dagi Murojaat hujjatiga yozadi. False = topilmadi."""
+	"""Bitta Moodle qatorini Frappe'dagi Murojaat bilan BIRLASHTIRADI.
+
+	QOIDALAR (2026-11-26, rahbar ikki joyda ishlaydi):
+	  * holat faqat OLDINGA siljiydi (HOLAT_DARAJA);
+	  * qaror faqat Frappe'da YO'Q bo'lsa yoziladi (birinchi yozilgan g'olib);
+	  * korildi_vaqti faqat bo'sh bo'lsa to'ldiriladi;
+	  * masul Frappe'da bo'sh bo'lsagina Moodle'dan olinadi;
+	  * Moodle'da tug'ilgan izohlar child jadvalga QO'SHILADI (moodle_id
+	    bo'yicha dublikat to'siladi), hech narsa o'chirilmaydi.
+	False = murojaat Frappe'da topilmadi."""
 	nom = r.get("frappename")
 	if not nom or not frappe.db.exists("Murojaat", nom):
 		return False
 
-	masul = None
-	idn = (r.get("masul") or "").strip()
-	if idn:
-		masul = frappe.db.get_value("Employee", idn, "user_id")
+	joriy = frappe.db.get_value(
+		"Murojaat", nom,
+		["holat", "yechim_turi", "yechim_kim", "korildi_vaqti", "masul",
+		 "yopilgan_sana"],
+		as_dict=True,
+	)
 
 	qiymat = {
-		"holat": HOLAT_MAP.get(r.get("holat") or "", "Ko'rib chiqilmoqda"),
 		"yonaltirildi": r.get("yonalish") or "CEO",
-		"korildi_vaqti": _dt(r.get("korildivaqti")),
-		"yechim_turi": r.get("qarorturi") or None,
-		"yechim": r.get("qaror") or None,
-		"yechim_vaqti": _dt(r.get("qarorvaqti")),
 		"moodle_izoh_soni": cint(r.get("izohsoni")),
-		"moodle_qaror_kim": r.get("qarorism") or None,
 		"moodle_otaona_kordi": _dt(r.get("otaonakordi")),
 	}
+
+	# Holat: faqat oldinga
+	moodle_holat = r.get("holat") or ""
+	if HOLAT_DARAJA.get(moodle_holat, 1) > HOLAT_DARAJA.get(joriy.holat, 0):
+		qiymat["holat"] = moodle_holat
+
+	# Ko'rildi: bo'sh bo'lsa to'ldiriladi (Frappe'da ochilgan vaqt o'chmaydi)
+	if not joriy.korildi_vaqti and cint(r.get("korildivaqti")):
+		qiymat["korildi_vaqti"] = _dt(r.get("korildivaqti"))
+
+	# Qaror: birinchi yozilgan g'olib — Frappe'da bor bo'lsa TEGILMAYDI
+	if (r.get("qarorturi") or "").strip():
+		if not joriy.yechim_turi:
+			qiymat["yechim_turi"] = r.get("qarorturi")
+			qiymat["yechim"] = r.get("qaror") or None
+			qiymat["yechim_vaqti"] = _dt(r.get("qarorvaqti"))
+		# Moodle'da qaror BOR — belgi sifatida ham ishlaydi: cron shu maydon
+		# bo'sh turgan (qarori hali yetib bormagan) hujjatlarni qayta yuboradi
+		qiymat["moodle_qaror_kim"] = r.get("qarorism") or "—"
+
+	masul = None
+	idn = (r.get("masul") or "").strip()
+	if idn and not joriy.masul:
+		masul = frappe.db.get_value("Employee", idn, "user_id")
 	if masul:
 		qiymat["masul"] = masul
-	if qiymat["holat"] == "Yopildi":
+
+	if qiymat.get("holat") == "Yopildi":
 		yop = _dt(r.get("yopilganvaqti"))
-		qiymat["yopilgan_sana"] = getdate(yop) if yop else None
-		# Ota-ona javobni ILOVADA ko'radi — menejerning qo'ng'irog'i shart
-		# emas, shuning uchun "xabar berildi" belgisi Moodle ko'rganidan
-		# yoki qarorning o'zidan kelib chiqadi (aks holda Frappe validate
-		# yopishga ruxsat bermaydi).
+		qiymat["yopilgan_sana"] = joriy.yopilgan_sana or (getdate(yop) if yop else nowdate())
+		# Ota-ona javobni ILOVADA ko'radi — menejer qo'ng'irog'i shart emas
 		qiymat["xabar_berildi"] = 1
 		if qiymat["moodle_otaona_kordi"]:
 			qiymat["xabar_vaqti"] = qiymat["moodle_otaona_kordi"]
 
 	# `db_set` emas, to'g'ridan-to'g'ri UPDATE: Murojaat.validate ichida
-	# yopish uchun shartlar bor (yechim matni, ota-onaga xabar) va ular
-	# Moodle'da allaqachon bajarilgan. Hujjat orqali saqlash bu shartlarni
-	# qaytadan tekshirib, Moodle'dan kelgan haqiqatni rad etardi.
+	# yopish shartlari bor va ular Moodle'da allaqachon bajarilgan. Hujjat
+	# orqali saqlash Moodle'dan kelgan haqiqatni rad etishi mumkin edi.
 	frappe.db.set_value("Murojaat", nom, qiymat, update_modified=False)
+
+	_moodle_izohlarni_qoshish(nom, r.get("izohlar"))
 	return True
+
+
+def _moodle_izohlarni_qoshish(nom: str, izohlar_json) -> None:
+	"""Moodle'da tug'ilgan kommentlarni child jadvalga qo'shadi (append-only).
+
+	Dublikat `moodle_id` bilan to'siladi. `kim` (User havolasi) yo'q — Moodle
+	foydalanuvchisining Frappe akkauntini izlash shart emas, ism yetarli
+	(panel `kim_nomi`ni ko'rsatadi)."""
+	if not izohlar_json:
+		return
+	try:
+		rows = json.loads(izohlar_json) if isinstance(izohlar_json, str) else izohlar_json
+	except Exception:
+		return
+	if not isinstance(rows, list) or not rows:
+		return
+
+	bor = set(frappe.get_all(
+		"Murojaat Izohi",
+		filters={"parenttype": "Murojaat", "parent": nom, "moodle_id": ["is", "set"]},
+		pluck="moodle_id",
+	))
+	max_idx = cint(frappe.db.sql(
+		"""SELECT MAX(idx) FROM `tabMurojaat Izohi`
+		    WHERE parenttype = 'Murojaat' AND parent = %s""",
+		(nom,),
+	)[0][0])
+	for q in rows:
+		if not isinstance(q, dict):
+			continue
+		mid = str(q.get("moodleid") or "").strip()
+		matn = (q.get("matn") or "").strip()
+		if not mid or mid in bor or not matn:
+			continue
+		max_idx += 1
+		child = frappe.get_doc({
+			"doctype": "Murojaat Izohi",
+			"parenttype": "Murojaat",
+			"parent": nom,
+			"parentfield": "izohlar",
+			"idx": max_idx,
+			"vaqt": _dt(q.get("vaqt")),
+			"kim_nomi": (q.get("kim") or "Moodle")[:140],
+			"turi": "Komment",
+			"matn": matn[:4000],
+			"moodle_id": mid,
+		})
+		child.name = frappe.generate_hash(length=10)
+		child.db_insert()
 
 
 def _dt(ts) -> str | None:
@@ -348,10 +496,13 @@ def _dt(ts) -> str | None:
 
 
 # ================================================================ jadval
-def on_murojaat_insert(doc, method=None):
-	"""Yangi murojaat darhol Moodle'ga. Navbatda bajariladi: Moodle javob
-	bermasa yoki sekin bo'lsa, murojaat yaratish (sotuvchining ishi) shu
-	sababli to'xtab qolmasligi kerak."""
+def darhol_push(doc, trigger: str = "Darhol"):
+	"""Bitta murojaatni DARHOL Moodle'ga yuboradi (navbatda).
+
+	Yangi murojaat, rahbar qarori va izoh uchun bitta yo'l: 15 daqiqalik
+	cron'ni kutmaslik kerak — qaror bilan birga ota-onaga bildirishnoma
+	ketadi. Navbatda bajariladi: Moodle javob bermasa yoki sekin bo'lsa,
+	foydalanuvchining tugmasi shu sababli qotib qolmasligi kerak."""
 	s = _settings()
 	if not cint(s.enabled):
 		return
@@ -359,8 +510,13 @@ def on_murojaat_insert(doc, method=None):
 		"target_zenit.integrations.moodle_murojaat.push",
 		queue="short", timeout=300, enqueue_after_commit=True,
 		job_name=f"moodle_murojaat:{doc.name}",
-		nomlar=[doc.name], trigger="Yangi murojaat",
+		nomlar=[doc.name], trigger=trigger,
 	)
+
+
+def on_murojaat_insert(doc, method=None):
+	"""Yangi murojaat darhol Moodle'ga."""
+	darhol_push(doc, trigger="Yangi murojaat")
 
 
 def on_aloqa_insert(doc, method=None):

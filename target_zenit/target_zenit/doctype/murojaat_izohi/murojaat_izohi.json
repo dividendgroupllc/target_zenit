@@ -4,17 +4,18 @@
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
- "field_order": ["vaqt", "kim", "kim_nomi", "turi", "matn"],
+ "field_order": ["vaqt", "kim", "kim_nomi", "turi", "matn", "moodle_id"],
  "fields": [
   {"fieldname": "vaqt", "fieldtype": "Datetime", "label": "Vaqt", "in_list_view": 1, "read_only": 1, "columns": 2},
   {"fieldname": "kim", "fieldtype": "Link", "label": "Kim", "options": "User", "read_only": 1},
   {"fieldname": "kim_nomi", "fieldtype": "Data", "label": "Kim (ism)", "in_list_view": 1, "read_only": 1, "columns": 2},
   {"fieldname": "turi", "fieldtype": "Select", "label": "Turi", "options": "Komment\nHolat\nYo'naltirish\nYechim\nOta-onaga xabar", "default": "Komment", "in_list_view": 1, "read_only": 1, "columns": 2},
-  {"fieldname": "matn", "fieldtype": "Small Text", "label": "Matn", "in_list_view": 1, "columns": 5}
+  {"fieldname": "matn", "fieldtype": "Small Text", "label": "Matn", "in_list_view": 1, "columns": 5},
+  {"fieldname": "moodle_id", "fieldtype": "Data", "label": "Moodle izoh ID", "hidden": 1, "read_only": 1, "description": "Moodle'da tug'ilgan izohning ID'si — ikki tomonlama sinxronda dublikat va aylanish (loop) bo'lmasligi uchun. Bo'sh = izoh Frappe'da yozilgan (Moodle'ga push qilinadi)."}
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-04 10:00:00.000000",
+ "modified": "2026-11-26 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Murojaat Izohi",

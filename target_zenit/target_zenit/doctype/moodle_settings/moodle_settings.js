@@ -109,6 +109,28 @@ frappe.ui.form.on("Moodle Settings", {
 			);
 		}, __("Kurslar"));
 
+		// --- O'qituvchi login/parollarini bitta Excelga ---
+		frm.add_custom_button(__("O'qituvchi login/parollar (Excel)"), () => {
+			frappe.call({
+				method: "target_zenit.integrations.moodle.oqituvchi_parollari_fayl",
+				args: { person_type: "Instructor" },
+				freeze: true,
+				freeze_message: __("Fayl tayyorlanmoqda..."),
+				callback: (r) => {
+					const m = r.message || {};
+					if (!m.file_url) return;
+					window.open(m.file_url);
+					frappe.msgprint({
+						title: __("Fayl tayyor"),
+						indicator: m.parolsiz ? "orange" : "green",
+						message: __("{0} ta o'qituvchi faylga chiqarildi.", [m.soni]) +
+							(m.parolsiz ? "<br>" + __("Diqqat: {0} tasida parol bo'sh (parol prod shifrlash kaliti bilan — faylni PRODDA yarating).", [m.parolsiz]) : "") +
+							`<br><br><a href="${m.file_url}" download>⬇ ${frappe.utils.escape_html(m.fayl || "yuklab olish")}</a>`,
+					});
+				},
+			});
+		}, __("Login/Parol"));
+
 		frm.add_custom_button(__("Sinov: bir nechta kurs"), () => {
 			frappe.prompt(
 				{

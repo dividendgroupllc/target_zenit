@@ -13,7 +13,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime, nowdate
+from frappe.utils import now_datetime
 
 from target_zenit.target_zenit.doctype.murojaat.murojaat import (
 	ROL_CEO,
@@ -300,14 +300,23 @@ def izoh_yoz(name: str, matn: str):
 	if doc.holat == "Yangi":
 		doc.holat = "Ko'rib chiqilmoqda"
 	doc.save(ignore_permissions=True)
+
+	# Izoh Moodle panelida ham ko'rinishi kerak (ikki tomonlama timeline) —
+	# 15 daqiqalik cron'ni kutmasdan darhol yuboriladi
+	from target_zenit.integrations.moodle_murojaat import darhol_push
+	darhol_push(doc)
+
 	frappe.db.commit()
 	return {"ok": 1, "izohlar": _izohlar(doc), "holat": doc.holat}
 
 
 @frappe.whitelist()
 def qaror_ber(name: str, yechim_turi: str, yechim: str, muhimlik: str | None = None):
-	"""Rahbar qarori. Bu qadamdan keyin ish MENEJERGA qaytadi (ota-onaga javob),
-	«Ahamiyatsiz» bo'lsa darhol yopiladi."""
+	"""Rahbar qarori — murojaat YOPILADI (2026-11-26 qarori: Moodle'dagi kabi).
+
+	Javob ota-onaga bolasining Moodle ilovasiga bildirishnoma bo'lib boradi:
+	qaror darhol push bilan Moodle'ga yuboriladi, bildirishnomani Moodle
+	tomoni yuboradi («Ahamiyatsiz» bundan mustasno — JIM_QARORLAR)."""
 	doc, r = _ol(name, yozish=True)
 	if not (r["ceo"] or r["direktor"]):
 		frappe.throw(_("Qarorni faqat CEO yoki Direktor qabul qiladi."), frappe.PermissionError)
@@ -326,17 +335,19 @@ def qaror_ber(name: str, yechim_turi: str, yechim: str, muhimlik: str | None = N
 	izoh_qosh(doc, f"{yechim_turi}: {yechim}", turi="Yechim")
 	doc.save(ignore_permissions=True)
 
-	# Menejerga vazifa: ota-onaga javob bering
-	if doc.holat == "Ota-onaga xabar berish" and doc.menejer:
-		frappe.get_doc({
-			"doctype": "ToDo",
-			"allocated_to": doc.menejer,
-			"reference_type": "Murojaat",
-			"reference_name": doc.name,
-			"date": nowdate(),
-			"priority": "High",
-			"description": f"Ota-onaga javob bering ({doc.student_name or '—'}): {yechim[:180]}",
-		}).insert(ignore_permissions=True)
+	# Murojaat yopildi — ochiq ToDo'lar ham yopiladi
+	for todo in frappe.get_all(
+		"ToDo",
+		filters={"reference_type": "Murojaat", "reference_name": doc.name, "status": "Open"},
+		pluck="name",
+	):
+		frappe.db.set_value("ToDo", todo, "status", "Closed")
+
+	# Qaror DARHOL Moodle'ga: ota-onaga bildirishnoma 15 daqiqalik cron'ni
+	# kutmasin. Navbatda — Moodle sekin bo'lsa rahbarning tugmasi qotmasin.
+	from target_zenit.integrations.moodle_murojaat import darhol_push
+	darhol_push(doc)
+
 	frappe.db.commit()
 	return {"ok": 1, "holat": doc.holat, "izohlar": _izohlar(doc)}
 
