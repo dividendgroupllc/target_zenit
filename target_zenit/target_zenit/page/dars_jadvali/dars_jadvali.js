@@ -175,6 +175,7 @@ class TZDarsJadvali {
 					<button class="refresh" data-act="undo" ${this.undoStack.length ? "" : "disabled"} title="Ctrl+Z">↶${this.undoStack.length ? ` ${this.undoStack.length}` : ""}</button>
 					<button class="refresh" data-act="redo" ${this.redoStack.length ? "" : "disabled"} title="Ctrl+Y">↷</button>
 					${this.publish_btn()}` : ""}
+				<button class="refresh" data-act="pdf">🖨 PDF / Chop etish</button>
 				<button class="refresh" data-act="yuklama">O'qituvchi yuklamasi</button>
 				<button class="refresh primary" data-act="import">⬆ Exceldan import</button>
 			</div>
@@ -776,6 +777,7 @@ class TZDarsJadvali {
 			this.load();
 		});
 		this.body.find(`[data-act="yuklama"]`).on("click", () => this.yuklama_dialog());
+		this.body.find(`[data-act="pdf"]`).on("click", () => this.pdf_dialog());
 		this.body.find(`[data-act="import"]`).on("click", () => this.import_dialog());
 		this.body.find(`[data-act="undo"]`).on("click", () => this.undo_op());
 		this.body.find(`[data-act="redo"]`).on("click", () => this.redo_op());
@@ -1184,6 +1186,147 @@ class TZDarsJadvali {
 				options: `<div class="tz-jadval"><table class="tbl mini-tbl"><thead><tr><th>O'qituvchi</th><th class="r">Soat</th></tr></thead><tbody>${rows}</tbody></table></div>`,
 			}],
 		}).show();
+	}
+
+	// ---------------- PDF / chop etish (maktab doskasi uchun) ----------------
+	pdf_dialog() {
+		const tanlangan = this.fSinflar.length;
+		const d = new frappe.ui.Dialog({
+			title: "🖨 Dars jadvalini chop etish / PDF",
+			fields: [
+				{ fieldname: "maktab", fieldtype: "Data", label: "Maktab nomi (sarlavha)",
+					default: "Target International School", reqd: 1 },
+				{ fieldname: "rejim", fieldtype: "Select", label: "Ko'rinish", default: "Har sinf — haftalik varaq",
+					options: "Har sinf — haftalik varaq\nHar kun — umumiy to'r" },
+				{ fieldname: "cb0", fieldtype: "Column Break" },
+				{ fieldname: "qamrov", fieldtype: "Select", label: "Qaysi guruhlar",
+					default: tanlangan ? "Tanlangan guruhlar" : "Barcha sinflar",
+					options: "Barcha sinflar\nTanlangan guruhlar" },
+				{ fieldname: "yonalish", fieldtype: "Select", label: "Varaq yo'nalishi", default: "Bo'yiga (portrait)",
+					options: "Bo'yiga (portrait)\nEniga (landscape)" },
+				{ fieldname: "sb", fieldtype: "Section Break" },
+				{ fieldname: "oqituvchi", fieldtype: "Check", label: "O'qituvchi ismi ko'rsatilsin", default: 1 },
+				{ fieldname: "cb1", fieldtype: "Column Break" },
+				{ fieldname: "kechki", fieldtype: "Check", label: "Kechki darslar ham", default: 1 },
+			],
+			primary_action_label: "Chop etish / PDF",
+			primary_action: (v) => {
+				d.hide();
+				this.print_schedule({
+					maktab: v.maktab || "Target International School",
+					rejim: v.rejim,
+					qamrov: v.qamrov,
+					landscape: v.yonalish.indexOf("Eniga") >= 0,
+					oqituvchi: !!v.oqituvchi,
+					kechki: !!v.kechki,
+				});
+			},
+		});
+		d.show();
+	}
+
+	// Bitta katak ichidagi darslar (chop uchun)
+	_pcell(sinf, kun, no, opts, regMax) {
+		const list = (this.data.katak || {})[`${sinf}|${kun}|${no}`] || [];
+		if (!list.length) return "";
+		return list.map((x) => {
+			const t = (no > regMax && (x.boshlanish || x.tugash))
+				? `<div class="pt">${this.esc(x.boshlanish || "")}–${this.esc(x.tugash || "")}</div>` : "";
+			const tc = opts.oqituvchi && x.oqituvchi ? `<div class="ptc">${this.esc(x.oqituvchi)}</div>` : "";
+			return `<div class="pl"><div class="ps">${this.esc(x.fan)}</div>${tc}${t}</div>`;
+		}).join("");
+	}
+
+	print_schedule(opts) {
+		const d = this.data;
+		const kunlar = d.kunlar || [];
+		const regMax = d.regular_max || 10;
+		const cv = this.cur_versiya();
+		const meta = `${this.esc(cv.academic_year || "")} o'quv yili${cv.nomi ? " · " + this.esc(cv.nomi) : ""}`;
+		const bugun = frappe.datetime.get_today();
+		const nums = [...(d.darslar || []), ...(opts.kechki ? (d.kechki_darslar || []) : [])];
+		const sinflar = opts.qamrov === "Tanlangan guruhlar" && this.fSinflar.length
+			? this.fSinflar : (d.sinflar || []);
+
+		const logo = "/assets/target_zenit/images/logo-target.png";
+		const head = (sub) => `<div class="phead">
+			<img class="plogo" src="${logo}" alt="">
+			<div class="pschool">${this.esc(opts.maktab)}</div>
+			<div class="ptitle">DARS JADVALI</div>
+			<div class="pmeta">${meta}</div>
+			${sub ? `<div class="psub">${sub}</div>` : ""}
+		</div>`;
+
+		let body = "";
+		if (opts.rejim.indexOf("Har kun") >= 0) {
+			// Har kun — butun maktab to'ri (ustunlar = sinflar)
+			body = kunlar.map((k) => {
+				const rows = nums.map((no) => {
+					const isK = no > regMax;
+					const cells = sinflar.map((s) => `<td class="${isK ? "ke" : ""}">${this._pcell(s, k, no, opts, regMax)}</td>`).join("");
+					const t = isK ? "" : this.vaqt(sinflar[0] || "", no);
+					return `<tr class="${isK ? "kerow" : ""}"><th class="pno">${isK ? "🌙" : ""}${no}${t ? `<span>${this.esc(t)}</span>` : ""}</th>${cells}</tr>`;
+				}).join("");
+				return `<div class="sheet">${head(`<b>${this.esc(k)}</b>`)}
+					<table class="ptbl"><thead><tr><th class="pno">№</th>${sinflar.map((s) => `<th>${this.esc(this.sinf_nomi(s).replace(/\s*\((full|hybrid)\)/, ""))}</th>`).join("")}</tr></thead>
+					<tbody>${rows}</tbody></table>
+					<div class="pfoot">Chop etilgan: ${bugun}</div></div>`;
+			}).join("");
+		} else {
+			// Har sinf — haftalik varaq (ustunlar = kunlar)
+			body = sinflar.map((s) => {
+				const rows = nums.map((no) => {
+					const isK = no > regMax;
+					const t = isK ? "" : this.vaqt(s, no);
+					const cells = kunlar.map((k) => `<td class="${isK ? "ke" : ""}">${this._pcell(s, k, no, opts, regMax)}</td>`).join("");
+					return `<tr class="${isK ? "kerow" : ""}"><th class="pno">${isK ? "🌙" : ""}${no}${t ? `<span>${this.esc(t)}</span>` : ""}</th>${cells}</tr>`;
+				}).join("");
+				return `<div class="sheet">${head(`<b class="pcls">${this.esc(this.sinf_nomi(s).replace(/\s*\((full|hybrid)\)/, ""))}</b> sinf`)}
+					<table class="ptbl"><thead><tr><th class="pno">№</th>${kunlar.map((k) => `<th>${this.esc(k)}</th>`).join("")}</tr></thead>
+					<tbody>${rows}</tbody></table>
+					<div class="pfoot">Chop etilgan: ${bugun}</div></div>`;
+			}).join("");
+		}
+
+		const html = `<!doctype html><html><head><meta charset="utf-8"><title>Dars jadvali — ${this.esc(opts.maktab)}</title>
+		<style>
+		@page { size: A4 ${opts.landscape ? "landscape" : "portrait"}; margin: 12mm; }
+		* { box-sizing: border-box; }
+		body { font-family: "Segoe UI", Arial, sans-serif; color: #111; margin: 0; }
+		.sheet { page-break-after: always; padding: 0; }
+		.sheet:last-child { page-break-after: auto; }
+		.phead { text-align: center; margin-bottom: 10px; border-bottom: 3px double #333; padding-bottom: 8px; }
+		.plogo { height: 46px; width: auto; margin-bottom: 4px; }
+		.pschool { font-size: 15px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #444; }
+		.ptitle { font-size: 26px; font-weight: 800; letter-spacing: 2px; margin: 2px 0; }
+		.pmeta { font-size: 12px; color: #666; }
+		.psub { font-size: 20px; margin-top: 6px; }
+		.pcls { font-size: 28px; font-weight: 800; }
+		.ptbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
+		.ptbl th, .ptbl td { border: 1.2px solid #222; padding: 4px 5px; vertical-align: top; }
+		.ptbl thead th { background: #2d2d2d; color: #fff; font-size: 14px; text-align: center; padding: 7px 4px; }
+		.ptbl th.pno { width: 54px; text-align: center; background: #efefef; color: #111; font-size: 15px; }
+		.ptbl th.pno span { display: block; font-size: 9px; font-weight: 400; color: #555; }
+		.ptbl thead th.pno { background: #2d2d2d; color: #fff; }
+		.ptbl td { height: 40px; }
+		.pl { margin-bottom: 3px; }
+		.pl:last-child { margin-bottom: 0; }
+		.ps { font-weight: 700; font-size: 13px; }
+		.ptc { font-size: 10px; color: #555; }
+		.pt { font-size: 9px; color: #7a52d8; font-weight: 600; }
+		tr.kerow th.pno, tr.kerow td.ke { background: #f4f1fb; }
+		tr.kerow td.ke { border-top: 2px solid #7a52d8; }
+		.pfoot { margin-top: 8px; font-size: 10px; color: #888; text-align: right; }
+		@media screen { body { background: #ddd; } .sheet { background: #fff; max-width: ${opts.landscape ? "1050px" : "780px"}; margin: 14px auto; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,.2); } }
+		</style></head><body>${body || '<div class="sheet"><div class="phead"><div class="ptitle">Ma\'lumot yo\'q</div></div></div>'}
+		<script>window.onload=function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},300);};<\/script>
+		</body></html>`;
+
+		const w = window.open("", "tz_jadval_pdf");
+		if (!w) { frappe.msgprint("Chop oynasi ochilmadi — brauzer pop-up'ni bloklagan bo'lishi mumkin. Ruxsat bering va qayta urining."); return; }
+		w.document.open();
+		w.document.write(html);
+		w.document.close();
 	}
 
 	// ---------------- Exceldan import ----------------
