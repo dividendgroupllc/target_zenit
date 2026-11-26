@@ -84,15 +84,25 @@ def get_data(versiya: str | None = None):
 	# O'qituvchi ismi nusxadan emas — Instructor->Employee zanjiridan jonli
 	oq_nom = oqituvchi_nomlari([y.oqituvchi for y in yozuvlar])
 
-	# Guruh -> daraja (High/Middle/Low) — PDF'da bir xil fanni bir marta yozib,
-	# ostiga daraja o'qituvchilarini ko'rsatish uchun.
+	# Guruh -> daraja (High/Middle/Low) + a'zo sinflar.
+	# daraja: PDF'da bir xil fanni bir marta yozib ostiga darajalarni chiqarish.
+	# azo_map: dars `sinflar` maydoni BO'SH bo'lsa (eski/nuqsonli yozuv) — dars
+	#   grid'da ko'rinmay qolmasligi uchun guruhning a'zo sinflariga tayanamiz.
 	daraja_map = {}
+	azo_map = {}
 	guruhlar_set = {y.guruh for y in yozuvlar if y.guruh}
 	if guruhlar_set and frappe.db.has_column("Student Group", "custom_daraja"):
 		for g in frappe.get_all(
 			"Student Group", filters={"name": ["in", list(guruhlar_set)]},
-			fields=["name", "custom_daraja"], limit_page_length=0):
+			fields=["name", "custom_daraja", "custom_azo_sinflar", "custom_guruh_turi"],
+			limit_page_length=0):
 			daraja_map[g.name] = g.custom_daraja
+			if (g.custom_guruh_turi or "") in ("", "Sinf"):
+				azo_map[g.name] = [g.name]
+			else:
+				azo_map[g.name] = [
+					s.strip() for s in (g.custom_azo_sinflar or "").split(",") if s.strip()
+				] or [g.name]
 
 	# sinf x kun x dars -> darslar ro'yxati (blokda bir nechta guruh bo'lishi mumkin)
 	katak = defaultdict(list)
@@ -118,7 +128,8 @@ def get_data(versiya: str | None = None):
 				}
 			)
 			continue
-		y_sinflar = [s.strip() for s in (y.sinflar or "").split(",") if s.strip()] or [y.guruh]
+		y_sinflar = [s.strip() for s in (y.sinflar or "").split(",") if s.strip()] \
+			or azo_map.get(y.guruh) or [y.guruh]
 		for s in y_sinflar:
 			katak[f"{s}|{y.kun}|{y.dars_raqami}"].append(
 				{

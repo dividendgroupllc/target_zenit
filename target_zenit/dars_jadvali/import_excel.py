@@ -554,6 +554,21 @@ def _yoz(versiya, y, guruh, fan_kod, oqituvchi, blok, natija, dry_run):
 	if mavjud:
 		natija["bor_edi"] += 1
 		return
+	# Lagandada (joylanmagan) shu darsning nusxasi bormi? Bo'lsa — YANGI yaratmay,
+	# o'shani qayta joylaymiz. Shunda takroriy import laganda'da dublikat yig'maydi.
+	if frappe.db.has_column("Jadval Yozuvi", "joylanmagan"):
+		f = {"versiya": versiya, "guruh": guruh, "fan": fan_kod, "joylanmagan": 1}
+		f["blok"] = blok if blok else ["in", ["", None]]
+		lag = frappe.db.get_value("Jadval Yozuvi", f, "name")
+		if lag:
+			if not dry_run:
+				d = frappe.get_doc("Jadval Yozuvi", lag)
+				d.joylanmagan = 0
+				d.kun = y["kun"]
+				d.dars_raqami = y["dars"]
+				d.save(ignore_permissions=True)
+			natija["yaratildi"] += 1
+			return
 	if dry_run:
 		natija["yaratildi"] += 1
 		return

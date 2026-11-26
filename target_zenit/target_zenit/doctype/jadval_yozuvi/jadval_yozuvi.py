@@ -54,9 +54,14 @@ class JadvalYozuvi(Document):
 		for b in boshqalar:
 			# 1) Bitta guruh ikki darsda
 			if b.guruh == self.guruh:
+				yashirin = "" if (b.sinflar or "").strip() else (
+					" — ⚠ u dars jadvalda KO'RINMAYAPTI (sinflar maydoni bo'sh). "
+					"Jadval Yozuvi ro'yxatidan topib qayta saqlang yoki o'chiring: "
+					f"«{b.name}»."
+				)
 				frappe.throw(
-					_("Konflikt: «{0}» guruhida {1} {2}-darsda allaqachon dars bor ({3}).").format(
-						b.guruh_nomi or b.guruh, self.kun, self.dars_raqami, b.fan
+					_("Konflikt: «{0}» guruhida {1} {2}-darsda allaqachon dars bor ({3}){4}").format(
+						b.guruh_nomi or b.guruh, self.kun, self.dars_raqami, b.fan, yashirin
 					)
 				)
 			# 2) O'qituvchi bir vaqtda ikki joyda
@@ -100,9 +105,14 @@ def guruh_sinflari(guruh: str, blok: str | None = None) -> list[str]:
 	tur = frappe.db.get_value("Student Group", guruh, "custom_guruh_turi")
 	if tur in (None, "", "Sinf"):
 		return [guruh]
+	natija = []
 	if blok:
-		return frappe.get_all(
+		natija = frappe.get_all(
 			"Dars Bloki Sinfi", filters={"parent": blok}, pluck="sinf", order_by="idx"
 		)
-	azo = frappe.db.get_value("Student Group", guruh, "custom_azo_sinflar")
-	return [s.strip() for s in (azo or "").split(",") if s.strip()]
+	# Blok bo'sh/sinfsiz bo'lsa — guruhning a'zo sinflariga tayanamiz, aks holda
+	# `sinflar` bo'sh qoladi va dars jadvalda ko'rinmay qoladi (yashirin konflikt).
+	if not natija:
+		azo = frappe.db.get_value("Student Group", guruh, "custom_azo_sinflar")
+		natija = [s.strip() for s in (azo or "").split(",") if s.strip()]
+	return natija

@@ -391,7 +391,8 @@ class TZDarsJadvali {
 		}).join("");
 		w.html(`<div class="laganda ${this.moving && !this.moving.lagandadan ? "drop-on" : ""}">
 			<span class="lg-t">🧺 Laganda <b>${list.length}</b></span>
-			<div class="lg-cards">${cards || `<span class="mv-sub">bo'sh — kartani shu yerga sudrab olib qo'ying</span>`}</div>
+			${this.canEdit && list.length ? `<button class="refresh mini" data-act="lg-dedup" title="Bir xil darsning ortiqcha nusxalarini o'chiradi">🧹 Dublikatlarni tozalash</button>` : ""}
+			<div class="lg-cards">${cards || `<span class="mv-sub">bo'sh — kartani shu yerga sudrab olib qo'ying. O'ng tugma → 🗑 bitta kartani o'chiradi</span>`}</div>
 		</div>`);
 		w.find(".lg-card").on("click", (e) => {
 			e.stopPropagation();
@@ -400,7 +401,30 @@ class TZDarsJadvali {
 			if (this.moving && this.moving.yozuv === name) { this.cancel_move(); return; }
 			if (this.canEdit) this.start_move(name);
 		});
+		w.find(`[data-act="lg-dedup"]`).on("click", () => this.laganda_dedup());
 		if (this.canEdit) this.enable_drag(w.find(".lg-card"));
+	}
+
+	laganda_dedup() {
+		frappe.confirm(
+			`Lagandadagi <b>dublikat</b> (bir xil guruh+fan+o'qituvchi takrorlangan) kartalar o'chirilsinmi?<br>
+			<span class="text-muted" style="font-size:12px">Har darsdan bitta nusxa qoladi. Joylangan (real) jadvalga tegilmaydi.</span>`,
+			() => {
+				frappe.call({
+					method: `${MH_M}.laganda_dedup`,
+					args: { versiya: this.versiya },
+					freeze: true,
+					freeze_message: "Dublikatlar tozalanmoqda…",
+					callback: (r) => {
+						const m = r.message || {};
+						this.load(() => frappe.show_alert({
+							message: `🧹 ${m.ochirildi || 0} ta dublikat o'chirildi. Lagandada ${m.qolgan || 0} ta noyob karta qoldi.`,
+							indicator: "green",
+						}));
+					},
+				});
+			}
+		);
 	}
 
 	// Bitta katak <td> (kunlik va haftalik ko'rinish uchun umumiy). Overlay

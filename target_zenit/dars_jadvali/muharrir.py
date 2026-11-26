@@ -307,6 +307,38 @@ def dars_almashtir(yozuv: str, kun: str, dars_raqami) -> dict:
 
 
 @frappe.whitelist()
+def laganda_dedup(versiya: str | None = None) -> dict:
+	"""Lagandadagi (joylanmagan) DUBLIKAT darslarni tozalaydi — har bir noyob
+	dars (guruh+fan+blok+o'qituvchi) dan bitta nusxa qoldirib, qolganini o'chiradi.
+	FAQAT joylanmagan kartalar — real (joylangan) jadvalga tegmaydi."""
+	_guard()
+	from collections import defaultdict
+	versiya = _faol_versiya(versiya)
+	lag = frappe.get_all(
+		"Jadval Yozuvi",
+		filters={"versiya": versiya, "joylanmagan": 1},
+		fields=["name", "guruh", "fan", "blok", "oqituvchi"], order_by="name")
+	key = defaultdict(list)
+	for r in lag:
+		key[(r.guruh, r.fan, r.blok, r.oqituvchi)].append(r.name)
+	ochir = []
+	for names in key.values():
+		if len(names) > 1:
+			ochir += sorted(names)[1:]  # eng kichik JY qoladi
+	ochirildi = 0
+	for nm in ochir:
+		# Xavfsizlik: faqat hali ham joylanmagan bo'lsa o'chiramiz
+		if frappe.db.get_value("Jadval Yozuvi", nm, "joylanmagan") == 1:
+			frappe.delete_doc("Jadval Yozuvi", nm, ignore_permissions=True, force=True)
+			ochirildi += 1
+	frappe.db.commit()
+	return {
+		"ochirildi": ochirildi,
+		"qolgan": frappe.db.count("Jadval Yozuvi", {"versiya": versiya, "joylanmagan": 1}),
+	}
+
+
+@frappe.whitelist()
 def lagandaga(yozuv: str) -> dict:
 	"""Kartani jadvaldan lagandaga oladi (o'chirmaydi — joylanmagan bo'ladi).
 	Blok darsi butun parallel to'plami bilan olinadi. Undo = eski slotga kochir."""
