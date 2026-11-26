@@ -1087,6 +1087,7 @@ class TZDarsJadvali {
 		const menu = $(`<div class="tz-jadval tz-ctx" style="left:${x}px;top:${y}px">
 			<div class="ctx-t">${this.esc(info.fan || "")} — ${this.esc(info.guruh_nomi || info.guruh || "")}</div>
 			<button data-c="move">✋ Ko'chirish</button>
+			${lagandada ? "" : `<button data-c="nusxa">⧉ Nusxalash (boshqa soatga)</button>`}
 			<button data-c="lock">${info.qulf ? "🔓 Qulfni ochish" : "🔒 Qulflash"}</button>
 			${lagandada ? "" : `<button data-c="tray">🧺 Lagandaga olish</button>`}
 			${info.guruh ? `<button data-c="students">👥 O'quvchilar biriktirish</button>` : ""}
@@ -1103,6 +1104,7 @@ class TZDarsJadvali {
 			const c = $(e.currentTarget).data("c");
 			this.close_ctx();
 			if (c === "move") this.start_move(name);
+			else if (c === "nusxa") this.nusxa_dialog(name, info);
 			else if (c === "lock") frappe.call({
 				method: `${MH_M}.qulf_toggle`, args: { yozuv: name }, freeze: true,
 				callback: (r) => this.load(() => frappe.show_alert({
@@ -1119,6 +1121,48 @@ class TZDarsJadvali {
 				});
 			}
 		});
+	}
+
+	// -------- darsni ko'paytirish (boshqa soatga nusxalash) --------
+	nusxa_dialog(name, info) {
+		const kunlar = this.data.kunlar || [];
+		const darslar = [...(this.data.darslar || [])];
+		const d = new frappe.ui.Dialog({
+			title: "⧉ Darsni nusxalash (ko'paytirish)",
+			fields: [
+				{
+					fieldtype: "HTML",
+					options: `<div class="tz-jadval tz-menu">
+						<div class="mi"><b>${this.esc(info.fan || "")} — ${this.esc(info.guruh_nomi || info.guruh || "")}</b></div>
+						<div class="mv-sub">Shu dars (blok bo'lsa — barcha yo'nalish va o'qituvchilari bilan birga)
+						tanlangan kun/soatga NUSXALANADI. Asl dars o'z joyida qoladi.</div>
+					</div>`,
+				},
+				{ fieldname: "kun", fieldtype: "Select", label: "Kun", options: kunlar.join("\n"),
+					default: this.kun, reqd: 1 },
+				{ fieldname: "cb", fieldtype: "Column Break" },
+				{ fieldname: "dars", fieldtype: "Select", label: "Dars (soat) raqami",
+					options: darslar.map(String).join("\n"), reqd: 1 },
+			],
+			primary_action_label: "Nusxalash",
+			primary_action: (v) => {
+				frappe.call({
+					method: `${MH_M}.dars_nusxala`,
+					args: { yozuv: name, kun: v.kun, dars_raqami: v.dars },
+					freeze: true,
+					callback: (r) => {
+						d.hide();
+						const m = r.message || {};
+						this.load(() => frappe.show_alert({
+							message: `⧉ Nusxalandi: ${this.esc(m.kun)} ${m.dars_raqami}-soat (${(m.yaratilgan || []).length} dars)`,
+							indicator: "green",
+						}));
+					},
+					error: () => {},  // konflikt bo'lsa server xato beradi (dialog ochiq qoladi)
+				});
+			},
+		});
+		d.show();
 	}
 
 	// -------- bo'sh katak: "bu yerga nima sig'adi?" (aSc teskari qidiruv) --------

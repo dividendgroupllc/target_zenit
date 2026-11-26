@@ -307,6 +307,34 @@ def dars_almashtir(yozuv: str, kun: str, dars_raqami) -> dict:
 
 
 @frappe.whitelist()
+def dars_nusxala(yozuv: str, kun: str, dars_raqami) -> dict:
+	"""Darsni (blok bo'lsa — butun parallel to'plamni) boshqa slotga NUSXALAYDI —
+	ya'ni yangi dars(lar) yaratadi, asl o'z joyida qoladi. Masalan IT 7-soatda
+	bo'lsa, uni 8-soatga ham qo'shish (ko'paytirish) uchun.
+	Validate konfliktni tekshiradi — xato bo'lsa hech narsa yaratilmaydi."""
+	_guard()
+	dars_raqami = int(dars_raqami)
+	doc = frappe.get_doc("Jadval Yozuvi", yozuv)
+	yozuvlar = _versiya_yozuvlari(doc.versiya)
+	kochma = _kochma_toplam(doc, yozuvlar)
+	yaratilgan = []
+	try:
+		for y in kochma:
+			src = frappe.get_doc("Jadval Yozuvi", y.name)
+			d = frappe.copy_doc(src)
+			d.kun = kun
+			d.dars_raqami = dars_raqami
+			d.joylanmagan = 0
+			d.insert(ignore_permissions=True)  # validate konfliktni tekshiradi
+			yaratilgan.append(d.name)
+	except Exception:
+		frappe.db.rollback()
+		raise
+	frappe.db.commit()
+	return {"ok": 1, "yaratilgan": yaratilgan, "kun": kun, "dars_raqami": dars_raqami}
+
+
+@frappe.whitelist()
 def laganda_dedup(versiya: str | None = None) -> dict:
 	"""Lagandadagi (joylanmagan) DUBLIKAT darslarni tozalaydi — har bir noyob
 	dars (guruh+fan+blok+o'qituvchi) dan bitta nusxa qoldirib, qolganini o'chiradi.
