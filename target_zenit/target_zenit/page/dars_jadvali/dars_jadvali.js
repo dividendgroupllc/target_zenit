@@ -1241,67 +1241,68 @@ class TZDarsJadvali {
 		const d = this.data;
 		const kunlar = d.kunlar || [];
 		const regMax = d.regular_max || 10;
-		const cv = this.cur_versiya();
-		const meta = `${this.esc(cv.academic_year || "")} o'quv yili${cv.nomi ? " · " + this.esc(cv.nomi) : ""}`;
+		const EN_KUN = {
+			"Dushanba": "Monday", "Seshanba": "Tuesday", "Chorshanba": "Wednesday",
+			"Payshanba": "Thursday", "Juma": "Friday", "Shanba": "Saturday",
+		};
+		const enk = (k) => EN_KUN[k] || k;
 		const bugun = frappe.datetime.get_today();
 		const nums = [...(d.darslar || []), ...(opts.kechki ? (d.kechki_darslar || []) : [])];
 		const sinflar = opts.qamrov === "Tanlangan guruhlar" && this.fSinflar.length
 			? this.fSinflar : (d.sinflar || []);
 
-		const logo = "/assets/target_zenit/images/logo-target.png";
-		const head = (sub) => `<div class="phead">
-			<img class="plogo" src="${logo}" alt="">
-			<div class="pschool">${this.esc(opts.maktab)}</div>
-			<div class="ptitle">DARS JADVALI</div>
-			<div class="pmeta">${meta}</div>
-			${sub ? `<div class="psub">${sub}</div>` : ""}
+		// Sarlavha: bitta qator — to'liq logo (emblema + maktab nomi) CHAPDA,
+		// o'rtada "Class Timetable" + to'liq sinf/kun nomi. Versiya matni yo'q.
+		const logo = "/assets/target_zenit/images/logo-target-full.png";
+		const head = (big) => `<div class="phead">
+			<img class="plogo" src="${logo}" alt="Target International School">
+			<div class="pcenter"><div class="pdj">Class Timetable</div><div class="pcls">${big}</div></div>
 		</div>`;
 
 		let body = "";
 		if (opts.rejim.indexOf("Har kun") >= 0) {
-			// Har kun — butun maktab to'ri (ustunlar = sinflar)
+			// Per day — whole-school grid (columns = classes)
 			body = kunlar.map((k) => {
 				const rows = nums.map((no) => {
 					const isK = no > regMax;
 					const cells = sinflar.map((s) => `<td class="${isK ? "ke" : ""}">${this._pcell(s, k, no, opts, regMax)}</td>`).join("");
 					const t = isK ? "" : this.vaqt(sinflar[0] || "", no);
-					return `<tr class="${isK ? "kerow" : ""}"><th class="pno">${isK ? "🌙" : ""}${no}${t ? `<span>${this.esc(t)}</span>` : ""}</th>${cells}</tr>`;
+					return `<tr class="${isK ? "kerow" : ""}"><th class="pno">${no}${t ? `<span>${this.esc(t)}</span>` : ""}</th>${cells}</tr>`;
 				}).join("");
-				return `<div class="sheet">${head(`<b>${this.esc(k)}</b>`)}
-					<table class="ptbl"><thead><tr><th class="pno">№</th>${sinflar.map((s) => `<th>${this.esc(this.sinf_nomi(s).replace(/\s*\((full|hybrid)\)/, ""))}</th>`).join("")}</tr></thead>
+				return `<div class="sheet">${head(this.esc(enk(k)))}
+					<table class="ptbl"><thead><tr><th class="pno">No.</th>${sinflar.map((s) => `<th>${this.esc(this.sinf_nomi(s))}</th>`).join("")}</tr></thead>
 					<tbody>${rows}</tbody></table>
-					<div class="pfoot">Chop etilgan: ${bugun}</div></div>`;
+					<div class="pfoot">Printed: ${bugun}</div></div>`;
 			}).join("");
 		} else {
-			// Har sinf — haftalik varaq (ustunlar = kunlar)
+			// Per class — weekly sheet (columns = days)
 			body = sinflar.map((s) => {
 				const rows = nums.map((no) => {
 					const isK = no > regMax;
 					const t = isK ? "" : this.vaqt(s, no);
 					const cells = kunlar.map((k) => `<td class="${isK ? "ke" : ""}">${this._pcell(s, k, no, opts, regMax)}</td>`).join("");
-					return `<tr class="${isK ? "kerow" : ""}"><th class="pno">${isK ? "🌙" : ""}${no}${t ? `<span>${this.esc(t)}</span>` : ""}</th>${cells}</tr>`;
+					return `<tr class="${isK ? "kerow" : ""}"><th class="pno">${no}${t ? `<span>${this.esc(t)}</span>` : ""}</th>${cells}</tr>`;
 				}).join("");
-				return `<div class="sheet">${head(`<b class="pcls">${this.esc(this.sinf_nomi(s).replace(/\s*\((full|hybrid)\)/, ""))}</b> sinf`)}
-					<table class="ptbl"><thead><tr><th class="pno">№</th>${kunlar.map((k) => `<th>${this.esc(k)}</th>`).join("")}</tr></thead>
+				return `<div class="sheet">${head(this.esc(this.sinf_nomi(s)))}
+					<table class="ptbl"><thead><tr><th class="pno">No.</th>${kunlar.map((k) => `<th>${this.esc(enk(k))}</th>`).join("")}</tr></thead>
 					<tbody>${rows}</tbody></table>
-					<div class="pfoot">Chop etilgan: ${bugun}</div></div>`;
+					<div class="pfoot">Printed: ${bugun}</div></div>`;
 			}).join("");
 		}
 
-		const html = `<!doctype html><html><head><meta charset="utf-8"><title>Dars jadvali — ${this.esc(opts.maktab)}</title>
+		const html = `<!doctype html><html><head><meta charset="utf-8"><title>Class Timetable — ${this.esc(opts.maktab)}</title>
 		<style>
 		@page { size: A4 ${opts.landscape ? "landscape" : "portrait"}; margin: 12mm; }
 		* { box-sizing: border-box; }
 		body { font-family: "Segoe UI", Arial, sans-serif; color: #111; margin: 0; }
 		.sheet { page-break-after: always; padding: 0; }
 		.sheet:last-child { page-break-after: auto; }
-		.phead { text-align: center; margin-bottom: 10px; border-bottom: 3px double #333; padding-bottom: 8px; }
-		.plogo { height: 46px; width: auto; margin-bottom: 4px; }
-		.pschool { font-size: 15px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #444; }
-		.ptitle { font-size: 26px; font-weight: 800; letter-spacing: 2px; margin: 2px 0; }
-		.pmeta { font-size: 12px; color: #666; }
-		.psub { font-size: 20px; margin-top: 6px; }
-		.pcls { font-size: 28px; font-weight: 800; }
+		.phead { position: relative; display: flex; align-items: center; justify-content: center;
+			min-height: 60px; margin-bottom: 10px; border-bottom: 3px double #0a2342; padding-bottom: 8px; }
+		.plogo { position: absolute; left: 0; top: 50%; transform: translateY(-50%); height: 56px; width: auto; }
+		.pcenter { text-align: center; }
+		.pdj { font-size: 13px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: #777; }
+		.pcls { font-size: 30px; font-weight: 800; color: #0a2342; }
 		.ptbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
 		.ptbl th, .ptbl td { border: 1.2px solid #222; padding: 4px 5px; vertical-align: top; }
 		.ptbl thead th { background: #2d2d2d; color: #fff; font-size: 14px; text-align: center; padding: 7px 4px; }
@@ -1318,7 +1319,7 @@ class TZDarsJadvali {
 		tr.kerow td.ke { border-top: 2px solid #7a52d8; }
 		.pfoot { margin-top: 8px; font-size: 10px; color: #888; text-align: right; }
 		@media screen { body { background: #ddd; } .sheet { background: #fff; max-width: ${opts.landscape ? "1050px" : "780px"}; margin: 14px auto; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,.2); } }
-		</style></head><body>${body || '<div class="sheet"><div class="phead"><div class="ptitle">Ma\'lumot yo\'q</div></div></div>'}
+		</style></head><body>${body || '<div class="sheet"><div class="phead"><div class="pcenter"><div class="pcls">No data</div></div></div></div>'}
 		<script>window.onload=function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},300);};<\/script>
 		</body></html>`;
 
