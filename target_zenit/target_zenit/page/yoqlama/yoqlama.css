@@ -145,3 +145,39 @@
 .tz-yoqlama .ytbl tbody th.nom span.fan { display:block; font-size:10px; line-height:1.15; color:var(--brand);
   max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tz-yoqlama .ytbl th.jami.kerak, .tz-yoqlama .ytbl td.jami.kerak { color:var(--muted); font-weight:600; }
+
+/* ===== Kun ko'rinishi: turniket kirdi-chiqdisi (dalil) + zavuch belgisi ===== */
+.tz-yoqlama thead th.kun[data-sana] { cursor:pointer; }
+.tz-yoqlama thead th.kun[data-sana]:hover { background:var(--brand-wash); }
+.tz-yoqlama input.kun-sana { background:var(--card); border:1px solid var(--line-strong);
+  border-radius:10px; padding:5px 9px; font-size:13px; color:var(--ink); }
+.tz-yoqlama .kun-pills { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.tz-yoqlama .kun-pills .pill { background:var(--card); border:1px solid var(--line);
+  border-radius:999px; padding:5px 12px; font-size:12px; color:var(--ink-2); }
+.tz-yoqlama .kun-pills .pill b { color:var(--ink); }
+.tz-yoqlama .kun-pills .pill.warn { border-color:var(--warn); color:var(--warn-ink); }
+.tz-yoqlama .kun-pills .pill.bad { border-color:var(--bad); color:var(--bad-ink); }
+
+.tz-yoqlama table.ktbl th, .tz-yoqlama table.ktbl td { text-align:left; padding:6px 10px; }
+.tz-yoqlama table.ktbl thead th { white-space:nowrap; font-size:11px; text-transform:uppercase; color:var(--muted); }
+.tz-yoqlama table.ktbl td.belgi { text-align:center; min-width:70px; }
+.tz-yoqlama table.ktbl td.belgi button.yc { width:42px; height:28px; font-size:13px; }
+.tz-yoqlama table.ktbl td.tevs { max-width:430px; }
+.tz-yoqlama table.ktbl td.empty { text-align:center; color:var(--muted); padding:24px; }
+
+.tz-yoqlama .tev { display:inline-block; border-radius:6px; padding:2px 7px; font-size:11.5px;
+  font-weight:600; margin:1px 4px 1px 0; border:1px solid; white-space:nowrap; }
+.tz-yoqlama .tev.in { color:#0e8c44; background:rgba(18,161,80,.10); border-color:rgba(18,161,80,.45); }
+[data-theme="dark"] .tz-yoqlama .tev.in { color:#31c06d; }
+.tz-yoqlama .tev.out { color:#2a78d6; background:rgba(42,120,214,.10); border-color:rgba(42,120,214,.45); }
+[data-theme="dark"] .tz-yoqlama .tev.out { color:#5b9bea; }
+.tz-yoqlama .tev-yoq { color:var(--muted); font-size:11.5px; font-style:italic; }
+
+.tz-yoqlama .txul { font-size:12px; color:var(--ink-2); white-space:nowrap; }
+.tz-yoqlama .txul .fl { display:block; font-size:11px; color:var(--muted); }
+
+.tz-yoqlama .ogoh-b { display:inline-block; border-radius:6px; padding:2px 8px; font-size:11.5px;
+  font-weight:600; margin:1px 4px 1px 0; white-space:nowrap; }
+.tz-yoqlama .ogoh-b.kech { background:rgba(221,154,31,.14); color:var(--warn-ink); border:1px solid var(--warn); }
+.tz-yoqlama .ogoh-b.erta { background:rgba(216,68,60,.10); color:var(--bad-ink); border:1px solid var(--bad); }
+.tz-yoqlama .ogoh-b.chiqishyoq { background:var(--card-2); color:var(--muted); border:1px dashed var(--line-strong); }

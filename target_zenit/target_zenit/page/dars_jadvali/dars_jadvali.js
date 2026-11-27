@@ -574,8 +574,11 @@ class TZDarsJadvali {
 		if (this.canEdit) {
 			this.body.find(".lesson").on("contextmenu", (e) => {
 				e.preventDefault(); e.stopPropagation();
-				if (this.moving) { this.mv_lagandaga(); return; }
-				this.ctx_menu($(e.currentTarget).data("name"), e.clientX, e.clientY);
+				// O'ng tugma DOIM menyuni ochadi. Agar karta "qo'lda" bo'lsa (ko'chirish
+				// rejimi) — avval uni qo'yib yuboramiz, lagandaga tashlamaymiz.
+				const name = $(e.currentTarget).data("name");
+				if (this.moving) { this.moving = null; this.render(); }
+				this.ctx_menu(name, e.clientX, e.clientY);
 			});
 			this.enable_drag(this.body.find(".lesson"));
 			if (!this.moving) {

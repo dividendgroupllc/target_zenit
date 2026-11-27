@@ -17,6 +17,8 @@ class TZYoqlama {
 		const b = frappe.datetime.str_to_obj(frappe.datetime.get_today());
 		this.yil = b.getFullYear();
 		this.oy = b.getMonth() + 1;
+		this.rejim = "oy";                          // "oy" — oylik to'r, "kun" — bitta kun (turniket dalili)
+		this.sana = frappe.datetime.get_today();    // kun ko'rinishida tanlangan sana
 		this.fKats = [];         // ish haqi kategoriyalari — KO'P TANLOV (bo'sh = hammasi)
 		this.q = "";
 		this.make_skeleton();
@@ -38,6 +40,15 @@ class TZYoqlama {
 	}
 
 	load() {
+		if (this.rejim === "kun") {
+			frappe.call({
+				method: `${YQ_M}.kun_data`,
+				args: { sana: this.sana, kategoriya: JSON.stringify(this.fKats) },
+				callback: (r) => { this.data = r.message; this.renderKun(); },
+				error: () => this.body.html(`<div class="loading">Xatolik. Sahifani yangilang.</div>`),
+			});
+			return;
+		}
 		frappe.call({
 			method: `${YQ_M}.get_data`,
 			args: { yil: this.yil, oy: this.oy, kategoriya: JSON.stringify(this.fKats) },
@@ -51,6 +62,11 @@ class TZYoqlama {
 		if (o < 1) { o = 12; y -= 1; }
 		if (o > 12) { o = 1; y += 1; }
 		this.oy = o; this.yil = y;
+		this.load();
+	}
+
+	kunOzgart(delta) {
+		this.sana = frappe.datetime.add_days(this.sana, delta);
 		this.load();
 	}
 
@@ -123,7 +139,8 @@ class TZYoqlama {
 
 	// Qidiruvda FAQAT jadval tanasi yangilanadi — input fokusi saqlanadi
 	paintBody() {
-		this.body.find("table.ytbl tbody").html(this.tbodyHtml());
+		this.body.find("table.ytbl tbody").html(
+			this.rejim === "kun" ? this.kunTbodyHtml() : this.tbodyHtml());
 		this.body.find("th.nom-head").html(`Xodim (${this.qatorlar().length})`);
 	}
 
@@ -133,7 +150,8 @@ class TZYoqlama {
 		const kunlar = d.kunlar || [];
 
 		const head = kunlar.map((k) =>
-			`<th class="kun ${k.dam ? "dam" : ""}${k.sana === d.bugun ? " bugun" : ""}" title="${k.sana}">
+			`<th class="kun ${k.dam ? "dam" : ""}${k.sana === d.bugun ? " bugun" : ""}" data-sana="${k.sana}"
+				title="${k.sana} — bosing: shu kunning turniket kirdi-chiqdisi">
 				<span>${k.kun}</span><em>${k.hafta}</em></th>`).join("");
 
 		// Kategoriya chiplari — KO'P TANLOV: bosilgani yonadi/o'chadi, bo'sh = hammasi
@@ -155,6 +173,10 @@ class TZYoqlama {
 					<button class="chip" data-oy="-1">‹</button>
 					<button class="chip on">${this.oyNomi(this.oy)} ${this.yil}</button>
 					<button class="chip" data-oy="1">›</button>
+				</div>
+				<div class="chips" title="Oy — oylik to'r; Kun — bitta kunning turniket kirdi-chiqdisi">
+					<button class="chip on">Oy</button>
+					<button class="chip" data-rejim="kun">Kun</button>
 				</div>
 				${d.oy_ochiq ? "" : `<span class="pill-yopiq">Oy yopilgan — o'zgartirib bo'lmaydi</span>`}
 				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
@@ -178,11 +200,131 @@ class TZYoqlama {
 		this.bind();
 	}
 
+	// ===== KUN ko'rinishi: turniket kirdi-chiqdisi (DALIL) + zavuch belgisi (TASDIQ)
+
+	// Bitta xodimning kun qatori
+	kunRowHtml(r) {
+		const d = this.data;
+		const evs = (r.hodisalar || []).map((h) =>
+			`<span class="tev ${h.turi === "IN" ? "in" : "out"}" title="${this.esc(h.terminal || "terminal noma'lum")}">${h.turi === "IN" ? "↓" : "↑"} ${this.esc(h.vaqt)}</span>`).join("");
+		const evCell = evs || `<span class="tev-yoq">${d.kelajak ? "—" : "turniketda ko'rinmagan"}</span>`;
+		const xulosa = (r.hodisalar || []).length
+			? `<b>${r.kirdi_soni}</b> kirdi · <b>${r.chiqdi_soni}</b> chiqdi
+				<span class="fl">birinchi: ${this.esc(r.birinchi || "—")} · oxirgi: ${this.esc(r.oxirgi || "—")}</span>`
+			: "";
+		const ogoh = (r.ogohlar || []).map((o) =>
+			`<span class="ogoh-b ${this.esc(o.turi)}">${this.esc(o.matn)}</span>`).join(" ");
+
+		// Zavuch belgisi — oy ko'rinishidagi katak bilan AYNAN bir xil mexanizm
+		// (tanlovPop + saqla), faqat kattaroq tugma
+		const c = r.kunlik[0];
+		let cls = "yc", matn = "·";
+		if (c.holat === "Present") { cls += " keldi"; matn = r.soatbay ? (c.koef || "") : "✓"; }
+		else if (c.holat === "Absent") { cls += " yoq"; matn = "✕"; }
+		else cls += " bosh";
+		const bloklangan = d.faqat_korish || d.kelajak || !d.oy_ochiq
+			|| (d.faqat_bugun && d.sana !== d.bugun);
+		return `<tr>
+			<th class="nom" title="${this.esc(r.ism)}${r.lavozim ? ` — ${this.esc(r.lavozim)}` : ""}"><b>${this.esc(r.ism)}</b><span>${this.esc(r.lavozim || r.kategoriya || "")}${r.soatbay ? " · soatbay" : ""}</span></th>
+			<td class="belgi"><button class="${cls}" data-x="${this.esc(r.xodim)}" data-s="${d.sana}"
+				${bloklangan ? "disabled" : ""} title="${d.sana} · zavuch belgisi — oylikka shu tushadi">${matn}</button></td>
+			<td class="tevs">${evCell}</td>
+			<td class="txul">${xulosa}</td>
+			<td class="togoh">${ogoh}</td></tr>`;
+	}
+
+	kunTbodyHtml() {
+		const rows = this.qatorlar();
+		return rows.map((r) => this.kunRowHtml(r)).join("")
+			|| `<tr><td colspan="5" class="empty">Xodim topilmadi</td></tr>`;
+	}
+
+	renderKun() {
+		$(".yq-pop").remove();
+		const d = this.data;
+		const katlar = (d.kategoriyalar || []).map((k) =>
+			`<button class="chip kchip ${this.fKats.indexOf(k) !== -1 ? "on" : ""}" data-kat="${this.esc(k)}">${this.esc(k)}</button>`).join("")
+			+ `<button class="chip kchip ${this.fKats.indexOf("__none") !== -1 ? "on" : ""}" data-kat="__none">Belgilanmagan</button>`;
+		const korinmagan = (d.qatorlar || []).length - (d.turniketda || 0);
+
+		this.body.html(`
+			<div class="topbar">
+				<div>
+					<h1>Yo'qlama — kun</h1>
+					<div class="sub">Turniket kirdi-chiqdisi — DALIL · oylik tabelga faqat zavuch belgisi tushadi${d.faqat_korish
+						? ` · <b>faqat ko'rish rejimi</b>`
+						: d.faqat_bugun ? ` · <b>faqat bugungi kun belgilanadi</b>` : ""}</div>
+				</div>
+				<div class="spacer"></div>
+				<div class="chips">
+					<button class="chip" data-kun-nav="-1">‹</button>
+					<button class="chip on">${this.esc(frappe.datetime.str_to_user(d.sana))} · ${this.esc(d.hafta)}${d.dam ? " (dam)" : ""}</button>
+					<button class="chip" data-kun-nav="1">›</button>
+					<input type="date" class="kun-sana" value="${d.sana}" title="Sanani tanlash">
+				</div>
+				<div class="chips">
+					<button class="chip" data-rejim="oy">Oy</button>
+					<button class="chip on">Kun</button>
+				</div>
+				${d.oy_ochiq ? "" : `<span class="pill-yopiq">Oy yopilgan — o'zgartirib bo'lmaydi</span>`}
+				<button class="refresh" data-act="reload"><span class="dot"></span> Yangilash</button>
+			</div>
+
+			<div class="controls mb">
+				<input type="text" class="q" placeholder="Qidiruv: ism yoki lavozim…" value="${this.esc(this.q)}">
+				<div class="chips kchips" title="Kategoriya — bir nechtasini tanlash mumkin">${katlar}</div>
+				<div class="spacer"></div>
+				<span class="legend">↓ turniketdan kirdi · ↑ chiqdi · ish vaqti ${this.esc(d.ish_boshi)}–${this.esc(d.ish_tugashi)} (soatbayga kech/erta hisobi yo'q)</span>
+			</div>
+
+			<div class="kun-pills mb">
+				<span class="pill"><b>${(d.qatorlar || []).length}</b> xodim</span>
+				<span class="pill">turniketda ko'ringan: <b>${d.turniketda || 0}</b></span>
+				<span class="pill ${korinmagan ? "bad" : ""}">ko'rinmagan: <b>${korinmagan}</b></span>
+				<span class="pill ${d.kechikkan ? "warn" : ""}">kechikkan: <b>${d.kechikkan || 0}</b></span>
+				<span class="pill ${d.erta_ketgan ? "warn" : ""}">erta ketgan: <b>${d.erta_ketgan || 0}</b></span>
+				${d.kun_yakun ? "" : `<span class="pill">kun hali tugamagan — «erta ketdi» ${this.esc(d.ish_tugashi)} dan keyin baholanadi</span>`}
+			</div>
+
+			<div class="card scroll-x">
+				<table class="ytbl ktbl">
+					<thead><tr>
+						<th class="nom nom-head">Xodim (${this.qatorlar().length})</th>
+						<th title="Zavuch belgisi — oylik tabelga faqat shu tushadi">Yo'qlama</th>
+						<th>Turniket o'tishlari</th>
+						<th>Kirdi / Chiqdi</th>
+						<th>Ogohlantirish</th>
+					</tr></thead>
+					<tbody>${this.kunTbodyHtml()}</tbody>
+				</table>
+			</div>
+		`);
+		this.bind();
+	}
+
 	bind() {
 		// Delegatlangan hodisalar — tbody qayta chizilganda ham ishlayveradi
 		this.body.off(".yq");
 		this.body.on("click.yq", "[data-act='reload']", () => this.load());
 		this.body.on("click.yq", "[data-oy]", (e) => this.oyOzgart(Number($(e.currentTarget).data("oy"))));
+		// Oy <-> Kun rejimi; oy to'rida kun sarlavhasini bossa — shu kunga o'tadi
+		this.body.on("click.yq", "[data-rejim]", (e) => {
+			this.rejim = String($(e.currentTarget).data("rejim"));
+			if (this.rejim === "oy" && this.sana) {
+				const s = frappe.datetime.str_to_obj(this.sana);
+				this.yil = s.getFullYear(); this.oy = s.getMonth() + 1;
+			}
+			this.load();
+		});
+		this.body.on("click.yq", "thead th.kun[data-sana]", (e) => {
+			this.sana = String($(e.currentTarget).data("sana"));
+			this.rejim = "kun";
+			this.load();
+		});
+		this.body.on("click.yq", "[data-kun-nav]", (e) => this.kunOzgart(Number($(e.currentTarget).data("kun-nav"))));
+		this.body.on("change.yq", "input.kun-sana", (e) => {
+			if (e.target.value) { this.sana = e.target.value; this.load(); }
+		});
 		this.body.on("click.yq", ".kchip", (e) => {
 			const k = String($(e.currentTarget).data("kat"));
 			const i = this.fKats.indexOf(k);

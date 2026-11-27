@@ -10,7 +10,7 @@ import calendar
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, getdate, nowdate
+from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, nowdate
 
 from target_zenit.kadrlar import ish_haqi_kategoriyalari
 
@@ -36,6 +36,13 @@ KORISH_FOYDALANUVCHILAR = set()
 # o'tkazib yuborgan kunlarini keyin to'ldirishi kerak. Chegara baribir bor:
 # kelajak kunga yozilmaydi va YOPILGAN oy tahrirlanmaydi (`belgila`).
 TOLIQ_ROLLAR = {"system manager", "xojakbar_operator", "hr manager", "hr user", "zavuch"}
+
+# Turniket ish vaqti chegaralari (2026-11-27 qaror): 09:00 dan keyingi birinchi
+# o'tish = "kechikib keldi" (QAT'IY, grace yo'q); kun yakunida oxirgi o'tishi
+# 18:00 dan oldingi CHIQISH bo'lsa = "erta chiqib ketdi". Soatbay xodimga smena
+# hisobi YO'Q — turniket u uchun faqat dalil (keldimi), ogohlantirish berilmaydi.
+ISH_BOSHI = "09:00:00"
+ISH_TUGASHI = "18:00:00"
 
 
 def _guard(tahrir=False):
@@ -64,6 +71,25 @@ def _faqat_bugun() -> bool:
 	tahrirlaydi; ro'yxatda bo'lmagan rol faqat bugungi kun bilan cheklanadi."""
 	rollar = {r.lower() for r in frappe.get_roles()}
 	return not (TOLIQ_ROLLAR & rollar)
+
+
+def _kategoriya_tanlovi(kategoriya):
+	"""Filtr qiymatini ro'yxatga keltiradi: bitta string YOKI JSON ro'yxat."""
+	tanlov = kategoriya
+	if isinstance(tanlov, str) and tanlov.strip().startswith("["):
+		import json
+		try:
+			tanlov = json.loads(tanlov)
+		except Exception:
+			tanlov = [kategoriya]
+	if isinstance(tanlov, str):
+		tanlov = [tanlov] if tanlov else []
+	return [str(t) for t in (tanlov or []) if t]
+
+
+def _kategoriya_mos(x, tanlov):
+	kat = (x.custom_ish_haqi_kategoriya or "").strip()
+	return (kat in tanlov) or ("__none" in tanlov and not kat)
 
 
 def _oy_ochiqmi(yil, oy) -> bool:
@@ -157,21 +183,9 @@ def get_data(yil=None, oy=None, kategoriya=None):
 
 	# Ish haqi kategoriyasi (tabel) bo'yicha filtr — KO'P TANLOV:
 	# ro'yxatdagi istalgan kategoriyaga mos xodimlar ko'rsatiladi
-	tanlov = kategoriya
-	if isinstance(tanlov, str) and tanlov.strip().startswith("["):
-		import json
-		try:
-			tanlov = json.loads(tanlov)
-		except Exception:
-			tanlov = [kategoriya]
-	if isinstance(tanlov, str):
-		tanlov = [tanlov] if tanlov else []
-	tanlov = [str(t) for t in (tanlov or []) if t]
+	tanlov = _kategoriya_tanlovi(kategoriya)
 	if tanlov:
-		def _kat_mos(x):
-			kat = (x.custom_ish_haqi_kategoriya or "").strip()
-			return (kat in tanlov) or ("__none" in tanlov and not kat)
-		xodimlar = [x for x in xodimlar if _kat_mos(x)]
+		xodimlar = [x for x in xodimlar if _kategoriya_mos(x, tanlov)]
 
 	nomlar = [x.name for x in xodimlar]
 	belgilar = {}
@@ -283,6 +297,141 @@ def get_data(yil=None, oy=None, kategoriya=None):
 		"bugun": str(bugun),
 		# Instructor sifatida ro'yxatdan o'tgan xodimlar soni (ma'lumot uchun)
 		"oqituvchilar_soni": frappe.db.count("Instructor", {"employee": ["!=", ""]}),
+	}
+
+
+@frappe.whitelist()
+def kun_data(sana=None, kategoriya=None):
+	"""Bitta kunning to'liq manzarasi: har xodimning turniket kirdi-chiqdilari
+	(HRMS Employee Checkin — turniket webhook yozadi) + zavuch yo'qlama belgisi.
+
+	Turniket = DALIL, zavuch belgisi = TASDIQ: oylik tabel faqat Attendance'ni
+	o'qiydi, Attendance'ni esa faqat shu sahifadagi `belgila` yozadi — turniket
+	o'z-o'zidan oylikka ta'sir qilmaydi."""
+	_guard()
+	bugun = getdate(nowdate())
+	sana = getdate(sana) if sana else bugun
+
+	xodimlar = frappe.get_all(
+		"Employee",
+		filters={"custom_tabelda": 1, "date_of_joining": ["<=", str(sana)]},
+		fields=["name", "employee_name", "designation", "custom_tolov_turi",
+				"custom_ish_haqi_kategoriya", "date_of_joining", "relieving_date",
+				"status"],
+		order_by="employee_name",
+		limit_page_length=0,
+		ignore_permissions=True,
+	)
+	# Shu kunda real ishlagan xodimlargina (oy ko'rinishidagi "—" kunlar bu
+	# ro'yxatga umuman kirmaydi — kun tanlangach ortiqcha qator shart emas)
+	saralangan = []
+	for x in xodimlar:
+		ketgan = getdate(x.relieving_date) if x.relieving_date else None
+		if x.status != "Active" and (not ketgan or ketgan < sana):
+			continue
+		if ketgan and ketgan < sana:
+			continue
+		saralangan.append(x)
+	xodimlar = saralangan
+
+	kategoriyalar = ish_haqi_kategoriyalari(
+		[x.custom_ish_haqi_kategoriya for x in xodimlar]
+	)
+	tanlov = _kategoriya_tanlovi(kategoriya)
+	if tanlov:
+		xodimlar = [x for x in xodimlar if _kategoriya_mos(x, tanlov)]
+	nomlar = [x.name for x in xodimlar]
+
+	belgilar = {}
+	checkinlar = {}
+	if nomlar:
+		for a in frappe.get_all(
+			"Attendance",
+			filters={"employee": ["in", nomlar], "attendance_date": str(sana),
+					 "docstatus": ["<", 2]},
+			fields=["employee", "status", "custom_koef"],
+			limit_page_length=0, ignore_permissions=True,
+		):
+			belgilar[a.employee] = {"status": a.status, "koef": flt(a.custom_koef)}
+		for c in frappe.get_all(
+			"Employee Checkin",
+			filters={"employee": ["in", nomlar],
+					 "time": ["between", [f"{sana} 00:00:00", f"{sana} 23:59:59"]]},
+			fields=["employee", "time", "log_type", "device_id"],
+			order_by="time asc", limit_page_length=0, ignore_permissions=True,
+		):
+			checkinlar.setdefault(c.employee, []).append(c)
+
+	kech_chegara = get_datetime(f"{sana} {ISH_BOSHI}")
+	erta_chegara = get_datetime(f"{sana} {ISH_TUGASHI}")
+	# "Erta chiqib ketdi" faqat kun yakunlangach aytiladi — ish kuni o'rtasida
+	# chiqib turgan odam hali qaytib kirishi mumkin (tushlik va h.k.)
+	kun_yakun = sana < bugun or now_datetime() >= erta_chegara
+
+	qatorlar = []
+	for x in xodimlar:
+		soatbay = (x.custom_tolov_turi or "").strip() == "Soatbay"
+		evs = checkinlar.get(x.name, [])
+		hodisalar = [{
+			"vaqt": get_datetime(c.time).strftime("%H:%M"),
+			"turi": c.log_type or "",
+			"terminal": c.device_id or "",
+		} for c in evs]
+		kirdi_soni = sum(1 for c in evs if c.log_type == "IN")
+		chiqdi_soni = sum(1 for c in evs if c.log_type == "OUT")
+		birinchi = get_datetime(evs[0].time) if evs else None
+		oxirgi = get_datetime(evs[-1].time) if evs else None
+
+		# Ogohlantirishlar — faqat smenali (soatbay bo'lmagan) xodimga:
+		# soatbay o'qituvchiga turniket faqat dalil, kech/erta hisobi yo'q
+		ogohlar = []
+		if evs and not soatbay:
+			if birinchi > kech_chegara:
+				ogohlar.append({"turi": "kech",
+								"matn": f"Kechikib keldi ({birinchi.strftime('%H:%M')})"})
+			if kun_yakun:
+				if evs[-1].log_type == "OUT" and oxirgi < erta_chegara:
+					ogohlar.append({"turi": "erta",
+									"matn": f"Erta chiqib ketdi ({oxirgi.strftime('%H:%M')})"})
+				elif chiqdi_soni == 0:
+					ogohlar.append({"turi": "chiqishyoq",
+									"matn": "Chiqishi qayd etilmagan"})
+
+		b = belgilar.get(x.name)
+		qatorlar.append({
+			"xodim": x.name,
+			"ism": x.employee_name or x.name,
+			"lavozim": x.designation or "",
+			"kategoriya": x.custom_ish_haqi_kategoriya or "",
+			"soatbay": soatbay,
+			"hodisalar": hodisalar,
+			"kirdi_soni": kirdi_soni,
+			"chiqdi_soni": chiqdi_soni,
+			"birinchi": birinchi.strftime("%H:%M") if birinchi else None,
+			"oxirgi": oxirgi.strftime("%H:%M") if oxirgi else None,
+			"ogohlar": ogohlar,
+			# tanlovPop/saqla oy ko'rinishidagi qator bilan BIR XIL ishlashi uchun
+			"kunlik": [{"sana": str(sana), "holat": b["status"] if b else None,
+						"koef": b["koef"] if b else None, "tashqari": None}],
+			"keldi": 1 if b and b["status"] == "Present" else 0,
+		})
+
+	return {
+		"sana": str(sana), "hafta": HAFTA[sana.weekday()],
+		"dam": sana.weekday() >= 5, "kelajak": sana > bugun,
+		"qatorlar": qatorlar,
+		"kategoriyalar": kategoriyalar,
+		"faqat_bugun": _faqat_bugun(),
+		"faqat_korish": _faqat_korish(),
+		"oy_ochiq": _oy_ochiqmi(sana.year, sana.month),
+		"bugun": str(bugun),
+		"kun_yakun": kun_yakun,
+		"ish_boshi": ISH_BOSHI[:5], "ish_tugashi": ISH_TUGASHI[:5],
+		"turniketda": sum(1 for q in qatorlar if q["hodisalar"]),
+		"kechikkan": sum(1 for q in qatorlar
+						 if any(o["turi"] == "kech" for o in q["ogohlar"])),
+		"erta_ketgan": sum(1 for q in qatorlar
+						   if any(o["turi"] == "erta" for o in q["ogohlar"])),
 	}
 
 

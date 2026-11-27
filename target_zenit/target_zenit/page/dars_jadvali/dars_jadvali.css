@@ -214,9 +214,13 @@
   box-shadow:0 6px 18px rgba(0,0,0,.25); transform:rotate(-2deg); }
 body.tz-dragging { cursor:grabbing !important; user-select:none; }
 
-.tz-ctx { position:fixed; z-index:9998; background:var(--card,#fff); border:1px solid var(--line-strong,#d3dae6);
-  border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.18); padding:6px; min-width:200px;
-  display:flex; flex-direction:column; gap:2px; }
+/* .tz-ctx DOIM `tz-jadval` klassi bilan keladi (ranglar uchun). Lekin tz-jadval
+   width:100% + min-height:100vh beradi — menyu butun ekranni egallamasligi uchun
+   shu xossalarni majburan bostiramiz. */
+.tz-ctx { position:fixed !important; z-index:9998; background:var(--card,#fff); border:1px solid var(--line-strong,#d3dae6);
+  border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.18); padding:6px !important; min-width:200px;
+  width:auto !important; max-width:280px; min-height:0 !important; height:auto !important;
+  display:flex !important; flex-direction:column; gap:2px; }
 .tz-ctx .ctx-t { font-size:11px; font-weight:700; color:var(--muted,#8a93a6); padding:4px 8px 6px;
   border-bottom:1px solid var(--line,#e3e8f0); margin-bottom:3px; max-width:230px;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
