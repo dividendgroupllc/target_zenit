@@ -193,6 +193,12 @@ doc_events = {
 	"Murojaat": {
 		"after_insert": "target_zenit.integrations.moodle_murojaat.on_murojaat_insert",
 	},
+	# Turniket o'tishi (turniket app webhook'i yozadi) — egasiga DARHOL
+	# Moodle bildirishnomasi: «Siz 08:52 da maktabga kirdingiz». Doctype
+	# faqat turniket app o'rnatilgan saytda bor — boshqa saytda hook jim turadi.
+	"Turniket Checkin": {
+		"after_insert": "target_zenit.integrations.moodle_turniket.on_checkin_insert",
+	},
 	# O'quv reja saqlansa — mavzular Moodle'ga uzatiladi va u yerda dars
 	# jadvaliga biriktiriladi (zam direktor Excel yuklagandan keyin ham)
 	# Chorak oralig'i yoki bayram o'zgarsa — Moodle kalendari DARHOL
@@ -365,6 +371,12 @@ scheduler_events = {
 		# Asosiy yo'l — yozuv kelgan zahoti (api._yozuvni_biriktir -> stt.navbatga).
 		# Bu zaxira: worker o'chgan, Gemini band bo'lgan yoki sozlama keyin
 		# yoqilgan hollarda o'tkazib yuborilganlarni oladi.
+		# Turniket -> Moodle bildirishnomasi ZAXIRASI: asosiy yo'l hodisa
+		# kelgan zahoti (doc_events); bu — Moodle o'chiq/navbat uzilgan
+		# paytda yuborilmay qolganlarni (moodle_xabar=0, 48 soat) oladi.
+		"*/10 * * * *": [
+			"target_zenit.integrations.moodle_turniket.qolganlarni_yubor",
+		],
 		"*/15 * * * *": [
 			"target_zenit.telefoniya.stt.qolganlarni_qil",
 			# Transkripti bor-u qisqa tahlili yo'qlar (2-bosqich zaxirasi)

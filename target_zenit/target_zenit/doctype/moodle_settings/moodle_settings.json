@@ -15,6 +15,7 @@
   "sync_teachers",
   "sync_staff",
   "sync_psixologiya",
+  "sync_turniket",
   "psixolog",
   "column_break_2",
   "suspend_on_leave",
@@ -97,6 +98,13 @@
    "fieldname": "sync_psixologiya",
    "fieldtype": "Check",
    "label": "Psixologiya kursini yuritish"
+  },
+  {
+   "default": "0",
+   "description": "Har turniket o'tishi egasiga (xodim/o'quvchi) Moodle bildirishnomasi bo'lib boradi. Plagin 0.75.0+ bo'lishi shart — avval Moodle deploy, keyin bu katak.",
+   "fieldname": "sync_turniket",
+   "fieldtype": "Check",
+   "label": "Turniket kirdi-chiqdi xabari"
   },
   {
    "description": "Maktab psixologi — markaziy Psixologiya kursiga O'QITUVCHI (editingteacher) sifatida yoziladi: test/so'rovnoma yaratadi va natijalarni ko'radi. Moodle'dagi «Psixolog» roli esa alohida, cli/psixolog_rol.php bilan beriladi.",
@@ -182,7 +190,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-21 12:00:00.000000",
+ "modified": "2026-11-28 00:00:01.000000",
  "modified_by": "Administrator",
  "module": "target_zenit",
  "name": "Moodle Settings",
